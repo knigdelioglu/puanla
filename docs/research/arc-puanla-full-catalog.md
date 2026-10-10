@@ -12,7 +12,7 @@
 - **P2:** Ancak somut ürün gereksinimi ortaya çıktığında veya opsiyonel deney olarak.
 - **X:** Mevcut ürün hedefiyle ilişkisi çok zayıf; Arc kullanım sayısını şişirmek için alınmaz.
 
-**Sayım:** P0 **42**, P1 **31**, P2 **23**, X **36** (toplam 132). P0/P1, planlanmış *uyarlama adayı* sayısıdır; uygulanmış bileşen sayısı **0**.
+**Sayım:** P0 **46**, P1 **30**, P2 **23**, X **33** (toplam 132). P0/P1, planlanmış *uyarlama adayı* sayısıdır; uygulanmış bileşen sayısı **0**.
 
 | Tür | Arc girdisi | Öncelik | Puanla işlevi / değerlendirme |
 |---|---|---|---|
@@ -21,8 +21,8 @@
 
 | Arc öğesi | Karar | Puanla karşılığı | Kaynak |
 |---|---|---|---|
-| `arc-foundation` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/foundation.css) |
-| `arc-motion-tokens` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/motion-tokens.ts) |
+| `arc-foundation` | **P0** | Arc'ın renk, yüzey, odak, tipografi ve açık/koyu mod tokenları; Compose Theme temelini kurar | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/foundation.css) |
+| `arc-motion-tokens` | **P0** | Arc'ın süre/yay/easing hareket sözlüğünü Compose animasyon tokenlarına uyarlama | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/motion-tokens.ts) |
 
 ## UI bileşenleri
 
@@ -45,7 +45,7 @@
 | `avatar` | **P1** | Öğrencinin baş harflerinden kişisel veri içermeyen ayırt edici işaret | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/avatar/avatar.tsx) |
 | `avatar-group` | **P1** | Grup çalışmasındaki öğrenciler | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/avatar-group/avatar-group.tsx) |
 | `input` | **P0** | Öğrenci numarası, ad/soyad, sınıf adı gibi tek satır alanlar | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/input/input.tsx) |
-| `textarea` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/textarea/textarea.tsx) |
+| `textarea` | **P2** | Öğretmen gözlem notu ileride eklenirse çok satırlı metin girişi | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/textarea/textarea.tsx) |
 | `select` | **P0** | Sınıf, şube, rubrik ve rapor tipi seçimi | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/select/select.tsx) |
 | `combobox` | **P0** | Çok öğrenci/sınıf/rubrik içinde arayarak seçim | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/combobox/combobox.tsx) |
 | `checkbox` | **P0** | Grup hazırlık kontrolü ve OCR satır onayı | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/checkbox/checkbox.tsx) |
@@ -101,7 +101,7 @@
 | `resizable-panels` | **P0** | Tablet üzerinde öğrenci listesi / ölçütler / puan alanını kullanıcıya ayarlanabilir bölme | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/resizable-panels/resizable-panels.tsx) |
 | `toast-stack` | **P0** | Kaydedildi, düzeltildi, geri al ve hata bildirimi | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/toast-stack/toast-stack.tsx) |
 | `usage-meter` | **P1** | Tamamlanan / eksik değerlendirme kapasitesi; yalnız doğru anlamda | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/usage-meter/usage-meter.tsx) |
-| `image-compare` | **P2** | İşlenmiş OCR görüntüsü ile özgün fotoğrafı yan yana karşılaştırma | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/image-compare/image-compare.tsx) |
+| `image-compare` | **P1** | OCR kaynak fotoğraf ile düzeltilmiş/ön işlenmiş görüntüyü fark denetimi için karşılaştırma | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/image-compare/image-compare.tsx) |
 | `carousel` | **P1** | Birden fazla fotoğraflı OCR incelemesinde sayfalar arasında gezinti | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/carousel/carousel.tsx) |
 | `card-stack` | **P2** | Öğrenci triage benzeri tek tek gözden geçirme; puanı sağ/sol swipe'a bağlamak riskli | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/card-stack/card-stack.tsx) |
 | `bar-chart` | **P1** | Sınıf/rubrik bazlı tamamlanmış puan dağılımı | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/bar-chart/bar-chart.tsx) |
@@ -146,11 +146,11 @@
 | `plan-comparison` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/plan-comparison/plan-comparison.tsx) |
 | `command-palette` | **P1** | Fiziksel klavye kullanan tablette hızlı öğrenci/rubrik/eylem arama | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/command-palette/command-palette.tsx) |
 | `notification-center` | **P1** | İçe aktarma sorunları ve yerel işlem geçmişi; uzaktan bildirim değil | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/notification-center/notification-center.tsx) |
-| `file-upload` | **P1** | Fotoğraf/JSON yedeği için yerel dosya seçme, doğrulama ve hata yönetimi; ağ yüklemesi yok | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/file-upload/file-upload.tsx) |
+| `file-upload` | **P0** | OCR fotoğrafı ve yerel JSON yedeği için seçme/önizleme/hata akışı; buluta yükleme kullanılmaz | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/file-upload/file-upload.tsx) |
 | `otp-input` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/components/otp-input/otp-input.tsx) |
 | `changelog-feed` | **P2** | Uygulama sürüm notları bölümü eklenirse | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/changelog-feed/changelog-feed.tsx) |
 | `sign-in` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/sign-in/sign-in.tsx) |
-| `page-header` | **P1** | Sınıf ve rubriği taşıyan adaptif katlanır çalışma başlığı; SaaS örnek verisi taşınmaz | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/page-header/page-header.tsx) |
+| `page-header` | **P0** | Sınıf-rubrik-öğrenci bağlamını taşıyan uyarlanabilir çalışma başlığı | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/page-header/page-header.tsx) |
 | `empty-states` | **P1** | İlk kullanım, hiç rubrik yok, OCR boş, rapor boş için tutarlı görünüm seti | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/empty-states/empty-states.tsx) |
 | `login-centered` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/login-centered/login-centered.tsx) |
 | `site-header` | **X** | Mevcut Puanla ürün kapsamında karşılığı yok; başka bir ürün işlevi için tasarlanmış. | [kaynak](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry/blocks/site-header/site-header.tsx) |
