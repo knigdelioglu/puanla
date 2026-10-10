@@ -68,7 +68,7 @@
 | # | Arc Kaydı | Öncelik | Compose API (`com.knigdelioglu.arc.compose.*`) | Puanla Ekranı / Kullanım Alanı | Durum |
 |---|---|---|---|---|---|
 | 47 | `expanding-button-group` | P1 | `ArcExpandingButtonGroup` (Genişleyen buton grubu) | Kompakt araç çubuğunda odaklanan eylemin başlık açması | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 48 | `context-menu` | P1 | `ArcContextMenu` (Bağlam menüsü) | Kalem veya uzun basış ile öğrenci hızlı işlem menüsü | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 48 | `context-menu` | P1 | `ArcContextMenu` (Bağlam menüsü) | Öğrenci numarasına uzun basarak o öğrenciyi puanlama veya numarayı kopyalama | **Öğrenci tablosunda gerçek eylemlere bağlı; tablet etkileşim testi açık** |
 | 49 | `copy-button` | P1 | `ArcCopyButton` (Kopyalama butonu) | Öğrenci numarası veya CSV verisini tek dokunuşla kopyalama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 50 | `theme-switch` | P1 | `ArcThemeSwitch` (Açık/koyu tema geçiş düğmesi) | Üst araç çubuğu ve Ayarlar ekranında tema değişimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 51 | `avatar` | P1 | `ArcAvatar` (Baş harf avatarları) | Öğrenci ad-soyad baş harflerinden anonim profil görseli | **Normal ekran API çağrısı var (işlev teyitsiz)** |
@@ -156,3 +156,8 @@
 - `ArcAccordion` seçili ölçütün **mevcut** yönergesini ve gerçek puan düzeyi açıklamalarını açar; olmayan içerik uydurulmaz.
 - `ArcExpandingSearch` öğrenci listesinde; `ArcEmptyStates.NoClassrooms` sınıf oluşturma durumunda kullanılır.
 - Bu aşama gerçek cihaz / TalkBack / dokunma ve veri tutarlılığı için tam entegrasyon testi yerine geçmez.
+
+## 11 Ekim 2026 — Öğrenci hızlı işlemleri
+
+- Öğrenci tablosunda numara hücresine uzun basma `ArcContextMenu` açar. `ArcContextAction` eylemleri menüyü kapatıp seçili öğrencinin gerçek puanlama ekranına gider veya okul numarasını sistem panosuna kopyalar.
+- Eski katalog `menuContent` API'si korunmuştur; gerçek tablet uzun basma, fare sağ tıklama ve erişilebilirlik henüz uçtan uca test edilmemiştir.
