@@ -115,7 +115,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
             listOf(
                 ArcTimelineEntry(
                     title = "Sistem Başlatıldı",
-                    subtitle = "Yerel Room veritabanı hazırlandı ve rubrikler yüklendi.",
+                    subtitle = "Yerel Room veritabanı hazırlandı. Onaylı rubrikler yalnızca gerçek veri kaynağından yüklenir.",
                     time = "Şimdi"
                 )
             )
@@ -132,8 +132,8 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
     val sampleRubricJson = """
     {
-      "id": "rubric_oral_presentation",
-      "title": "Sözlü Sunum",
+      "id": "example_not_a_real_rubric",
+      "title": "Temsili Test Rubriği",
       "grade": 11,
       "criteria_count": 5,
       "max_points": 100,
@@ -253,7 +253,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     onSignatureChanged = { hasTeacherSignature = it }
                 )
                 Text(
-                    text = if (hasTeacherSignature) "✓ İmza kaydedildi. Resmi dışa aktarımlarda kullanılabilir." else "Tutanakları resmileştirmek için kalem veya parmağınızla imzalayın.",
+                    text = if (hasTeacherSignature) "İmza yalnızca bu ekranda çizildi; kaydedilmedi ve resmi dışa aktarıma eklenmez." else "Kalem etkileşim denemesi; henüz resmi imza veya dışa aktarma özelliği değildir.",
                     fontSize = 12.sp,
                     color = if (hasTeacherSignature) ArcTheme.colors.success else ArcTheme.colors.textMuted
                 )
@@ -329,7 +329,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Rubrik Veri Şeması",
+                    text = "Temsili JSON Örneği (gerçek rubrik değil)",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = ArcTheme.colors.foreground
