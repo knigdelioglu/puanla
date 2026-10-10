@@ -109,8 +109,18 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
             gender = gender?.trim(),
             boardingStatus = boardingStatus?.trim()
         )
-        studentDao.insertStudent(student)
-        return Result.success(student)
+        return try {
+            db.withTransaction {
+                studentDao.insertStudent(student)
+                auditLogDao.insertLog(AuditLogEntity(
+                    id = UUID.randomUUID().toString(), action = "STUDENT_ADDED",
+                    details = "${student.studentNumber} - ${student.firstName} ${student.lastName} (${classroomId})"
+                ))
+            }
+            Result.success(student)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun addStudents(students: List<StudentEntity>) = db.withTransaction {
@@ -134,12 +144,20 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
         )
     }
 
-    suspend fun updateStudent(student: StudentEntity) {
+    suspend fun updateStudent(student: StudentEntity) = db.withTransaction {
         studentDao.updateStudent(student)
+        auditLogDao.insertLog(AuditLogEntity(
+            id = UUID.randomUUID().toString(), action = "STUDENT_UPDATED",
+            details = "Öğrenci no ${student.studentNumber} (${student.classroomId})"
+        ))
     }
 
-    suspend fun deleteStudent(student: StudentEntity) {
+    suspend fun deleteStudent(student: StudentEntity) = db.withTransaction {
         studentDao.deleteStudent(student)
+        auditLogDao.insertLog(AuditLogEntity(
+            id = UUID.randomUUID().toString(), action = "STUDENT_DELETED",
+            details = "${student.studentNumber} - ${student.firstName} ${student.lastName} (${student.classroomId})"
+        ))
     }
 
     // Rubrics
@@ -225,6 +243,13 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
                 lastModifiedAt = System.currentTimeMillis()
             )
         )
+        if (previous?.points != scorePoints) {
+            auditLogDao.insertLog(AuditLogEntity(
+                id = UUID.randomUUID().toString(), action = "CRITERION_SCORE_CHANGED",
+                details = "${classroom.name}, no ${student.studentNumber}, ${criterion.title}: " +
+                    "${previous?.points?.toString() ?: "Boş"} → ${scorePoints?.toString() ?: "Boş"}"
+            ))
+        }
         previous
     }
 
