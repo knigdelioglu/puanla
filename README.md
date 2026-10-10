@@ -19,7 +19,7 @@
 
 - **Kotlin, Jetpack Compose ve Android SDK** — React Native, Expo, Flutter veya PWA kullanılmaz.
 - **Tablet öncelikli adaptif arayüz** — geniş ekranlar, yatay/dikey yön, kalem ve dokunma ergonomisi dikkate alınır.
-- **Arc Library** (`kuratlielia/arc-library`) doğrudan Android bağımlılığı değildir; seçilmiş etkileşim ve görsel davranışlar Kotlin/Compose üzerinde **yerel olarak yeniden tasarlanacaktır**. Arc kaynaklı 132 kayıt tek tek incelendi: [tam envanter](docs/research/arc-puanla-full-catalog.md) ve [tablet öncelikli genişletilmiş uyarlama planı](docs/plans/arc-maximal-adoption.md). Bunlar henüz uygulanmış bileşenler değildir.
+- **Arc Library** (`kuratlielia/arc-library`) doğrudan Android bağımlılığı değildir; seçilmiş etkileşim ve görsel davranışlar Kotlin/Compose üzerinde **yerel olarak yeniden tasarlanacaktır**. Arc kaynaklı 132 kayıt tek tek incelendi: [tam envanter](docs/research/arc-puanla-full-catalog.md) ve [tablet öncelikli genişletilmiş uyarlama planı](docs/plans/arc-maximal-adoption.md). Geliştirme durumu için [kod denetimi matrisi](docs/verification/arc-implementation-matrix.md) esas alınmalıdır; 99/99 üretim entegrasyonu doğrulanmamıştır.
 - Öğrenci verileri varsayılan olarak cihazdan çıkmaz; temel puanlama akışı internet olmadan çalışır.
 
 ## Depo kapsamı
@@ -30,6 +30,6 @@
 
 ## Durum
 
-Android Native `:app` ve ayrı `:arc-compose` modülleri geliştirme aşamasındadır. Room, hızlı puanlama, tablet ekranları ve yerel OCR kodları vardır. 2026-10-10 P0 güvenlik düzeltmeleriyle sahte rubrik/öğrenci tohumlama durdurulmuş, yıkıcı Room migration kaldırılmış, öğrencinin kimliğine bağlı puanlama ve işlem bazlı geri alma düzenlenmiş, tam JSON yedekleme/geri yükleme ve gerçek görsel seçimi eklenmiştir.
+Android Native `:app` ve ayrı `:arc-compose` modülleri geliştirme aşamasındadır. Room, hızlı puanlama, tablet ekranları ve yerel OCR kodları vardır. 2026-10-10 P0 güvenlik düzeltmeleriyle sahte rubrik/öğrenci tohumlama durdurulmuş, yıkıcı Room migration kaldırılmış, öğrencinin kimliğine bağlı puanlama ve işlem bazlı geri alma düzenlenmiş, tam JSON yedekleme/geri yükleme ve gerçek görsel seçimi eklenmiştir. P1 kapsamında CSV alan kaçışı/formül güvenliği, üretim formatlayıcısını çalıştıran birim testler, gerçek dosya kaydetme ve gecikmeli gözlem notu kaydı eklenmiştir.
 
 **Sınırlar:** 99 Arc kaydının tümü üretim ekranlarında doğrulanmamıştır. Onaylı rubrik verisi yokken gerçek notlandırma yapılmaz. Gerçek cihaz üzerinde uçtan uca OCR, geri yükleme ve puanlama testleri hala gereklidir. [Dürüst Arc doğrulama matrisi](docs/verification/arc-implementation-matrix.md).

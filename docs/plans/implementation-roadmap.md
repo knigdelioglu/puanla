@@ -1,6 +1,6 @@
 # Puanla Android Native geliştirme yol haritası
 
-**2026-10-10:** Temel repo iskeleti ve ürün sözleşmesi var. Değerlendirme, OCR, Room, CSV/yedek ve Arc Compose bileşenleri **henüz uygulanmadı**.
+**10 Ekim 2026 kod durumu:** `:app` ve `:arc-compose` modülleri, Room tabloları, puanlama ekranları, fotoğraf OCR akışı, gerçek CSV dosyasına aktarma ve kapsamlı JSON yedekleme kodu bulunmaktadır. P0/P1 kod düzeltmeleri ve birim testler devam etmektedir. Android emülatör/gerçek cihaz ile eksiksiz ürün doğrulaması yapılmış değildir.
 
 | Aşama | Çıktı | Bitiş koşulu |
 | --- | --- | --- |
@@ -13,9 +13,10 @@
 
 Bu plan bağımlılıkların mantıksal önceliğidir; Arc UI sadece sunum katmanını etkiler. Arayüz değişikliği veri modelini otomatik dönüştüremez.
 
-## Şimdiki engeller
-- Onaylı `data/rubrics.json` yeni depoda bulunmuyor. Ürün raporu 48 ölçütün **tam içeriğini içermez**.
-- İlk CI koşusu Android SDK setup aracındaki eski `tools` paketi nedeniyle başarısız oldu; yapılandırma düzeltildi ve yeni koşunun sonucuna göre tekrar doğrulanmalıdır.
-- Gradle Wrapper henüz repoda yok. İlk başarılı build sonrası wrapper dosyaları eklenmeli ve CI wrapper üzerinden çalışmalıdır.
+## Açık doğrulama ihtiyaçları
+- Onaylı `data/rubrics.json` bulunmuyor. Gerçek rubrik ve ölçüt metinleri eksikken canlı öğretmen notu üretimi başlatılmamalı.
+- P0 değişikliklerinin GitHub Actions test/derlemesi yeşil; cihaz içi OCR, öğrenci/puan izolasyonu ve tam yedekleme–geri yükleme için gerçek tablet veya enstrümantasyon testleri açık.
+- P1 CSV testleri artık gerçek üretim formatlayıcısını çağırıyor; Excel açılışı ve SAF dışa aktarma uçtan uca cihazda doğrulanmalı.
+- Arc P0/P1/P2 kayıtlarının 99/99 entegrasyon iddiası geçersiz; statik kullanım dağılımı ve eksikler [Arc doğrulama matrisi](../verification/arc-implementation-matrix.md) içinde.
 
 Detaylı Arc uyarlaması: [arc-compose-adaptation.md](arc-compose-adaptation.md). Testler: [../testing.md](../testing.md).

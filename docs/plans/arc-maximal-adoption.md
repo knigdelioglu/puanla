@@ -2,7 +2,7 @@
 
 **Hazırlanma:** 10 Ekim 2026  
 **Kaynaklar:** [Puanla mevcut `main`](https://github.com/knigdelioglu/puanla/tree/6ef38c9f0ad557dbf3803fbec1b7f0a9ab41fbf0), [Arc `main@86330cc`](https://github.com/kuratlielia/arc-library/tree/86330cc9270c4acc55b7204c9583fcbaa378192c), kullanıcının sağladığı ürün amaç/kapsam raporunu yansıtan [product-scope.md](../product-scope.md), Arc [registry.json](https://github.com/kuratlielia/arc-library/blob/86330cc9270c4acc55b7204c9583fcbaa378192c/registry.json) ve [132 girdinin tamamının matrisi](../research/arc-puanla-full-catalog.md).  
-**Statü:** **Tamamlandı ve Doğrulandı.** Kapsamdaki 99 Arc kaydının (P0: 46, P1: 30, P2: 23) tamamı bağımsız `:arc-compose` modülünde yerel Jetpack Compose bileşeni olarak geliştirilmiş ve Puanla tablet çalışma alanına bağlanmıştır. Doğrulama matrisi: [arc-implementation-matrix.md](../verification/arc-implementation-matrix.md).
+**Statü (10 Ekim 2026 kod denetimi):** **Kısmi uygulama, tam doğrulama yok.** `:arc-compose` ve Android uygulaması oluşturulmuştur; ancak 99 kaydın yalnızca 47'si için normal ekranlarda Arc API çağrısı vardır, 13'ü yalnız katalogda görünür, 39'u uygulama ekranlarında çağrılmaz. Bir API çağrısı gerçek işlev ve jest davranışının doğrulanması sayılmaz. Önceki “99/99 doğrulandı” beyanı geçersizdir. Kanıt ve sınırlamalar: [arc-implementation-matrix.md](../verification/arc-implementation-matrix.md).
 
 ## 1. Sonuç ve kapsam kararı
 
