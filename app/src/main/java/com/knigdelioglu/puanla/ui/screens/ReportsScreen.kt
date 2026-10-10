@@ -1,6 +1,9 @@
 package com.knigdelioglu.puanla.ui.screens
 
-import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,6 +73,21 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val context = LocalContext.current
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
+    var csvGenerating by remember { mutableStateOf(false) }
+    val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val stream = requireNotNull(context.contentResolver.openOutputStream(uri)) { "CSV dosyası açılamadı." }
+                    stream.bufferedWriter(Charsets.UTF_8).use { it.write(generatedCsvContent) }
+                }
+                viewModel.showToast("CSV dosyası başarıyla kaydedildi.")
+                isCsvPreviewDialogOpen = false
+            } catch (e: Exception) {
+                viewModel.showToast("CSV kaydedilemedi: ${e.message}")
+            }
+        }
+    }
 
     val scrollState = rememberScrollState()
 
@@ -146,15 +164,23 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             ArcButton(
                 text = "Excel / CSV Dışa Aktar",
                 onClick = {
-                    scope.launch {
-                        val csv = viewModel.generateCsv()
-                        generatedCsvContent = csv
-                        isCsvPreviewDialogOpen = true
+                    if (!csvGenerating) scope.launch {
+                        csvGenerating = true
+                        try {
+                            val csv = viewModel.generateCsv()
+                            if (csv.isBlank()) error("Dışa aktarılacak veri yok.")
+                            generatedCsvContent = csv
+                            isCsvPreviewDialogOpen = true
+                        } catch (e: Exception) {
+                            viewModel.showToast("CSV oluşturulamadı: ${e.message}")
+                        } finally {
+                            csvGenerating = false
+                        }
                     }
                 },
                 variant = ArcButtonVariant.Primary,
                 size = ArcButtonSize.Md,
-                enabled = selectedClassroom != null && selectedRubric != null
+                enabled = selectedClassroom != null && selectedRubric != null && !csvGenerating
             )
         }
 
@@ -332,17 +358,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         )
                         Spacer(Modifier.width(10.dp))
                         ArcButton(
-                            text = "Paylaş / Dışa Aktar",
-                            onClick = {
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, generatedCsvContent)
-                                    type = "text/plain"
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, "Puanla CSV Dışa Aktar")
-                                context.startActivity(shareIntent)
-                                isCsvPreviewDialogOpen = false
-                            },
+                            text = "CSV Dosyası Kaydet",
+                            onClick = { saveCsv.launch("puanla-degerlendirme.csv") },
                             variant = ArcButtonVariant.Primary
                         )
                     }

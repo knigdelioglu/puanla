@@ -10,6 +10,9 @@ import com.knigdelioglu.puanla.data.local.PuanlaDatabase
 import com.knigdelioglu.puanla.data.local.RubricEntity
 import com.knigdelioglu.puanla.data.local.RubricSeeder
 import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.domain.export.CsvCriterion
+import com.knigdelioglu.puanla.domain.export.CsvStudent
+import com.knigdelioglu.puanla.domain.export.CsvExportFormatter
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.summarizeScores
 import androidx.room.withTransaction
@@ -253,50 +256,34 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     fun getRecentLogsFlow(limit: Int = 30): Flow<List<AuditLogEntity>> =
         auditLogDao.getRecentLogsFlow(limit)
 
-    // CSV Export (Excel compatible UTF-8 BOM, comma/semicolon delimited)
-    suspend fun generateCsvExport(classroomId: String, rubricId: String): String {
-        val classroom = classroomDao.getClassroomById(classroomId) ?: return ""
-        val rubric = rubricDao.getRubricById(rubricId) ?: return ""
-        val students = studentDao.getStudentsForClassroom(classroomId)
+    /**
+     * Reads one consistent database snapshot and delegates the actual serialization
+     * to the same tested writer used in CSV unit tests.
+     */
+    suspend fun generateCsvExport(classroomId: String, rubricId: String): String = db.withTransaction {
+        val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
+        val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds) { "Kaynağı doğrulanmamış rubrik dışa aktarılamaz." }
+        require(rubric.grade == classroom.grade) { "Rubrik farklı sınıf düzeyine ait." }
+
         val criteria = rubricDao.getCriteriaForRubric(rubricId)
         val assessments = assessmentDao.getAssessments(classroomId, rubricId).associateBy { it.studentId }
-
-        val sb = StringBuilder()
-        // UTF-8 BOM so Excel opens Turkish characters seamlessly
-        sb.append('\uFEFF')
-
-        // Header line
-        val headers = mutableListOf("Okul No", "Adı", "Soyadı")
-        criteria.forEach { headers.add("${it.title} (Azami ${it.maxPoints})") }
-        headers.add("Toplam Puan (100)")
-        headers.add("Değerlendirme Durumu")
-        sb.append(headers.joinToString(";")).append("\n")
-
-        // Rows
-        for (student in students) {
-            val assess = assessments[student.id]
-            val row = mutableListOf<String>()
-            row.add(student.studentNumber)
-            row.add(student.firstName)
-            row.add(student.lastName)
-
-            if (assess != null) {
-                val scores = assessmentDao.getScoresForAssessment(assess.id).associateBy { it.criterionId }
-                criteria.forEach { crit ->
-                    val pts = scores[crit.id]?.points
-                    row.add(pts?.toString() ?: "Puanlanmadı")
-                }
-                row.add(assess.definitiveTotal?.toString() ?: "Eksik")
-                row.add(if (assess.isCompleted) "Tamamlandı" else if (assess.scoredCount > 0) "Kısmi" else "Başlanmadı")
-            } else {
-                criteria.forEach { _ -> row.add("Puanlanmadı") }
-                row.add("Eksik")
-                row.add("Başlanmadı")
-            }
-            sb.append(row.joinToString(";")).append("\n")
+        val studentRows = studentDao.getStudentsForClassroom(classroomId).map { student ->
+            val assessment = assessments[student.id]
+            val scores = if (assessment != null) {
+                assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
+            } else emptyMap()
+            CsvStudent(
+                number = student.studentNumber,
+                firstName = student.firstName,
+                lastName = student.lastName,
+                scores = scores,
+                definitiveTotal = assessment?.definitiveTotal,
+                isCompleted = assessment?.isCompleted == true,
+                scoredCount = assessment?.scoredCount ?: 0
+            )
         }
-
-        return sb.toString()
+        CsvExportFormatter.generate(criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) }, studentRows)
     }
 
     // Full JSON backup/restore: every table, prevalidation and a single Room transaction.
