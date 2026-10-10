@@ -148,7 +148,9 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             viewModel.ocrSelectedImageUri.value = uri
-            viewModel.ocrStep.value = 1
+            // Keep this composable alive while decoding. Changing the step here would
+            // dispose rememberCoroutineScope and cancel image loading before ML Kit starts.
+            // ViewModel moves to the scanning step once it owns the decoded bitmap.
             scope.launch {
                 try {
                     val bitmap = withContext(Dispatchers.IO) {
