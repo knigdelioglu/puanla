@@ -38,7 +38,7 @@ abstract class PuanlaDatabase : RoomDatabase() {
                     context.applicationContext,
                     PuanlaDatabase::class.java,
                     "puanla.db"
-                ).fallbackToDestructiveMigration().build()
+                ).build()
                 INSTANCE = instance
                 instance
             }

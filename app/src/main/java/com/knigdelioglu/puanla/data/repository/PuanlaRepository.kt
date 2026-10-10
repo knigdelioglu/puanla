@@ -28,7 +28,7 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     private val auditLogDao = db.auditLogDao()
 
     suspend fun initialize() {
-        RubricSeeder.seedBuiltInRubricsIfEmpty(rubricDao)
+        // No approved rubric source is in the repository. Never seed invented assessment criteria.
     }
 
     // Classrooms

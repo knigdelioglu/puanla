@@ -104,7 +104,6 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch {
             repository.initialize()
-            seedSampleClassroomIfEmpty()
 
             classrooms.collect { list ->
                 if (selectedClassroom.value == null && list.isNotEmpty()) {
@@ -158,31 +157,6 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             selectedStudent.collect {
                 loadCurrentAssessment()
             }
-        }
-    }
-
-    private suspend fun seedSampleClassroomIfEmpty() {
-        val existing = db.classroomDao().getAllClassrooms()
-        if (existing.isEmpty()) {
-            val sampleClass = ClassroomEntity(
-                id = "class_11_A",
-                grade = 11,
-                section = "A",
-                name = "11-A",
-                academicYear = "2026-2027"
-            )
-            db.classroomDao().insertClassroom(sampleClass)
-            val sampleStudents = listOf(
-                StudentEntity("std_1", sampleClass.id, "101", "Ahmet", "YILMAZ"),
-                StudentEntity("std_2", sampleClass.id, "102", "Ayşe", "KAYA"),
-                StudentEntity("std_3", sampleClass.id, "103", "Mehmet", "DEMİR"),
-                StudentEntity("std_4", sampleClass.id, "104", "Zeynep", "ÇELİK"),
-                StudentEntity("std_5", sampleClass.id, "105", "Can", "ÖZKAN"),
-                StudentEntity("std_6", sampleClass.id, "106", "Elif", "YILDIZ"),
-                StudentEntity("std_7", sampleClass.id, "107", "Burak", "ŞAHİN"),
-                StudentEntity("std_8", sampleClass.id, "108", "Deniz", "ARSLAN")
-            )
-            db.studentDao().insertStudents(sampleStudents)
         }
     }
 

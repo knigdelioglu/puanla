@@ -32,7 +32,7 @@ interface ClassroomDao {
     @Query("SELECT * FROM classrooms WHERE id = :id LIMIT 1")
     suspend fun getClassroomById(id: String): ClassroomEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertClassroom(classroom: ClassroomEntity)
 
     @Update
@@ -56,10 +56,10 @@ interface StudentDao {
     @Query("SELECT * FROM students WHERE classroomId = :classroomId AND studentNumber = :number LIMIT 1")
     suspend fun getStudentByNumber(classroomId: String, number: String): StudentEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertStudent(student: StudentEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertStudents(students: List<StudentEntity>)
 
     @Update
@@ -79,6 +79,9 @@ interface RubricDao {
 
     @Query("SELECT * FROM rubrics WHERE id = :id LIMIT 1")
     suspend fun getRubricById(id: String): RubricEntity?
+
+    @Query("SELECT * FROM criteria WHERE id = :criterionId LIMIT 1")
+    suspend fun getCriterionById(criterionId: String): CriterionEntity?
 
     @Query("SELECT * FROM criteria WHERE rubricId = :rubricId ORDER BY orderIndex ASC")
     suspend fun getCriteriaForRubric(rubricId: String): List<CriterionEntity>
