@@ -98,9 +98,17 @@ object OcrRosterParser {
             ?: return emptyList()
         val nameX = xOf("ADI", "AD", "ADISOYADI") ?: return emptyList()
         val surnameX = xOf("SOYADI", "SOYAD")
-        val metadataStart = listOfNotNull(xOf("CİNSİYET", "CİNSİYETİ"), xOf("PANSİYON", "YATILI"))
-            .filter { it > nameX }.minOrNull() ?: Double.POSITIVE_INFINITY
-        val lastNameColumn = surnameX != null && surnameX > nameX && surnameX < metadataStart
+        val metadataAnchor = listOfNotNull(xOf("CİNSİYET", "CİNSİYETİ"), xOf("PANSİYON", "YATILI"))
+            .filter { it > nameX }.minOrNull()
+        // Boundaries are halfway BETWEEN header centres, not the start of the
+        // following header. This keeps K/E, KR, boarding metadata out of surnames.
+        // Closely adjacent "Adı Soyadı" header words may describe ONE combined
+        // column; in that case all candidates remain ambiguous until reviewed.
+        val lastNameColumn = surnameX != null && surnameX - nameX > 70.0 &&
+            (metadataAnchor == null || surnameX < metadataAnchor)
+        val metadataStart = metadataAnchor?.let {
+            ((if (lastNameColumn) surnameX!! else nameX) + it) / 2.0
+        } ?: Double.POSITIVE_INFINITY
         val schoolRight = (numberX + nameX) / 2.0
         val surnameBoundary = if (lastNameColumn) (nameX + surnameX!!) / 2.0 else metadataStart
         val output = mutableListOf<OcrStudentRow>()
