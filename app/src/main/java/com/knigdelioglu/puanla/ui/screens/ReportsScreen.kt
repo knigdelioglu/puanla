@@ -42,6 +42,8 @@ import androidx.compose.ui.window.Dialog
 import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
+import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
+import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
 import com.knigdelioglu.arc.compose.datavis.ArcBarData
 import com.knigdelioglu.arc.compose.datavis.ArcDonutChart
@@ -75,6 +77,11 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
     var csvGenerating by remember { mutableStateOf(false) }
+    var showDateFilter by remember { mutableStateOf(false) }
+    var filterStart by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
+    var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
+    val filterActive = filterStart.isNotEmpty() || filterEnd.isNotEmpty()
+    val filterValid = AssessmentDateFilter.isValidRange(filterStart, filterEnd)
     val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) scope.launch {
             try {
@@ -93,17 +100,28 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val scrollState = rememberScrollState()
 
     // Calculations
-    val totalStudents = students.size
-    val assessmentMap = remember(classAssessments) { classAssessments.associateBy { it.studentId } }
+    val datedAssessments = remember(classAssessments, filterStart, filterEnd) {
+        if (filterActive && filterValid) {
+            AssessmentDateFilter.filter(classAssessments, filterStart, filterEnd)
+        } else if (filterActive) emptyList() else classAssessments
+    }
+    val datedIds = remember(datedAssessments) { datedAssessments.map { it.studentId }.toSet() }
+    // In date mode the denominator is only students with a last-updated
+    // assessment in range, never the whole classroom.
+    val effectiveStudents = remember(students, datedIds, filterActive) {
+        if (filterActive) students.filter { it.id in datedIds } else students
+    }
+    val totalStudents = effectiveStudents.size
+    val assessmentMap = remember(datedAssessments) { datedAssessments.associateBy { it.studentId } }
 
-    val completedCount = students.count { assessmentMap[it.id]?.isCompleted == true }
-    val partialCount = students.count {
+    val completedCount = effectiveStudents.count { assessmentMap[it.id]?.isCompleted == true }
+    val partialCount = effectiveStudents.count {
         val asm = assessmentMap[it.id]
         asm?.isCompleted == false && (asm.scoredCount ?: 0) > 0
     }
     val unscoredCount = (totalStudents - completedCount - partialCount).coerceAtLeast(0)
 
-    val validScores = students.mapNotNull {
+    val validScores = effectiveStudents.mapNotNull {
         val asm = assessmentMap[it.id]
         if (asm?.isCompleted == true) asm.definitiveTotal?.toFloat() else null
     }
@@ -163,7 +181,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             }
 
             ArcButton(
-                text = "Excel / CSV Dışa Aktar",
+                text = "Tüm Sınıf CSV Dışa Aktar",
                 onClick = {
                     if (!csvGenerating) scope.launch {
                         csvGenerating = true
@@ -195,10 +213,52 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             return@Column
         }
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ArcButton(
+                text = if (showDateFilter) "Tarih Filtresini Gizle" else "Son Değişiklik Tarihine Göre Filtrele",
+                onClick = { showDateFilter = !showDateFilter },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
+            )
+            if (filterActive) {
+                ArcButton(
+                    text = "Filtreyi Sıfırla",
+                    onClick = { filterStart = ""; filterEnd = "" },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm
+                )
+            }
+        }
+        if (showDateFilter) {
+            ArcDateRangePicker(
+                startDate = filterStart,
+                endDate = filterEnd,
+                onRangeSelected = { from, to ->
+                    filterStart = from
+                    filterEnd = to
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (filterActive) {
+            ArcAlert(
+                title = if (filterValid) "Tarihe göre filtrelendi" else "Geçersiz tarih aralığı",
+                message = if (filterValid) {
+                    "Yalnızca son değişikliği bu tarihlerde yapılan değerlendirmeler gösteriliyor. " +
+                        "Bu geçmiş tarihteki notların anlık görüntüsü değildir. CSV dışa aktarma ise tüm sınıfın güncel sonuçlarını içerir."
+                } else "Bitiş tarihi başlangıçtan önce olamaz. Aralığı düzeltin veya filtreyi sıfırlayın.",
+                type = if (filterValid) ArcAlertType.Info else ArcAlertType.Warning
+            )
+        }
+
         // Stats Band
         ArcStatsBand(
             stats = listOf(
-                ArcStatItem(label = "Toplam Öğrenci", value = "$totalStudents", detail = "Kayıtlı"),
+                ArcStatItem(label = if (filterActive) "Aralıkta Güncellenen" else "Toplam Öğrenci", value = "$totalStudents", detail = if (filterActive) "Son değişiklik tarihi" else "Kayıtlı"),
                 ArcStatItem(label = "Tamamlanan", value = "$completedCount", detail = "Kesinleşti"),
                 ArcStatItem(label = "Kısmi Puanlanan", value = "$partialCount", detail = "Eksik ölçüt"),
                 ArcStatItem(label = "Sınıf Ortalaması", value = if (validScores.isNotEmpty()) "${averageScore.roundToInt()}" else "-", detail = "100 üzerinden")
@@ -209,7 +269,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
         ArcUsageMeter(
             used = completedCount + partialCount,
             total = totalStudents,
-            label = "Değerlendirmesi başlatılan öğrenciler",
+            label = if (filterActive) "Aralıkta güncellenenlerden puanlananlar" else "Değerlendirmesi başlatılan öğrenciler",
             modifier = Modifier.fillMaxWidth()
         )
 
