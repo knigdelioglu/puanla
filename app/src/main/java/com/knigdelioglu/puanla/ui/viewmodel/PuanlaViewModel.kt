@@ -2,6 +2,7 @@ package com.knigdelioglu.puanla.ui.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.knigdelioglu.puanla.data.local.AssessmentEntity
@@ -103,6 +104,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val ocrIsScanning = MutableStateFlow(false)
     val ocrError = MutableStateFlow<String?>(null)
     val ocrSelectedImageUri = MutableStateFlow<Uri?>(null)
+    val ocrImportedCount = MutableStateFlow(0)
 
     // Quick Search filter
     val studentSearchQuery = MutableStateFlow("")
@@ -350,20 +352,36 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // OCR operations
-    fun startOcrFromLines(lines: List<String>) {
+    fun startOcrFromBitmap(bitmap: Bitmap) {
         ocrIsScanning.value = true
         ocrError.value = null
+        ocrCandidates.value = emptyList()
+        ocrImportedCount.value = 0
+        ocrStep.value = 1
         viewModelScope.launch {
             try {
-                val parsed = OcrRosterParser.parseVisionText(lines.joinToString("\n"))
+                val parsed = OcrRosterParser.processBitmap(bitmap)
+                if (parsed.isEmpty()) {
+                    ocrError.value = "Sütun başlıkları ve öğrenci satırları güvenilir biçimde tanınamadı. Başka fotoğraf deneyin veya öğrencileri elle ekleyin."
+                    return@launch
+                }
                 ocrCandidates.value = parsed
-                ocrStep.value = 2 // Move to verification
+                ocrStep.value = 2
+            } catch (cancel: CancellationException) {
+                throw cancel
             } catch (e: Exception) {
-                ocrError.value = "OCR ayrıştırma hatası: ${e.localizedMessage}"
+                ocrError.value = "Fotoğraf OCR işlemi başarısız: ${e.message}"
             } finally {
+                bitmap.recycle()
                 ocrIsScanning.value = false
             }
         }
+    }
+
+    fun reportOcrImageError(message: String) {
+        ocrError.value = message
+        ocrStep.value = 1
+        ocrIsScanning.value = false
     }
 
     fun updateOcrCandidate(index: Int, candidate: OcrStudentRow) {
@@ -377,23 +395,35 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     fun confirmOcrImport(onComplete: (Int) -> Unit) {
         val classroom = selectedClassroom.value ?: return
         viewModelScope.launch {
-            val studentsToInsert = ocrCandidates.value
-                .filter { it.isApproved }
-                .map { cand ->
+            try {
+                val selected = ocrCandidates.value.filter { it.isApproved }
+                require(selected.isNotEmpty()) { "Onaylanmış öğrenci yok." }
+                require(selected.all {
+                    it.studentNumber.isNotBlank() && it.studentNumber.all(Char::isDigit) &&
+                        it.firstName.isNotBlank() && it.lastName.isNotBlank()
+                }) { "Bazı onaylı öğrencilerde numara, ad veya soyad eksik." }
+                val students = selected.map {
                     StudentEntity(
                         id = UUID.randomUUID().toString(),
                         classroomId = classroom.id,
-                        studentNumber = cand.studentNumber,
-                        firstName = cand.firstName,
-                        lastName = cand.lastName,
-                        gender = cand.gender,
-                        boardingStatus = cand.boardingStatus
+                        studentNumber = it.studentNumber.trim(),
+                        firstName = it.firstName.trim(),
+                        lastName = it.lastName.trim(),
+                        gender = it.gender,
+                        boardingStatus = it.boardingStatus
                     )
                 }
-            repository.addStudents(studentsToInsert)
-            ocrStep.value = 3
-            onComplete(studentsToInsert.size)
-            showToast("${studentsToInsert.size} öğrenci ${classroom.name} sınıfına aktarıldı.")
+                repository.addStudents(students)
+                ocrImportedCount.value = students.size
+                ocrStep.value = 3
+                onComplete(students.size)
+                showToast("${students.size} onaylanmış öğrenci aktarıldı.")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                ocrError.value = "Aktarım reddedildi: ${e.message}"
+                showToast(ocrError.value ?: "Aktarım başarısız.")
+            }
         }
     }
 

@@ -63,7 +63,7 @@ data class BackupSnapshot(
         require(scores.all {
             val assessment = assessmentById[it.assessmentId]
             val criterion = criterionById[it.criterionId]
-            assessment != null && criterion?.rubricId == assessment.rubricId &&
+            assessment != null && criterion != null && criterion.rubricId == assessment.rubricId &&
                 (it.points == null || it.points in 0..criterion.maxPoints)
         }) { "Ölçüt puanı veya ilişkisi geçersiz." }
         unique(scores) { "${it.assessmentId}/${it.criterionId}" }

@@ -109,14 +109,24 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
         return Result.success(student)
     }
 
-    suspend fun addStudents(students: List<StudentEntity>) {
+    suspend fun addStudents(students: List<StudentEntity>) = db.withTransaction {
+        require(students.isNotEmpty()) { "Aktarılacak onaylı öğrenci yok." }
+        require(students.all {
+            it.studentNumber.isNotBlank() && it.firstName.isNotBlank() && it.lastName.isNotBlank()
+        }) { "Eksik öğrenci bilgisi var." }
+        require(students.map { "${it.classroomId}/${it.studentNumber}" }.distinct().size == students.size) {
+            "Aktarım listesindeki okul numaraları tekrar ediyor."
+        }
+        for (student in students) {
+            require(classroomDao.getClassroomById(student.classroomId) != null) { "Sınıf bulunamadı." }
+            require(studentDao.getStudentByNumber(student.classroomId, student.studentNumber) == null) {
+                "Bu okul numarası sınıfta zaten kayıtlı: ${student.studentNumber}"
+            }
+        }
         studentDao.insertStudents(students)
         auditLogDao.insertLog(
-            AuditLogEntity(
-                id = UUID.randomUUID().toString(),
-                action = "BULK_IMPORT_STUDENTS",
-                details = "${students.size} öğrenci eklendi."
-            )
+            AuditLogEntity(id = UUID.randomUUID().toString(), action = "BULK_IMPORT_STUDENTS",
+                details = "${students.size} onaylanmış öğrenci aktarıldı.")
         )
     }
 

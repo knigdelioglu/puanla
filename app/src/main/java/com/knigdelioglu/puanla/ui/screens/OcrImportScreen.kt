@@ -1,5 +1,13 @@
 package com.knigdelioglu.puanla.ui.screens
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +68,7 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
     val candidates by viewModel.ocrCandidates.collectAsState()
     val isScanning by viewModel.ocrIsScanning.collectAsState()
     val ocrError by viewModel.ocrError.collectAsState()
+    val importedCount by viewModel.ocrImportedCount.collectAsState()
 
     val steps = listOf(
         "1. Fotoğraf Seç",
@@ -127,62 +136,54 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
             0 -> OcrStepPhotoSelection(viewModel)
             1 -> OcrStepScanning(isScanning, ocrError)
             2 -> OcrStepVerification(candidates, viewModel)
-            3 -> OcrStepCompleted(candidates.size, selectedClassroom?.name ?: "", viewModel)
+            3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
         }
     }
 }
 
 @Composable
 private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            viewModel.ocrSelectedImageUri.value = uri
+            viewModel.ocrStep.value = 1
+            scope.launch {
+                try {
+                    val bitmap = withContext(Dispatchers.IO) {
+                        val resolver = context.contentResolver
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Görsel okunamadı." }
+                        var sample = 1
+                        while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 2400) sample *= 2
+                        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+                            ?: error("Görsel çözümlenemedi.")
+                    }
+                    viewModel.startOcrFromBitmap(bitmap)
+                } catch (e: Exception) {
+                    viewModel.reportOcrImageError("Görsel açılamadı: ${e.message}")
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         ArcFileDropzone(
-            onSelectFile = {
-                // In production this triggers Android Photo Picker. For immediate testing, load roster sample:
-                val sampleLines = listOf(
-                    "1 214 AHMET METİN KIZILAY K",
-                    "2 305 FATMA ZEHRA YILDIRIM K PANSİYONLU",
-                    "3 412 MEHMET EMİN ÇETİN E GÜNDÜZLÜ",
-                    "4 580 ZEYNEP SUDE GÜNEŞ K",
-                    "5 619 MUSTAFA CAN ÖZTÜRK E",
-                    "6 702 BUSE NUR KORKMAZ K",
-                    "7 833 YİĞİT EFE ASLAN E PANSİYONLU"
-                )
-                viewModel.ocrStep.value = 1
-                viewModel.startOcrFromLines(sampleLines)
-            },
-            title = "Basılı Sınıf Listesi Fotoğrafı Yükle",
-            description = "Android Photo Picker veya kamera ile net çekilmiş bir e-Okul / sınıf listesi fotoğrafı seçin."
+            onSelectFile = { imagePicker.launch("image/*") },
+            title = "Basılı Sınıf Listesi Fotoğrafı Seç",
+            description = "Galeriden gerçek bir sınıf listesi fotoğrafı seçin. Fotoğraf cihazda işlenir."
         )
-
         ArcAlert(
-            title = "Sütun İzolasyonu ve Gizlilik",
-            message = "Görseller sunucuya iletilmez, tamamen cihaz içinde işlenir. Sıra no, cinsiyet ve pansiyon sütunları isimlere karışmayacak şekilde filtrelenir.",
+            title = "Öğretmen Onayı Zorunlu",
+            message = "OCR satırları önce taslak olarak gösterilir. Soyad ve numarayı doğrulamadan hiçbir satır sınıfa aktarılmaz.",
             type = ArcAlertType.Info
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        ArcButton(
-            text = "Örnek Basılı Sınıf Listesi ile Hızlı Test Et",
-            onClick = {
-                val sampleLines = listOf(
-                    "1 214 AHMET METİN KIZILAY K",
-                    "2 305 FATMA ZEHRA YILDIRIM K PANSİYONLU",
-                    "3 412 MEHMET EMİN ÇETİN E GÜNDÜZLÜ",
-                    "4 580 ZEYNEP SUDE GÜNEŞ K",
-                    "5 619 MUSTAFA CAN ÖZTÜRK E",
-                    "6 702 BUSE NUR KORKMAZ K",
-                    "7 833 YİĞİT EFE ASLAN E PANSİYONLU"
-                )
-                viewModel.ocrStep.value = 1
-                viewModel.startOcrFromLines(sampleLines)
-            },
-            variant = ArcButtonVariant.Secondary,
-            size = ArcButtonSize.Md
         )
     }
 }
@@ -227,9 +228,6 @@ private fun OcrStepVerification(
     candidates: List<OcrStudentRow>,
     viewModel: PuanlaViewModel
 ) {
-    var includeFlags by remember(candidates) {
-        mutableStateOf(candidates.map { !it.isAmbiguous })
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -252,7 +250,7 @@ private fun OcrStepVerification(
             }
 
             ArcButton(
-                text = "Seçilenleri Sınıfa Aktar (${includeFlags.count { it }})",
+                text = "Seçilenleri Sınıfa Aktar (${candidates.count { it.isApproved }})",
                 onClick = {
                     viewModel.confirmOcrImport {
                         // Handled in VM
@@ -260,7 +258,7 @@ private fun OcrStepVerification(
                 },
                 variant = ArcButtonVariant.Primary,
                 size = ArcButtonSize.Md,
-                enabled = includeFlags.any { it }
+                enabled = candidates.any { it.isApproved }
             )
         }
 
@@ -272,6 +270,8 @@ private fun OcrStepVerification(
             type = ArcAlertType.Warning
         )
 
+        val importError by viewModel.ocrError.collectAsState()
+        if (importError != null) ArcAlert(title = "Aktarım Hatası", message = importError ?: "", type = ArcAlertType.Danger)
         Spacer(Modifier.height(14.dp))
 
         LazyColumn(
@@ -279,7 +279,7 @@ private fun OcrStepVerification(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             itemsIndexed(candidates) { index, cand ->
-                val isIncluded = includeFlags.getOrElse(index) { true }
+                val isIncluded = cand.isApproved
 
                 ArcCard(
                     color = if (isIncluded) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surfaceMuted,
@@ -295,9 +295,7 @@ private fun OcrStepVerification(
                         ArcCheckbox(
                             checked = isIncluded,
                             onCheckedChange = { checked ->
-                                val updated = includeFlags.toMutableList()
-                                updated[index] = checked
-                                includeFlags = updated
+                                viewModel.updateOcrCandidate(index, cand.copy(isApproved = checked))
                             }
                         )
 
@@ -309,7 +307,7 @@ private fun OcrStepVerification(
                             ArcInlineEdit(
                                 value = cand.studentNumber,
                                 onCommit = { newNo ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(studentNumber = newNo.trim()))
+                                    viewModel.updateOcrCandidate(index, cand.copy(studentNumber = newNo.trim(), isApproved = false))
                                 }
                             )
                         }
@@ -322,7 +320,7 @@ private fun OcrStepVerification(
                             ArcInlineEdit(
                                 value = cand.firstName,
                                 onCommit = { newName ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(firstName = newName.trim()))
+                                    viewModel.updateOcrCandidate(index, cand.copy(firstName = newName.trim(), isApproved = false))
                                 }
                             )
                         }
@@ -335,7 +333,7 @@ private fun OcrStepVerification(
                             ArcInlineEdit(
                                 value = cand.lastName,
                                 onCommit = { newSurname ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(lastName = newSurname.trim()))
+                                    viewModel.updateOcrCandidate(index, cand.copy(lastName = newSurname.trim(), isApproved = false))
                                 }
                             )
                         }
@@ -354,7 +352,7 @@ private fun OcrStepVerification(
                                 if (cand.isAmbiguous) {
                                     ArcBadge(text = "Belirsiz / Gözden Geçir", variant = ArcBadgeVariant.Warning)
                                 } else {
-                                    ArcBadge(text = "Doğrulandı", variant = ArcBadgeVariant.Success)
+                                    ArcBadge(text = if (cand.isApproved) "Öğretmen onayladı" else "Onay bekliyor", variant = if (cand.isApproved) ArcBadgeVariant.Success else ArcBadgeVariant.Default)
                                 }
                             }
                         }

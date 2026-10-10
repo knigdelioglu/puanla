@@ -1,6 +1,8 @@
 package com.knigdelioglu.puanla.domain.ocr
 
 import android.graphics.Bitmap
+import android.graphics.Rect
+import java.util.Locale
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -18,8 +20,14 @@ data class OcrStudentRow(
     val boardingStatus: String? = null,
     val isAmbiguous: Boolean = false,
     val ambiguityReason: String? = null,
-    val isApproved: Boolean = true
+    val isApproved: Boolean = false
 )
+
+/** ML Kit element boundary data used for geometry-based column isolation and tests. */
+data class OcrPositionedWord(val text: String, val x: Int, val y: Int, val width: Int, val height: Int) {
+    val centerX: Double get() = x + width / 2.0
+    val centerY: Double get() = y + height / 2.0
+}
 
 object OcrRosterParser {
 
@@ -32,18 +40,102 @@ object OcrRosterParser {
      */
     suspend fun processBitmap(bitmap: Bitmap): List<OcrStudentRow> {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val image = InputImage.fromBitmap(bitmap, 0)
-
-        val visionText = suspendCancellableCoroutine<Text> { cont ->
-            recognizer.process(image)
-                .addOnSuccessListener { cont.resume(it) }
-                .addOnFailureListener {
-                    // Fallback to empty text on failure
-                    cont.resume(Text("", emptyList<Text.TextBlock>()))
+        return try {
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val recognized = suspendCancellableCoroutine<Text> { cont ->
+                recognizer.process(image)
+                    .addOnSuccessListener { if (cont.isActive) cont.resume(it) }
+                    .addOnFailureListener { if (cont.isActive) cont.resumeWith(Result.failure(it)) }
+            }
+            val words = recognized.textBlocks.flatMap { block ->
+                block.lines.flatMap { line ->
+                    line.elements.mapNotNull { element ->
+                        element.boundingBox?.let { box ->
+                            OcrPositionedWord(element.text, box.left, box.top, box.width(), box.height())
+                        }
+                    }
                 }
+            }
+            parsePositionedWords(words)
+        } finally {
+            recognizer.close()
         }
+    }
 
-        return parseVisionText(visionText.text)
+    /**
+     * Actual coordinate-aware parser. A recognizable column header is mandatory;
+     * without it there are NO guessed/final student records.
+     *
+     * Even when geometry looks reliable every OCR row starts UNAPPROVED.
+     */
+    fun parsePositionedWords(words: List<OcrPositionedWord>): List<OcrStudentRow> {
+        if (words.isEmpty()) return emptyList()
+        val lines = mutableListOf<MutableList<OcrPositionedWord>>()
+        for (word in words.sortedWith(compareBy<OcrPositionedWord> { it.centerY }.thenBy { it.x })) {
+            val row = lines.lastOrNull()
+            val height = row?.map { it.height }?.average() ?: word.height.toDouble()
+            if (row != null && kotlin.math.abs(row.map { it.centerY }.average() - word.centerY) <=
+                maxOf(6.0, height * 0.60)) {
+                row.add(word)
+            } else {
+                lines.add(mutableListOf(word))
+            }
+        }
+        val normalized: (String) -> String = { it.trim().uppercase(Locale("tr", "TR"))
+            .replace(Regex("[^A-ZÇĞİÖŞÜ0-9]"), "") }
+        val headerIndex = lines.indexOfFirst { row ->
+            val tokens = row.map { normalized(it.text) }
+            tokens.any { it in setOf("ADI", "AD", "ADISOYADI") } &&
+                tokens.any { it in setOf("NO", "ÖĞRENCİ", "ÖĞRENCİNO", "NUMARASI", "OKUL") }
+        }
+        if (headerIndex < 0) return emptyList()
+        val headers = lines[headerIndex].sortedBy { it.x }
+        fun xOf(vararg labels: String): Double? = headers.firstOrNull {
+            normalized(it.text) in labels
+        }?.centerX
+        val numberX = xOf("ÖĞRENCİ", "ÖĞRENCİNO", "OKUL", "NUMARASI")
+            ?: headers.filter { normalized(it.text) == "NO" }.lastOrNull()?.centerX
+            ?: return emptyList()
+        val nameX = xOf("ADI", "AD", "ADISOYADI") ?: return emptyList()
+        val surnameX = xOf("SOYADI", "SOYAD")
+        val metadataStart = listOfNotNull(xOf("CİNSİYET", "CİNSİYETİ"), xOf("PANSİYON", "YATILI"))
+            .filter { it > nameX }.minOrNull() ?: Double.POSITIVE_INFINITY
+        val lastNameColumn = surnameX != null && surnameX > nameX && surnameX < metadataStart
+        val schoolRight = (numberX + nameX) / 2.0
+        val surnameBoundary = if (lastNameColumn) (nameX + surnameX!!) / 2.0 else metadataStart
+        val output = mutableListOf<OcrStudentRow>()
+        for (row in lines.drop(headerIndex + 1)) {
+            val sorted = row.sortedBy { it.x }
+            val school = sorted.filter { it.centerX < schoolRight }.filter {
+                it.text.all(Char::isDigit) && it.text.length in 1..6
+            }.minByOrNull { kotlin.math.abs(it.centerX - numberX) }
+            val firstTokens = sorted.filter { it.centerX >= schoolRight && it.centerX < surnameBoundary }
+                .map { it.text.trim() }.filter(String::isNotEmpty)
+            val lastTokens = if (lastNameColumn)
+                sorted.filter { it.centerX >= surnameBoundary && it.centerX < metadataStart }
+                    .map { it.text.trim() }.filter(String::isNotEmpty)
+            else emptyList()
+            if (school == null && firstTokens.isEmpty() && lastTokens.isEmpty()) continue
+            val firstName = if (lastNameColumn) firstTokens.joinToString(" ")
+                else firstTokens.dropLast(1).joinToString(" ")
+            val lastName = if (lastNameColumn) lastTokens.joinToString(" ")
+                else firstTokens.lastOrNull().orEmpty()
+            if (firstName.isEmpty() && lastName.isEmpty()) continue
+            val ambiguous = school == null || firstName.isBlank() || lastName.isBlank() || !lastNameColumn
+            output.add(
+                OcrStudentRow(
+                    rawIndex = output.size + 1,
+                    studentNumber = school?.text.orEmpty(),
+                    firstName = firstName,
+                    lastName = lastName.uppercase(Locale("tr", "TR")),
+                    isAmbiguous = ambiguous,
+                    ambiguityReason = if (ambiguous)
+                        "Eksik alan veya birleşik ad-soyad sütunu: öğretmen düzeltip onaylamalı." else null,
+                    isApproved = false
+                )
+            )
+        }
+        return output
     }
 
     /**
@@ -153,7 +245,7 @@ object OcrRosterParser {
             boardingStatus = detectedBoarding,
             isAmbiguous = isAmbiguous,
             ambiguityReason = reason,
-            isApproved = !isAmbiguous
+            isApproved = false
         )
     }
 
