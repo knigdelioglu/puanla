@@ -20,3 +20,7 @@ Başarılı birim test ve APK derlemesi, gerçek cihaz fonksiyonlarının çalı
 - 99 Arc girdisinin ayrı etkileşim ve ekrana bağlanma doğrulaması.
 
 [Doğrulanmış kapsam ve eksikler](verification/arc-implementation-matrix.md).
+
+## Eklenen P1 rapor tarihi testleri (11 Ekim 2026)
+
+`AssessmentDateFilterTest` üretimde kullanılan son-değişiklik tarihi filtresini Europe/Istanbul gün sınırlarıyla ve açık başlangıç/bitiş aralıklarıyla doğrular. Material3 tarih penceresi, tablet üzerindeki gerçek dokunma akışı ve takvim ay değiştirme davranışı yalnız birim testle doğrulanamaz; cihaz testi açıktır.

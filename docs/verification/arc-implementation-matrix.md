@@ -6,7 +6,7 @@
 **Kapsam:** `docs/research/arc-puanla-full-catalog.md` içindeki **P0 (46) + P1 (30) + P2 (23) = 99 kaydın tamamı**.
 
 
-> **Düzeltme (2026-10-10):** Önceki rapordaki 99 adet "DOĞRULANDI" ibaresi kaynak kodu ve testler tarafından desteklenmiyordu. Aşağıdaki statüler `app/src/main` dosyalarında Arc API çağrısı aranarak belirlenen **statik kullanım durumu**dur. Çağrı bulunması, davranışın doğru çalıştığını kanıtlamaz. Sayım: **53 normal ekran bağlantısı, 10 yalnız bileşen galerisi, 36 uygulamada bağlantı bulunamadı**. Bu 99 kayıt için otomatik Android UI/etkileşim doğrulaması yok.
+> **Düzeltme (2026-10-10):** Önceki rapordaki 99 adet "DOĞRULANDI" ibaresi kaynak kodu ve testler tarafından desteklenmiyordu. Aşağıdaki statüler `app/src/main` dosyalarında Arc API çağrısı aranarak belirlenen **statik kullanım durumu**dur. Çağrı bulunması, davranışın doğru çalıştığını kanıtlamaz. **İlk statik sayım (10 Ekim 2026): 53 normal ekran bağlantısı, 10 yalnız galeri, 36 bağlantı bulunamadı.** Sonraki P1 değişikliklerinden sonra yeniden kapsamlı sayım yapılmamıştır; bu rakamlar güncel toplam değildir. Bu 99 kayıt için otomatik Android UI/etkileşim doğrulaması yok.
 
 ---
 
@@ -73,9 +73,9 @@
 | 50 | `theme-switch` | P1 | `ArcThemeSwitch` (Açık/koyu tema geçiş düğmesi) | Üst araç çubuğu ve Ayarlar ekranında tema değişimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 51 | `avatar` | P1 | `ArcAvatar` (Baş harf avatarları) | Öğrenci ad-soyad baş harflerinden anonim profil görseli | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 52 | `avatar-group` | P1 | `ArcAvatarGroup` (İç içe geçmiş avatar grubu) | Grup çalışmasında grup üyelerinin avatarları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 53 | `calendar` | P1 | `ArcCalendar` (Aylık takvim görünümü) | Değerlendirme oturumunun yapıldığı tarihi seçme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 54 | `date-picker` | P1 | `ArcDatePicker` (Tarih seçici) | Rapor filtrelerinde değerlendirme tarihi filtreleme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 55 | `accordion` | P1 | `ArcAccordion` (Açılır kapanır akordeon paneller) | MEB rubrik yönergeleri ve değerlendirme kriterleri yardım alanı | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 53 | `calendar` | P1 | `ArcCalendar` (Aylık takvim görünümü) | Değerlendirme oturumunun yapıldığı tarihi seçme | **Takvim ay ve gün gezinmesi çalışır; yalnız kütüphane/katalog tarafı, uygulama ekranına bağlanmadı** |
+| 54 | `date-picker` | P1 | `ArcDatePicker` (Tarih seçici) | Rapor filtrelerinde değerlendirme tarihi filtreleme | **Rapor tarih aralığı filtresinde ArcDateRangePicker üzerinden gerçek ArcDatePicker kullanılır; cihaz testi açık** |
+| 55 | `accordion` | P1 | `ArcAccordion` (Açılır kapanır akordeon paneller) | MEB rubrik yönergeleri ve değerlendirme kriterleri yardım alanı | **Puanlama ekranında ölçüt yönergesi ve puan düzeyleri ArcAccordion ile açılır; cihaz testi açık** |
 | 56 | `breadcrumb` | P1 | `ArcBreadcrumb` (Ekmek kırıntısı hiyerarşik yol) | Sınıf › Şube › Rubrik › Öğrenci hiyerarşisi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 57 | `toast` | P1 | `ArcToast` (Tekli bildirim) | Hızlı bilgi mesajları ve durum geri bildirimleri | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 58 | `tree-view` | P1 | `ArcTreeView` (Hiyerarşik ağaç görünümü) | MEB Rubrik Tema › Öğrenme Çıktısı › Ölçütler ağacı | **Yalnız galeri çağrısı (işlev teyitsiz)** |
@@ -83,7 +83,7 @@
 | 60 | `sparkline` | P1 | `ArcSparkline` (Kompakt mini trend çizgisi) | Sınıfın değerlendirme süreci boyunca başarı eğilimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 61 | `gauge` | P1 | `ArcGauge` (Dairesel gösterge ibresi) | Sınıfın değerlendirme tamamlanma yüzdesi göstergesi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 62 | `animated-counter` | P1 | `ArcAnimatedCounter` (Animasyonlu sayı sayacı) | Puan toplamı değiştikçe akıcı sayı geçişi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 63 | `expanding-search` | P1 | `ArcExpandingSearch` (Genişleyen arama çubuğu) | Tablet başlığında yer tasarrufu sağlayan arama butonu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 63 | `expanding-search` | P1 | `ArcExpandingSearch` (Genişleyen arama çubuğu) | Tablet başlığında yer tasarrufu sağlayan arama butonu | **Sınıf öğrenci aramasında ArcExpandingSearch bağlı; cihaz testi açık** |
 | 64 | `usage-meter` | P1 | `ArcUsageMeter` (Kapasite ve oran ölçer) | Değerlendirilen / Kalan öğrenci kota ve oran çubuğu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 65 | `image-compare` | P1 | `ArcImageCompare` (Görüntü karşılaştırma sürgüsü) | OCR kaynak fotoğrafı ile işlenen metin bölgesi karşılaştırması | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 66 | `carousel` | P1 | `ArcCarousel` (Çoklu sayfa karuseli) | Çok sayfalı sınıf listesi fotoğrafları arasında kaydırma | **Yalnız galeri çağrısı (işlev teyitsiz)** |
@@ -95,7 +95,7 @@
 | 72 | `scroll-area` | P1 | `ArcScrollArea` (Özel kaydırma alanı) | Geniş panellerde pürüzsüz kaydırma ve gösterge | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 73 | `command-palette` | P1 | `ArcCommandPalette` (Komut paleti modalı) | Klavyeden Cmd+K / Ctrl+K ile öğrenci, rubrik ve eylem arama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 74 | `notification-center` | P1 | `ArcNotificationCenter` (Bildirim merkezi) | OCR sonuçları, yedekleme bildirimleri ve sistem uyarıları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 75 | `empty-states` | P1 | `ArcEmptyStates` (Durumsal boş ekran şablonları) | Rapor yok, OCR taranmadı veya sınıf seçilmedi durumları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 75 | `empty-states` | P1 | `ArcEmptyStates` (Durumsal boş ekran şablonları) | Rapor yok, OCR taranmadı veya sınıf seçilmedi durumları | **Sınıfsız durumda ArcEmptyStates.NoClassrooms bağlı; cihaz testi açık** |
 | 76 | `stats-band` | P1 | `ArcStatsBand` (Çoklu istatistik şeridi) | Raporlar ekranı üst özet bandı (Tam, Kısmi, Ortalama vb.) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 
 ---
@@ -133,7 +133,7 @@
 ## 4. Geçerli doğrulama durumu
 
 - Kodda `:arc-compose` ve `:app` modülleri mevcut.
-- Bağımsız kaynak denetiminde 99 Arc kaydının **53'ü** için üretim/uygulama ekranında API çağrısı görüldü. 10 kayıt katalogda, 36 kayıt normal ekranlarda çağrılmıyor.
+- Bağımsız kaynak denetiminde 99 Arc kaydı için ilk kapsam sayımı 53/10/36 idi (üretim ekranı / yalnız galeri / uygulamada çağrı yok); son eklenen ekran bağlantıları nedeniyle **güncel toplam değildir**.
 - 99 ayrı Arc etkileşim testi veya gerçek tablet kullanım testi çalıştırılmış değil.
 - [083deff için GitHub Actions](https://github.com/knigdelioglu/puanla/actions/runs/38083918813) birim test ve debug derlemesinin geçtiğini doğruladı; sonraki P0 commitlerinin sonucu ayrıca kontrol edilmelidir.
 - Room veritabanı kurtarma, gerçek fotoğraf OCR ve öğrenci bazlı geri alma için cihaz veya enstrümantasyon testleri halen gerekli.
@@ -146,3 +146,13 @@
 - Raporlar ekranı `ArcUsageMeter` ile en az bir ölçütü puanlanmış öğrencileri gösterir.
 - Başlıktaki işlem geçmişi eylemi `ArcNotificationCenter` üzerinde gerçek Room audit loglarını gösterir; sahte bildirim veya sunucu verisi kullanılmaz.
 - Bunlar kod bağlantılarıdır. Gerçek tablet üzerinde OCR görseli, kaydırma, sayfalama, erişilebilirlik ve pencere kapanışı uçtan uca doğrulanmamıştır; **99/99 başarı iddiası hâlâ geçerli değildir**.
+
+## 11 Ekim 2026 — P1 tarih ve yönerge aşaması
+
+- `ArcDatePicker` artık sabit Ekim 2026 metni yerine Material3'ün gerçek tarih penceresini kullanır; seçilen ISO tarih Android UTC gün semantiğiyle döndürülür.
+- `ArcDateRangePicker` başlangıç/bitiş tarihlerini rapor ekranına taşır. Filtre yalnız mevcut değerlendirmenin `lastModifiedAt` zamanına bakar; **geçmiş not anlık görüntüsü değildir**.
+- `AssessmentDateFilterTest` dahilî gün sınırlarını, açık uçlu aralıkları ve geçersiz tarihleri üretim filtresiyle sınar.
+- `ArcCalendar` artık ayları ileri/geri alır; ayın gerçek uzunluğunu ve haftanın başlangıcını hesaba katar; ISO seçilen tarih callback'i eklenmiştir. Mevcut uygulama ekranlarında doğrudan çağrılmıyor.
+- `ArcAccordion` seçili ölçütün **mevcut** yönergesini ve gerçek puan düzeyi açıklamalarını açar; olmayan içerik uydurulmaz.
+- `ArcExpandingSearch` öğrenci listesinde; `ArcEmptyStates.NoClassrooms` sınıf oluşturma durumunda kullanılır.
+- Bu aşama gerçek cihaz / TalkBack / dokunma ve veri tutarlılığı için tam entegrasyon testi yerine geçmez.
