@@ -18,6 +18,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -139,7 +140,10 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     }
 
     // Rubrics
-    fun getAllRubricsFlow(): Flow<List<RubricEntity>> = rubricDao.getAllRubricsFlow()
+    fun getAllRubricsFlow(): Flow<List<RubricEntity>> = rubricDao.getAllRubricsFlow().map { all ->
+        // Do not delete prior user data; hide the eight fabricated legacy rubrics from grading.
+        all.filterNot { it.id in RubricSeeder.unverifiedLegacyIds }
+    }
 
     suspend fun getCriteriaForRubric(rubricId: String): List<CriterionEntity> =
         rubricDao.getCriteriaForRubric(rubricId)
@@ -179,6 +183,7 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
         val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
         val student = requireNotNull(studentDao.getStudentById(studentId)) { "Öğrenci bulunamadı." }
         require(student.classroomId == classroom.id) { "Öğrenci farklı sınıfa ait." }
+        require(rubricId !in RubricSeeder.unverifiedLegacyIds) { "Bu rubriğin kaynağı doğrulanmamış; puanlama engellendi." }
         val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
         require(rubric.grade == classroom.grade) { "Rubrik sınıf düzeyine uygun değil." }
         val criterion = requireNotNull(rubricDao.getCriterionById(criterionId)) { "Ölçüt bulunamadı." }
