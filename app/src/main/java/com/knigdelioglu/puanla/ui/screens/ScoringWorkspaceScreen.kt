@@ -165,6 +165,9 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                                 viewModel.setScore(crit.id, null, null)
                             }
                         },
+                        onNoteChange = { note ->
+                            activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
+                        },
                         onPrevStudent = { viewModel.previousStudent() },
                         onNextStudent = { viewModel.nextStudent() }
                     )
@@ -196,6 +199,9 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                     activeCriterion?.let { crit ->
                         viewModel.setScore(crit.id, null, null)
                     }
+                },
+                onNoteChange = { note ->
+                    activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
                 },
                 onPrevStudent = { viewModel.previousStudent() },
                 onNextStudent = { viewModel.nextStudent() }
@@ -434,6 +440,7 @@ private fun ScoringControlPane(
     levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
     onScore: (Int?, String?) -> Unit,
     onClearScore: () -> Unit,
+    onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
     onNextStudent: () -> Unit
 ) {
@@ -623,14 +630,19 @@ private fun ScoringControlPane(
                     }
 
                     // Evidence / Observation Note
-                    var noteText by remember(currentScore?.evidenceNote) {
+                    var noteText by remember(student.id, criterion.id) {
                         mutableStateOf(currentScore?.evidenceNote ?: "")
+                    }
+                    var noteTouched by remember(student.id, criterion.id) { mutableStateOf(false) }
+                    LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
+                        if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
                     }
                     ArcTextarea(
                         value = noteText,
                         onValueChange = {
                             noteText = it
-                            onScore(points, it)
+                            noteTouched = true
+                            onNoteChange(it)
                         },
                         placeholder = "Ölçüte özel gözlem, kanıt veya öğretmen değerlendirme notu...",
                         label = "Gözlem ve Kanıt Notu",
@@ -687,6 +699,7 @@ private fun CompactScoringLayout(
     onSelectCriterion: (CriterionEntity) -> Unit,
     onScore: (Int?, String?) -> Unit,
     onClearScore: () -> Unit,
+    onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
     onNextStudent: () -> Unit
 ) {
@@ -731,6 +744,7 @@ private fun CompactScoringLayout(
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                 onScore = onScore,
                 onClearScore = onClearScore,
+                onNoteChange = onNoteChange,
                 onPrevStudent = onPrevStudent,
                 onNextStudent = onNextStudent
             )

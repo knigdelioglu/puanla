@@ -23,6 +23,8 @@ import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -93,6 +95,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     // Toast stack & Undo
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     private val undoStack = mutableListOf<UndoAction>()
+    private val pendingNoteWrites = mutableMapOf<String, Job>()
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
     private var groupFlowJob: Job? = null
@@ -282,6 +285,42 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 throw cancel
             } catch (e: Exception) {
                 showToast("Puan kaydedilemedi: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Observations are not written on every keystroke. The pending save owns the
+     * original student/rubric/criterion IDs even if the teacher changes screens.
+     * It reads the latest score before updating the note, avoiding stale grades.
+     */
+    fun setEvidenceNote(criterionId: String, note: String) {
+        val student = selectedStudent.value ?: return
+        val rubric = selectedRubric.value ?: return
+        val classroom = selectedClassroom.value ?: return
+        val key = "${student.id}/${rubric.id}/$criterionId"
+        pendingNoteWrites.remove(key)?.cancel()
+        pendingNoteWrites[key] = viewModelScope.launch {
+            try {
+                delay(500)
+                val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                val previous = assessment?.let {
+                    repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == criterionId }
+                }
+                if ((previous?.evidenceNote ?: "") != note) {
+                    repository.saveCriterionScore(
+                        classroomId = classroom.id, studentId = student.id,
+                        rubricId = rubric.id, criterionId = criterionId,
+                        scorePoints = previous?.points, evidenceNote = note
+                    )
+                    refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Gözlem notu kaydedilemedi: ${e.message}")
+            } finally {
+                if (pendingNoteWrites[key] == currentCoroutineContext()[Job]) pendingNoteWrites.remove(key)
             }
         }
     }
@@ -511,6 +550,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun restoreBackup(json: String): Result<Int> {
+        pendingNoteWrites.values.forEach { it.cancel() }
+        pendingNoteWrites.clear()
         val result = repository.restoreBackupFromJson(json)
         if (result.isSuccess) {
             selectedStudent.value = null
