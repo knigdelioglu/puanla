@@ -39,6 +39,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -363,7 +364,8 @@ fun <T> ArcSortableDataTable(
     items: List<T>,
     columns: List<ArcTableColumn<T>>,
     modifier: Modifier = Modifier,
-    onRowClick: ((T) -> Unit)? = null
+    onRowClick: ((T) -> Unit)? = null,
+    pageSize: Int? = null
 ) {
     var sortColumnIndex by remember { mutableStateOf<Int?>(null) }
     var sortAscending by remember { mutableStateOf(true) }
@@ -377,6 +379,17 @@ fun <T> ArcSortableDataTable(
             } else items
         } else items
     }
+
+    // Sort the complete result first, then paginate. Per-page sorting hides matches
+    // on later pages and can reorder student numbers incorrectly.
+    val pageCount = if (pageSize != null && pageSize > 0) {
+        ((sortedItems.size + pageSize - 1) / pageSize).coerceAtLeast(1)
+    } else 1
+    var requestedPage by remember(items) { mutableIntStateOf(1) }
+    val page = requestedPage.coerceIn(1, pageCount)
+    val visibleItems = if (pageSize != null && pageSize > 0) {
+        sortedItems.drop((page - 1) * pageSize).take(pageSize)
+    } else sortedItems
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -434,8 +447,8 @@ fun <T> ArcSortableDataTable(
             Divider(color = ArcTheme.colors.borderSubtle)
 
             // Items Rows
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(sortedItems) { item ->
+            LazyColumn(modifier = Modifier.fillMaxWidth().then(if (pageSize != null) Modifier.weight(1f) else Modifier)) {
+                items(visibleItems) { item ->
                     Surface(
                         color = Color.Transparent,
                         modifier = Modifier
@@ -456,6 +469,19 @@ fun <T> ArcSortableDataTable(
                         }
                     }
                     Divider(color = ArcTheme.colors.borderSubtle.copy(alpha = 0.5f))
+                }
+            }
+            if (pageSize != null && pageSize > 0 && pageCount > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    com.knigdelioglu.arc.compose.navigation.ArcPagination(
+                        currentPage = page,
+                        totalPages = pageCount,
+                        onPageChange = { requestedPage = it.coerceIn(1, pageCount) }
+                    )
                 }
             }
         }

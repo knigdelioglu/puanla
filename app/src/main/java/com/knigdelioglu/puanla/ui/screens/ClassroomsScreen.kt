@@ -330,7 +330,8 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     ArcSortableDataTable(
                         items = filteredStudents,
                         columns = columns,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        pageSize = 25
                     )
                 }
             }
