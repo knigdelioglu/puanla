@@ -323,7 +323,7 @@ fun ArcContextMenu(
 
     Box(
         modifier = modifier.pointerInput(Unit) {
-            detectTapGestures(onLongPress = { if (actions.isNotEmpty()) expanded = true })
+            detectTapGestures(onLongPress = { expanded = true })
         }
     ) {
         content()
