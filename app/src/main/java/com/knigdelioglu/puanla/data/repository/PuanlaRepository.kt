@@ -13,6 +13,10 @@ import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.summarizeScores
 import androidx.room.withTransaction
+import com.knigdelioglu.puanla.data.local.BackupSnapshot
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
@@ -280,82 +284,54 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
         return sb.toString()
     }
 
-    // Full JSON Backup and Restore
-    suspend fun generateFullBackupJson(): String {
-        val root = JSONObject()
-        root.put("version", 1)
-        root.put("exportedAt", System.currentTimeMillis())
+    // Full JSON backup/restore: every table, prevalidation and a single Room transaction.
+    // Never treat a partially restored roster as a successful full backup.
+    private val backupJson = Json { encodeDefaults = true; explicitNulls = true; ignoreUnknownKeys = false }
 
-        val classrooms = classroomDao.getAllClassrooms()
-        val classArray = JSONArray()
-        for (cls in classrooms) {
-            val cObj = JSONObject()
-            cObj.put("id", cls.id)
-            cObj.put("grade", cls.grade)
-            cObj.put("section", cls.section)
-            cObj.put("name", cls.name)
-            cObj.put("academicYear", cls.academicYear)
-
-            val students = studentDao.getStudentsForClassroom(cls.id)
-            val sArray = JSONArray()
-            for (s in students) {
-                val sObj = JSONObject()
-                sObj.put("id", s.id)
-                sObj.put("studentNumber", s.studentNumber)
-                sObj.put("firstName", s.firstName)
-                sObj.put("lastName", s.lastName)
-                sObj.put("gender", s.gender)
-                sObj.put("boardingStatus", s.boardingStatus)
-                sArray.put(sObj)
-            }
-            cObj.put("students", sArray)
-            classArray.put(cObj)
-        }
-        root.put("classrooms", classArray)
-        return root.toString(2)
+    suspend fun generateFullBackupJson(): String = db.withTransaction {
+        val dao = db.backupDao()
+        backupJson.encodeToString(BackupSnapshot(
+            classrooms = dao.classrooms(),
+            students = dao.students(),
+            rubrics = dao.rubrics(),
+            criteria = dao.criteria(),
+            levels = dao.levels(),
+            assessments = dao.assessments(),
+            scores = dao.scores(),
+            groups = dao.groups(),
+            auditLogs = dao.auditLogs()
+        ).also { it.validate() })
     }
 
     suspend fun restoreBackupFromJson(jsonString: String): Result<Int> {
         return try {
-            val root = JSONObject(jsonString)
-            val classArray = root.getJSONArray("classrooms")
-            var studentCount = 0
-
-            for (i in 0 until classArray.length()) {
-                val cObj = classArray.getJSONObject(i)
-                val cls = ClassroomEntity(
-                    id = cObj.getString("id"),
-                    grade = cObj.getInt("grade"),
-                    section = cObj.getString("section"),
-                    name = cObj.getString("name"),
-                    academicYear = cObj.optString("academicYear", "2026-2027")
-                )
-                classroomDao.insertClassroom(cls)
-
-                val sArray = cObj.getJSONArray("students")
-                for (j in 0 until sArray.length()) {
-                    val sObj = sArray.getJSONObject(j)
-                    val student = StudentEntity(
-                        id = sObj.getString("id"),
-                        classroomId = cls.id,
-                        studentNumber = sObj.getString("studentNumber"),
-                        firstName = sObj.getString("firstName"),
-                        lastName = sObj.getString("lastName"),
-                        gender = if (sObj.has("gender") && !sObj.isNull("gender")) sObj.getString("gender") else null,
-                        boardingStatus = if (sObj.has("boardingStatus") && !sObj.isNull("boardingStatus")) sObj.getString("boardingStatus") else null
-                    )
-                    studentDao.insertStudent(student)
-                    studentCount++
-                }
+            // No writes before this completes. Unsupported old/partial formats are rejected.
+            val snapshot = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+            snapshot.validate()
+            db.withTransaction {
+                val dao = db.backupDao()
+                dao.clearScores()
+                dao.clearAssessments()
+                dao.clearGroups()
+                dao.clearLevels()
+                dao.clearCriteria()
+                dao.clearStudents()
+                dao.clearRubrics()
+                dao.clearClassrooms()
+                dao.clearLogs()
+                dao.putClassrooms(snapshot.classrooms)
+                dao.putRubrics(snapshot.rubrics)
+                dao.putStudents(snapshot.students)
+                dao.putCriteria(snapshot.criteria)
+                dao.putLevels(snapshot.levels)
+                dao.putAssessments(snapshot.assessments)
+                dao.putScores(snapshot.scores)
+                dao.putGroups(snapshot.groups)
+                dao.putLogs(snapshot.auditLogs)
             }
-            auditLogDao.insertLog(
-                AuditLogEntity(
-                    id = UUID.randomUUID().toString(),
-                    action = "RESTORE_BACKUP",
-                    details = "Yedekten geri yüklendi: ${classArray.length()} sınıf, $studentCount öğrenci."
-                )
-            )
-            Result.success(studentCount)
+            Result.success(snapshot.students.size)
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            throw cancel
         } catch (e: Exception) {
             Result.failure(e)
         }

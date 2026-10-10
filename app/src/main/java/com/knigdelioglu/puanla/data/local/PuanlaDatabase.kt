@@ -27,6 +27,7 @@ abstract class PuanlaDatabase : RoomDatabase() {
     abstract fun assessmentDao(): AssessmentDao
     abstract fun groupTaskDao(): GroupTaskDao
     abstract fun auditLogDao(): AuditLogDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         @Volatile

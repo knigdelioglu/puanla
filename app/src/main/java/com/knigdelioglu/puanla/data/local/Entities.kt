@@ -1,5 +1,6 @@
 package com.knigdelioglu.puanla.data.local
 
+import kotlinx.serialization.Serializable
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -9,6 +10,7 @@ import androidx.room.PrimaryKey
     tableName = "classrooms",
     indices = [Index(value = ["grade", "section"], unique = true)]
 )
+@Serializable
 data class ClassroomEntity(
     @PrimaryKey val id: String,
     val grade: Int, // 9..12
@@ -33,6 +35,7 @@ data class ClassroomEntity(
         Index(value = ["classroomId", "studentNumber"], unique = true)
     ]
 )
+@Serializable
 data class StudentEntity(
     @PrimaryKey val id: String,
     val classroomId: String,
@@ -54,6 +57,7 @@ val StudentEntity.initials: String
 
 
 @Entity(tableName = "rubrics")
+@Serializable
 data class RubricEntity(
     @PrimaryKey val id: String,
     val title: String,
@@ -76,6 +80,7 @@ data class RubricEntity(
     ],
     indices = [Index(value = ["rubricId"])]
 )
+@Serializable
 data class CriterionEntity(
     @PrimaryKey val id: String,
     val rubricId: String,
@@ -97,6 +102,7 @@ data class CriterionEntity(
     ],
     indices = [Index(value = ["criterionId"])]
 )
+@Serializable
 data class CriterionLevelEntity(
     @PrimaryKey val id: String,
     val criterionId: String,
@@ -134,6 +140,7 @@ data class CriterionLevelEntity(
     ]
 
 )
+@Serializable
 data class AssessmentEntity(
     @PrimaryKey val id: String,
     val classroomId: String,
@@ -167,6 +174,7 @@ data class AssessmentEntity(
         Index(value = ["criterionId"])
     ]
 )
+@Serializable
 data class CriterionScoreEntity(
     @PrimaryKey val id: String,
     val assessmentId: String,
@@ -177,6 +185,7 @@ data class CriterionScoreEntity(
 )
 
 @Entity(tableName = "group_tasks")
+@Serializable
 data class GroupTaskEntity(
     @PrimaryKey val id: String,
     val classroomId: String,
@@ -188,6 +197,7 @@ data class GroupTaskEntity(
 )
 
 @Entity(tableName = "audit_logs")
+@Serializable
 data class AuditLogEntity(
     @PrimaryKey val id: String,
     val timestamp: Long = System.currentTimeMillis(),

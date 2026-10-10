@@ -1,6 +1,9 @@
 package com.knigdelioglu.puanla.ui.screens
 
-import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,6 +74,35 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val backup = viewModel.createBackup()
+                withContext(Dispatchers.IO) {
+                    val stream = requireNotNull(context.contentResolver.openOutputStream(uri)) { "Yedek dosyası açılamadı." }
+                    stream.bufferedWriter(Charsets.UTF_8).use { it.write(backup) }
+                }
+                viewModel.showToast("Tam JSON yedeği dosyaya kaydedildi.")
+            } catch (e: Exception) {
+                viewModel.showToast("Yedekleme başarısız: ${e.message}")
+            }
+        }
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val backup = withContext(Dispatchers.IO) {
+                    val stream = requireNotNull(context.contentResolver.openInputStream(uri)) { "Yedek okunamadı." }
+                    stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                }
+                val outcome = viewModel.restoreBackup(backup)
+                outcome.onSuccess { viewModel.showToast("Yedekten $it öğrenci ve bütün ilişkili kayıtlar geri yüklendi.") }
+                    .onFailure { viewModel.showToast("Geri yükleme reddedildi: ${it.message}") }
+            } catch (e: Exception) {
+                viewModel.showToast("Geri yükleme başarısız: ${e.message}")
+            }
+        }
+    }
     val scrollState = rememberScrollState()
 
     var shortcutKey by remember { mutableStateOf("Cmd+K") }
@@ -250,31 +282,15 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ArcButton(
-                        text = "JSON Yedek İndir / Paylaş",
-                        onClick = {
-                            scope.launch {
-                                val json = viewModel.createBackup()
-                                val sendIntent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    putExtra(Intent.EXTRA_TEXT, json)
-                                    type = "application/json"
-                                }
-                                val shareIntent = Intent.createChooser(sendIntent, "Puanla Yedek Dosyası")
-                                context.startActivity(shareIntent)
-                                viewModel.showToast("Yedekleme dosyası hazırlandı.")
-                            }
-                        },
+                        text = "Tam JSON Yedeği Kaydet",
+                        onClick = { saveBackup.launch("puanla-yedek.json") },
                         variant = ArcButtonVariant.Primary,
                         size = ArcButtonSize.Md
                     )
-
-                    // Protected Restore Button with ArcHoldToConfirm
                     ArcHoldToConfirm(
                         label = "Yedekten Geri Yüklemek İçin Basılı Tutun",
-                        confirmedLabel = "Geri Yüklendi",
-                        onConfirm = {
-                            viewModel.showToast("Geri yükleme tamamlandı.")
-                        },
+                        confirmedLabel = "Yedek Dosyası Seç",
+                        onConfirm = { openBackup.launch(arrayOf("application/json", "text/plain")) },
                         variant = ArcButtonVariant.Danger
                     )
                 }

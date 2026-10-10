@@ -465,6 +465,17 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun restoreBackup(json: String): Result<Int> {
-        return repository.restoreBackupFromJson(json)
+        val result = repository.restoreBackupFromJson(json)
+        if (result.isSuccess) {
+            selectedStudent.value = null
+            selectedClassroom.value = null
+            selectedRubric.value = null
+            students.value = emptyList()
+            criteria.value = emptyList()
+            currentScores.value = emptyMap()
+            currentAssessment.value = null
+            // The Room flows repopulate the selections after the successful transaction.
+        }
+        return result
     }
 }
