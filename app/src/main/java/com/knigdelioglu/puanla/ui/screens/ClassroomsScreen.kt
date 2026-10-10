@@ -45,6 +45,7 @@ import com.knigdelioglu.arc.compose.controls.ArcHoldToConfirm
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
 import com.knigdelioglu.arc.compose.controls.ArcInput
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
+import com.knigdelioglu.arc.compose.controls.ArcExpandingSearch
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.datavis.ArcChipGroup
 import com.knigdelioglu.arc.compose.datavis.ArcSortableDataTable
@@ -55,6 +56,7 @@ import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcDialog
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
+import com.knigdelioglu.arc.compose.display.ArcEmptyStates
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
@@ -207,10 +209,14 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
         // Students Table Section
         if (selectedClassroom == null) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Sınıf Seçilmedi",
-                    description = "Öğrencileri görüntülemek için yukarıdan bir sınıf seçin."
-                )
+                if (classrooms.isEmpty()) {
+                    ArcEmptyStates.NoClassrooms(onCreate = { isAddClassDialogOpen = true })
+                } else {
+                    ArcEmptyState(
+                        title = "Sınıf Seçilmedi",
+                        description = "Öğrencileri görüntülemek için yukarıdan bir sınıf seçin."
+                    )
+                }
             }
         } else {
             Column(modifier = Modifier.weight(1f)) {
@@ -225,11 +231,10 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = ArcTheme.colors.foreground
                     )
-                    ArcSearchField(
+                    ArcExpandingSearch(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
-                        placeholder = "Öğrenci ara...",
-                        modifier = Modifier.width(280.dp)
+                        placeholder = "Öğrenci ara..."
                     )
                 }
 
