@@ -122,8 +122,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             rubrics.collect { list ->
-                if (selectedRubric.value == null && list.isNotEmpty()) {
-                    selectedRubric.value = list.first()
+                val grade = selectedClassroom.value?.grade
+                if (selectedRubric.value !in list || selectedRubric.value?.grade != grade) {
+                    selectedRubric.value = list.firstOrNull { grade != null && it.grade == grade }
                 }
             }
         }
@@ -132,6 +133,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             selectedClassroom.collect { classroom ->
                 if (classroom != null) {
+                    if (selectedRubric.value?.grade != classroom.grade) {
+                        selectedRubric.value = rubrics.value.firstOrNull { it.grade == classroom.grade }
+                    }
                     loadStudentsForClassroom(classroom.id)
                     loadGroupTasks()
                     loadClassAssessments()
@@ -170,13 +174,25 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectClassroom(classroom: ClassroomEntity) {
         selectedClassroom.value = classroom
+        if (selectedRubric.value?.grade != classroom.grade) {
+            selectedRubric.value = rubrics.value.firstOrNull { it.grade == classroom.grade }
+        }
     }
 
     fun selectRubric(rubric: RubricEntity) {
+        val classGrade = selectedClassroom.value?.grade
+        if (classGrade == null || rubric.grade != classGrade || rubric !in rubrics.value) {
+            showToast("Rubrik bu sınıf düzeyine uygun değil.")
+            return
+        }
         selectedRubric.value = rubric
     }
 
     fun selectStudent(student: StudentEntity?) {
+        if (student != null && student.classroomId != selectedClassroom.value?.id) {
+            showToast("Öğrenci farklı sınıfa ait.")
+            return
+        }
         selectedStudent.value = student
     }
 

@@ -73,7 +73,7 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                 // Rubric Selector
                 ArcSelect(
                     selectedItem = selectedRubric,
-                    items = rubrics,
+                    items = rubrics.filter { it.grade == selectedClassroom?.grade },
                     onItemSelected = { viewModel.selectRubric(it) },
                     labelProvider = { it.title },
                     placeholder = "Rubrik Seç",
