@@ -83,7 +83,7 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
 
                 // Command Palette Shortcut Button
                 ArcButton(
-                    text = "Cmd+K Ara",
+                    text = "Ctrl/⌘+K Ara",
                     onClick = { viewModel.isCommandPaletteOpen.value = true },
                     variant = ArcButtonVariant.Secondary,
                     size = ArcButtonSize.Sm
