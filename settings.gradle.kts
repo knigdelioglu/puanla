@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Puanla"
 include(":app")
+include(":arc-compose")

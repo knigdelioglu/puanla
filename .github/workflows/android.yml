@@ -24,4 +24,4 @@ jobs:
           test -n "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
       - name: Unit tests and debug build
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+        run: ./gradlew test :app:assembleDebug --no-daemon

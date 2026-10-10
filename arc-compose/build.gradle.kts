@@ -1,22 +1,17 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
 }
 
 android {
-    namespace = "com.knigdelioglu.puanla"
+    namespace = "com.knigdelioglu.arc.compose"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.knigdelioglu.puanla"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -43,8 +38,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":arc-compose"))
-
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
     implementation(libs.compose.ui)
@@ -53,20 +46,7 @@ dependencies {
     implementation(libs.compose.animation)
     implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.activity.compose)
-    implementation(libs.lifecycle.viewmodel.compose)
-    implementation(libs.lifecycle.runtime.compose)
-
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
-
-    implementation(libs.mlkit.text.recognition)
-
-    implementation(libs.kotlinx.serialization.json)
-    implementation(libs.kotlinx.coroutines.android)
 
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
 }
