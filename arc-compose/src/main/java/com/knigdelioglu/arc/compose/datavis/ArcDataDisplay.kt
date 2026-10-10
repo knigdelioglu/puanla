@@ -382,14 +382,11 @@ fun <T> ArcSortableDataTable(
 
     // Sort the complete result first, then paginate. Per-page sorting hides matches
     // on later pages and can reorder student numbers incorrectly.
-    val pageCount = if (pageSize != null && pageSize > 0) {
-        ((sortedItems.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-    } else 1
     var requestedPage by remember(items) { mutableIntStateOf(1) }
-    val page = requestedPage.coerceIn(1, pageCount)
-    val visibleItems = if (pageSize != null && pageSize > 0) {
-        sortedItems.drop((page - 1) * pageSize).take(pageSize)
-    } else sortedItems
+    val window = pageSortedRows(sortedItems, pageSize, requestedPage)
+    val pageCount = window.pageCount
+    val page = window.page
+    val visibleItems = window.rows
 
     Surface(
         modifier = modifier.fillMaxWidth(),

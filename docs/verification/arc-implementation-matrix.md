@@ -6,7 +6,7 @@
 **Kapsam:** `docs/research/arc-puanla-full-catalog.md` içindeki **P0 (46) + P1 (30) + P2 (23) = 99 kaydın tamamı**.
 
 
-> **Düzeltme (2026-10-10):** Önceki rapordaki 99 adet "DOĞRULANDI" ibaresi kaynak kodu ve testler tarafından desteklenmiyordu. Aşağıdaki statüler `app/src/main` dosyalarında Arc API çağrısı aranarak belirlenen **statik kullanım durumu**dur. Çağrı bulunması, davranışın doğru çalıştığını kanıtlamaz. Sayım: **47 normal ekran çağrısı, 13 yalnız bileşen galerisi, 39 uygulamada çağrı bulunamadı**. Bu 99 kayıt için otomatik Android UI/etkileşim doğrulaması yok.
+> **Düzeltme (2026-10-10):** Önceki rapordaki 99 adet "DOĞRULANDI" ibaresi kaynak kodu ve testler tarafından desteklenmiyordu. Aşağıdaki statüler `app/src/main` dosyalarında Arc API çağrısı aranarak belirlenen **statik kullanım durumu**dur. Çağrı bulunması, davranışın doğru çalıştığını kanıtlamaz. Sayım: **53 normal ekran bağlantısı, 10 yalnız bileşen galerisi, 36 uygulamada bağlantı bulunamadı**. Bu 99 kayıt için otomatik Android UI/etkileşim doğrulaması yok.
 
 ---
 
@@ -133,8 +133,16 @@
 ## 4. Geçerli doğrulama durumu
 
 - Kodda `:arc-compose` ve `:app` modülleri mevcut.
-- Bağımsız kaynak denetiminde 99 Arc kaydının **yalnızca 47'si** için üretim/uygulama ekranında API çağrısı görüldü. 13 kayıt katalogda, 39 kayıt normal ekranlarda çağrılmıyor.
+- Bağımsız kaynak denetiminde 99 Arc kaydının **53'ü** için üretim/uygulama ekranında API çağrısı görüldü. 10 kayıt katalogda, 36 kayıt normal ekranlarda çağrılmıyor.
 - 99 ayrı Arc etkileşim testi veya gerçek tablet kullanım testi çalıştırılmış değil.
 - [083deff için GitHub Actions](https://github.com/knigdelioglu/puanla/actions/runs/38083918813) birim test ve debug derlemesinin geçtiğini doğruladı; sonraki P0 commitlerinin sonucu ayrıca kontrol edilmelidir.
 - Room veritabanı kurtarma, gerçek fotoğraf OCR ve öğrenci bazlı geri alma için cihaz veya enstrümantasyon testleri halen gerekli.
 - Onaylı 11. sınıf rubrik verisi depoda henüz yok; uydurma yerleşik rubriklerin eklenmesi durdurulmuştur.
+
+## P1 entegrasyon güncellemesi (11 Ekim 2026)
+
+- Öğrenci listesi `pageSize=25` ile `ArcPagination` kullanır. Tüm kayıtlar sıralandıktan sonra sayfa dilimi alınır; `ArcTablePagingTest` üretim algoritmasını test eder.
+- OCR doğrulaması artık gerçek seçilmiş görseli `ArcImageCompare` ile okuyabildiği OCR satırlarıyla karşılaştırır. Aktarma ikinci kez `ArcConfirmMorph` üzerinden onaylanır.
+- Raporlar ekranı `ArcUsageMeter` ile en az bir ölçütü puanlanmış öğrencileri gösterir.
+- Başlıktaki işlem geçmişi eylemi `ArcNotificationCenter` üzerinde gerçek Room audit loglarını gösterir; sahte bildirim veya sunucu verisi kullanılmaz.
+- Bunlar kod bağlantılarıdır. Gerçek tablet üzerinde OCR görseli, kaydırma, sayfalama, erişilebilirlik ve pencere kapanışı uçtan uca doğrulanmamıştır; **99/99 başarı iddiası hâlâ geçerli değildir**.
