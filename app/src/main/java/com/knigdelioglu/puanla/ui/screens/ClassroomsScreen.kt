@@ -33,6 +33,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,8 @@ import androidx.compose.ui.window.Dialog
 import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
+import com.knigdelioglu.arc.compose.controls.ArcContextAction
+import com.knigdelioglu.arc.compose.controls.ArcContextMenu
 import com.knigdelioglu.arc.compose.controls.ArcHoldToConfirm
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
 import com.knigdelioglu.arc.compose.controls.ArcInput
@@ -62,6 +66,7 @@ import com.knigdelioglu.puanla.data.local.ClassroomEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
+import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 
 @Composable
 fun ClassroomsScreen(viewModel: PuanlaViewModel) {
@@ -254,11 +259,34 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             weight = 0.8f,
                             comparator = compareBy { it.studentNumber.toIntOrNull() ?: 0 }
                         ) { student ->
-                            Text(
-                                text = student.studentNumber,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = ArcTheme.colors.foreground
+                            val clipboard = LocalClipboardManager.current
+                            ArcContextMenu(
+                                actions = listOf(
+                                    ArcContextAction("Bu Öğrenciyi Puanla") {
+                                        viewModel.selectStudent(student)
+                                        viewModel.currentDestination.value = AppDestination.WORKSPACE
+                                    },
+                                    ArcContextAction("Okul Numarasını Kopyala") {
+                                        clipboard.setText(AnnotatedString(student.studentNumber))
+                                        viewModel.showToast("Okul numarası kopyalandı.")
+                                    }
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                content = {
+                                    Column {
+                                        Text(
+                                            text = student.studentNumber,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = ArcTheme.colors.foreground
+                                        )
+                                        Text(
+                                            text = "Basılı tut: hızlı işlem",
+                                            fontSize = 10.sp,
+                                            color = ArcTheme.colors.textMuted
+                                        )
+                                    }
+                                }
                             )
                         },
                         ArcTableColumn<StudentEntity>(

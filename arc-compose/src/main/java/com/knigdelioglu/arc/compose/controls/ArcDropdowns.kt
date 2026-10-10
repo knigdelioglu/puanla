@@ -305,22 +305,25 @@ fun ArcDropdownMenu(
     }
 }
 
+/** Context actions are real callbacks; clicking one closes the menu before it runs. */
+data class ArcContextAction(val label: String, val onSelect: () -> Unit)
+
 /**
- * Arc Context Menu: right-click or secondary touch menu trigger.
+ * Arc Context Menu: long press an item on tablets to access its real actions.
+ * The original composable content API remains available for the gallery.
  */
 @Composable
 fun ArcContextMenu(
-    menuContent: @Composable () -> Unit,
+    menuContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
+    actions: List<ArcContextAction> = emptyList()
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier.pointerInput(Unit) {
-            detectTapGestures(
-                onLongPress = { expanded = true }
-            )
+            detectTapGestures(onLongPress = { if (actions.isNotEmpty()) expanded = true })
         }
     ) {
         content()
@@ -328,6 +331,15 @@ fun ArcContextMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
+            actions.forEach { action ->
+                DropdownMenuItem(
+                    text = { Text(action.label) },
+                    onClick = {
+                        expanded = false
+                        action.onSelect()
+                    }
+                )
+            }
             menuContent()
         }
     }
