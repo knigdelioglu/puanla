@@ -19,7 +19,7 @@
 
 - **Kotlin, Jetpack Compose ve Android SDK** — React Native, Expo, Flutter veya PWA kullanılmaz.
 - **Tablet öncelikli adaptif arayüz** — geniş ekranlar, yatay/dikey yön, kalem ve dokunma ergonomisi dikkate alınır.
-- **Arc Library** (`kuratlielia/arc-library`) doğrudan Android bağımlılığı değildir; seçilmiş etkileşim ve görsel davranışlar Kotlin/Compose üzerinde **yerel olarak yeniden tasarlanacaktır**. Lisans ve kaynak incelemesine dayalı uygulama planı `docs/plans/` altında tutulur.
+- **Arc Library** (`kuratlielia/arc-library`) doğrudan Android bağımlılığı değildir; seçilmiş etkileşim ve görsel davranışlar Kotlin/Compose üzerinde **yerel olarak yeniden tasarlanacaktır**. Arc kaynaklı 132 kayıt tek tek incelendi: [tam envanter](docs/research/arc-puanla-full-catalog.md) ve [tablet öncelikli genişletilmiş uyarlama planı](docs/plans/arc-maximal-adoption.md). Bunlar henüz uygulanmış bileşenler değildir.
 - Öğrenci verileri varsayılan olarak cihazdan çıkmaz; temel puanlama akışı internet olmadan çalışır.
 
 ## Depo kapsamı
