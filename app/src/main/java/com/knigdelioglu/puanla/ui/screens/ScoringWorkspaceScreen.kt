@@ -64,6 +64,7 @@ import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcAvatar
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
+import com.knigdelioglu.arc.compose.display.ArcAccordion
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.display.ArcExpandableCard
@@ -552,11 +553,25 @@ private fun ScoringControlPane(
                                 )
                             }
                             Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = criterion.description,
-                                fontSize = 13.sp,
-                                color = colors.textSecondary
-                            )
+                            val guidance = buildList {
+                                if (criterion.description.isNotBlank()) {
+                                    add("Ölçüt yönergesi" to criterion.description)
+                                }
+                                if (levels.isNotEmpty()) {
+                                    add("Puan düzeylerinin açıklamaları" to levels.joinToString("\n") {
+                                        "${it.points} puan: ${it.description}"
+                                    })
+                                }
+                            }
+                            if (guidance.isNotEmpty()) {
+                                ArcAccordion(items = guidance, modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text(
+                                    text = "Bu ölçüt için açıklama eklenmemiş.",
+                                    fontSize = 13.sp,
+                                    color = colors.textSecondary
+                                )
+                            }
 
                             Spacer(Modifier.height(18.dp))
 
