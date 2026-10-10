@@ -20,6 +20,8 @@ import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -90,6 +92,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     // Toast stack & Undo
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     private val undoStack = mutableListOf<UndoAction>()
+    private var studentFlowJob: Job? = null
+    private var assessmentFlowJob: Job? = null
+    private var groupFlowJob: Job? = null
+    private var currentAssessmentJob: Job? = null
 
     // OCR Import State
     val ocrStep = MutableStateFlow(0) // 0: Select, 1: Scan, 2: Verify, 3: Done
@@ -173,8 +179,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun loadStudentsForClassroom(classroomId: String) {
-        viewModelScope.launch {
+        studentFlowJob?.cancel()
+        students.value = emptyList()
+        selectedStudent.value = null
+        currentAssessment.value = null
+        currentScores.value = emptyMap()
+        studentFlowJob = viewModelScope.launch {
             repository.getStudentsForClassroomFlow(classroomId).collect { list ->
+                if (selectedClassroom.value?.id != classroomId) return@collect
                 students.value = list
                 if (selectedStudent.value == null || list.none { it.id == selectedStudent.value?.id }) {
                     selectedStudent.value = list.firstOrNull()
@@ -184,37 +196,44 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun loadClassAssessments() {
+        assessmentFlowJob?.cancel()
+        classAssessments.value = emptyList()
         val c = selectedClassroom.value ?: return
         val r = selectedRubric.value ?: return
-        viewModelScope.launch {
+        assessmentFlowJob = viewModelScope.launch {
             repository.getAssessmentsFlow(c.id, r.id).collect { list ->
-                classAssessments.value = list
+                if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id) {
+                    classAssessments.value = list
+                }
             }
         }
     }
 
     fun loadCurrentAssessment() {
+        currentAssessmentJob?.cancel()
+        currentAssessment.value = null
+        currentScores.value = emptyMap()
         val s = selectedStudent.value ?: return
         val r = selectedRubric.value ?: return
         val c = selectedClassroom.value ?: return
-
-        viewModelScope.launch {
-            var asm = repository.getAssessmentForStudent(s.id, r.id)
-            if (asm == null) {
-                asm = AssessmentEntity(
-                    id = "assess_${s.id}_${r.id}",
-                    classroomId = c.id,
-                    studentId = s.id,
-                    rubricId = r.id,
-                    isCompleted = false,
-                    definitiveTotal = null,
-                    scoredCount = 0
-                )
-                db.assessmentDao().insertOrUpdateAssessment(asm)
+        if (s.classroomId != c.id || r.grade != c.grade) return
+        currentAssessmentJob = viewModelScope.launch {
+            val assessment = repository.getAssessmentForStudent(s.id, r.id)
+            val scores = if (assessment != null) repository.getScoresForAssessment(assessment.id) else emptyList()
+            if (selectedStudent.value?.id == s.id &&
+                selectedRubric.value?.id == r.id &&
+                selectedClassroom.value?.id == c.id) {
+                currentAssessment.value = assessment
+                currentScores.value = scores.associateBy { it.criterionId }
             }
-            currentAssessment.value = asm
-            val scoresList = repository.getScoresForAssessment(asm.id)
-            currentScores.value = scoresList.associateBy { it.criterionId }
+        }
+    }
+
+    private fun refreshSelectionIfMatches(classId: String, studentId: String, rubricId: String) {
+        if (selectedClassroom.value?.id == classId &&
+            selectedStudent.value?.id == studentId &&
+            selectedRubric.value?.id == rubricId) {
+            loadCurrentAssessment()
         }
     }
 
@@ -222,39 +241,29 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val s = selectedStudent.value ?: return
         val r = selectedRubric.value ?: return
         val c = selectedClassroom.value ?: return
-        val currentCriteriaList = criteria.value
-        val oldScore = currentScores.value[criterionId]
-
+        val criterionTitle = criteria.value.find { it.id == criterionId }?.title ?: "Ölçüt"
         viewModelScope.launch {
-            repository.saveCriterionScore(
-                classroomId = c.id,
-                studentId = s.id,
-                rubricId = r.id,
-                criterionId = criterionId,
-                scorePoints = points
-            )
-
-            // Reload assessment & scores
-            val asm = repository.getAssessmentForStudent(s.id, r.id)
-            currentAssessment.value = asm
-            val scoresList = repository.getScoresForAssessment(asm?.id ?: "")
-            currentScores.value = scoresList.associateBy { it.criterionId }
-
-            // Register undo
-            val previousPoints = oldScore?.points
-            val studentName = s.fullName
-            val critTitle = currentCriteriaList.find { it.id == criterionId }?.title ?: "Ölçüt"
-
-            val undoAction = UndoAction(
-                title = "$studentName - $critTitle puanlandı: ${points ?: "İptal"}"
-            ) {
-                setScore(criterionId, previousPoints, null)
-            }
-            undoStack.add(undoAction)
-            showToast(undoAction.title) {
-                viewModelScope.launch {
-                    undoLastAction()
+            try {
+                val previous = repository.saveCriterionScore(
+                    classroomId = c.id, studentId = s.id, rubricId = r.id,
+                    criterionId = criterionId, scorePoints = points, evidenceNote = note
+                )
+                refreshSelectionIfMatches(c.id, s.id, r.id)
+                undoStack.add(UndoAction("${s.fullName} - $criterionTitle") {
+                    repository.saveCriterionScore(
+                        classroomId = c.id, studentId = s.id, rubricId = r.id,
+                        criterionId = criterionId, scorePoints = previous?.points,
+                        evidenceNote = previous?.evidenceNote
+                    )
+                    refreshSelectionIfMatches(c.id, s.id, r.id)
+                })
+                showToast("${s.fullName}: $criterionTitle — ${points ?: "Puan kaldırıldı"}") {
+                    viewModelScope.launch { undoLastAction() }
                 }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Puan kaydedilemedi: ${e.message}")
             }
         }
     }
@@ -390,11 +399,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Group work
     private fun loadGroupTasks() {
+        groupFlowJob?.cancel()
+        groupTasks.value = emptyList()
         val c = selectedClassroom.value ?: return
         val r = selectedRubric.value ?: return
-        viewModelScope.launch {
+        groupFlowJob = viewModelScope.launch {
             repository.getGroupTasksFlow(c.id, r.id).collect { list ->
-                groupTasks.value = list
+                if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id) {
+                    groupTasks.value = list
+                }
             }
         }
     }

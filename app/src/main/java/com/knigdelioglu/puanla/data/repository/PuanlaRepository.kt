@@ -12,6 +12,7 @@ import com.knigdelioglu.puanla.data.local.RubricSeeder
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.summarizeScores
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
@@ -148,78 +149,71 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     suspend fun getScoresForAssessment(assessmentId: String): List<CriterionScoreEntity> =
         assessmentDao.getScoresForAssessment(assessmentId)
 
+    /**
+     * A single atomic write: validate the exact classroom/student/rubric/criterion,
+     * record the score, then update its summary without REPLACE deleting child rows.
+     * Returns the score that existed before this change for identity-safe undo.
+     */
     suspend fun saveCriterionScore(
         classroomId: String,
         studentId: String,
         rubricId: String,
         criterionId: String,
-        scorePoints: Int? // null = unscored, 0..maxPoints
-    ) {
-        // Ensure Assessment entity exists
-        var assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId)
-        val assessmentId = assessment?.id ?: run {
-            val newId = "assess_${studentId}_${rubricId}"
-            val newAssessment = AssessmentEntity(
-                id = newId,
-                classroomId = classroomId,
-                studentId = studentId,
-                rubricId = rubricId
-            )
-            assessmentDao.insertOrUpdateAssessment(newAssessment)
-            newId
-        }
+        scorePoints: Int?,
+        evidenceNote: String? = null
+    ): CriterionScoreEntity? = db.withTransaction {
+        val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
+        val student = requireNotNull(studentDao.getStudentById(studentId)) { "Öğrenci bulunamadı." }
+        require(student.classroomId == classroom.id) { "Öğrenci farklı sınıfa ait." }
+        val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
+        require(rubric.grade == classroom.grade) { "Rubrik sınıf düzeyine uygun değil." }
+        val criterion = requireNotNull(rubricDao.getCriterionById(criterionId)) { "Ölçüt bulunamadı." }
+        require(criterion.rubricId == rubric.id) { "Ölçüt başka rubriğe ait." }
+        require(scorePoints == null || scorePoints in 0..criterion.maxPoints) { "Puan geçerli ölçüt aralığı dışında." }
 
-        // Save or update score
-        val scoreId = "score_${assessmentId}_${criterionId}"
-        val scoreEntity = CriterionScoreEntity(
-            id = scoreId,
-            assessmentId = assessmentId,
-            criterionId = criterionId,
-            points = scorePoints,
-            scoredAt = System.currentTimeMillis()
-        )
-        assessmentDao.insertOrUpdateScore(scoreEntity)
-
-        // Recalculate summary using pure domain rules
-        val criteria = rubricDao.getCriteriaForRubric(rubricId)
-        val allScores = assessmentDao.getScoresForAssessment(assessmentId)
-        val scoreMap = allScores.associate { it.criterionId to it.points }
-
-        val domainScores = criteria.map { crit ->
-            CriterionScore(
-                maxPoints = crit.maxPoints,
-                points = scoreMap[crit.id]
-            )
-        }
-
-        val summary = summarizeScores(domainScores)
-
-        val updatedAssessment = (assessmentDao.getAssessmentForStudent(studentId, rubricId) ?: AssessmentEntity(
-            id = assessmentId,
+        val existing = assessmentDao.getAssessmentForStudent(studentId, rubricId)
+        val assessment = existing ?: AssessmentEntity(
+            id = "assess_${studentId}_${rubricId}",
             classroomId = classroomId,
             studentId = studentId,
             rubricId = rubricId
-        )).copy(
-            isCompleted = summary.completed,
-            definitiveTotal = summary.definitiveTotal,
-            scoredCount = summary.scoredCount,
-            lastModifiedAt = System.currentTimeMillis()
         )
-
-        assessmentDao.insertOrUpdateAssessment(updatedAssessment)
+        require(assessment.classroomId == classroomId) { "Değerlendirme başka sınıfa ait." }
+        if (existing == null) assessmentDao.insertOrUpdateAssessment(assessment)
+        val scoreId = "score_${assessment.id}_${criterionId}"
+        val previous = assessmentDao.getScoresForAssessment(assessment.id).firstOrNull { it.criterionId == criterionId }
+        assessmentDao.insertOrUpdateScore(
+            CriterionScoreEntity(
+                id = previous?.id ?: scoreId,
+                assessmentId = assessment.id,
+                criterionId = criterionId,
+                points = scorePoints,
+                evidenceNote = evidenceNote,
+                scoredAt = System.currentTimeMillis()
+            )
+        )
+        val criteria = rubricDao.getCriteriaForRubric(rubricId)
+        val scoreMap = assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
+        val summary = summarizeScores(criteria.map { CriterionScore(it.maxPoints, scoreMap[it.id]) })
+        assessmentDao.insertOrUpdateAssessment(
+            assessment.copy(
+                isCompleted = summary.completed,
+                definitiveTotal = summary.definitiveTotal,
+                scoredCount = summary.scoredCount,
+                lastModifiedAt = System.currentTimeMillis()
+            )
+        )
+        previous
     }
 
     suspend fun clearAssessmentScores(assessmentId: String, studentId: String, rubricId: String) {
-        assessmentDao.clearScoresForAssessment(assessmentId)
-        val assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId)
-        if (assessment != null) {
+        db.withTransaction {
+            val assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId)
+            require(assessment?.id == assessmentId) { "Değerlendirme kimliği uyuşmuyor." }
+            assessmentDao.clearScoresForAssessment(assessmentId)
             assessmentDao.insertOrUpdateAssessment(
-                assessment.copy(
-                    isCompleted = false,
-                    definitiveTotal = null,
-                    scoredCount = 0,
-                    lastModifiedAt = System.currentTimeMillis()
-                )
+                assessment.copy(isCompleted = false, definitiveTotal = null, scoredCount = 0,
+                    lastModifiedAt = System.currentTimeMillis())
             )
         }
     }

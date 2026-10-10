@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 data class RubricWithCriteria(
@@ -122,7 +123,7 @@ interface AssessmentDao {
     @Query("SELECT * FROM criterion_scores WHERE assessmentId = :assessmentId")
     fun getScoresForAssessmentFlow(assessmentId: String): Flow<List<CriterionScoreEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertOrUpdateAssessment(assessment: AssessmentEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
