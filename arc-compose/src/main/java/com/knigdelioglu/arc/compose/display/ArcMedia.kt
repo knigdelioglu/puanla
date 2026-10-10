@@ -253,8 +253,10 @@ fun ArcImageCompare(
                     .pointerInput(widthPx) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            val newFraction = ((splitPx + dragAmount.x) / widthPx).coerceIn(0.05f, 0.95f)
-                            splitFraction = newFraction
+                            // Apply each incremental delta to the latest state, not a
+                            // splitPx captured at the beginning of the gesture.
+                            splitFraction = (splitFraction + dragAmount.x / widthPx)
+                                .coerceIn(0.05f, 0.95f)
                         }
                     },
                 contentAlignment = Alignment.Center

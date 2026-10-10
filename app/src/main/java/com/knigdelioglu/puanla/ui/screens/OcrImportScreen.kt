@@ -1,6 +1,13 @@
 package com.knigdelioglu.puanla.ui.screens
 
 import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.key
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +53,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcCheckbox
+import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAlert
@@ -55,6 +63,7 @@ import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.display.ArcFileDropzone
+import com.knigdelioglu.arc.compose.display.ArcImageCompare
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcStepper
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
@@ -97,7 +106,7 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
                     color = ArcTheme.colors.foreground
                 )
                 Text(
-                    text = "Cihaz üzerinde yerel çalışan OCR ile basılı liste sütunlarını hatasız ayıklar.",
+                    text = "Yerel OCR ile fotoğrafı tarar; tüm alanlar öğretmen onayına sunulur.",
                     fontSize = 14.sp,
                     color = ArcTheme.colors.textSecondary
                 )
@@ -251,17 +260,25 @@ private fun OcrStepVerification(
                 )
             }
 
-            ArcButton(
-                text = "Seçilenleri Sınıfa Aktar (${candidates.count { it.isApproved }})",
-                onClick = {
-                    viewModel.confirmOcrImport {
-                        // Handled in VM
-                    }
-                },
-                variant = ArcButtonVariant.Primary,
-                size = ArcButtonSize.Md,
-                enabled = candidates.any { it.isApproved }
-            )
+            if (candidates.any { it.isApproved }) {
+                // An explicit second confirmation before writing an OCR batch to Room.
+                key(candidates.filter { it.isApproved }.map { it.id }) {
+                    ArcConfirmMorph(
+                        prompt = "${candidates.count { it.isApproved }} öğrenci aktarılsın mı?",
+                        initialLabel = "Onaylananları Aktar (${candidates.count { it.isApproved }})",
+                        confirmLabel = "Aktar",
+                        onConfirm = { viewModel.confirmOcrImport { } }
+                    )
+                }
+            } else {
+                ArcButton(
+                    text = "Önce Öğrencileri Onaylayın",
+                    onClick = {},
+                    enabled = false,
+                    variant = ArcButtonVariant.Secondary,
+                    size = ArcButtonSize.Md
+                )
+            }
         }
 
         Spacer(Modifier.height(14.dp))
@@ -274,10 +291,25 @@ private fun OcrStepVerification(
 
         val importError by viewModel.ocrError.collectAsState()
         if (importError != null) ArcAlert(title = "Aktarım Hatası", message = importError ?: "", type = ArcAlertType.Danger)
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
+
+        val photoUri by viewModel.ocrSelectedImageUri.collectAsState()
+        var showOriginal by remember(photoUri) { mutableStateOf(false) }
+        if (photoUri != null) {
+            ArcButton(
+                text = if (showOriginal) "Fotoğraf Karşılaştırmasını Gizle" else "Kaynak Fotoğrafı OCR ile Karşılaştır",
+                onClick = { showOriginal = !showOriginal },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
+            )
+            if (showOriginal) {
+                OcrSourceComparison(photoUri, candidates)
+                Spacer(Modifier.height(10.dp))
+            }
+        }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             itemsIndexed(candidates) { index, cand ->
@@ -363,6 +395,71 @@ private fun OcrStepVerification(
             }
         }
     }
+}
+
+@Composable
+private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
+    val context = LocalContext.current
+    val preview by produceState<ImageBitmap?>(initialValue = null, key1 = uri) {
+        value = if (uri == null) null else withContext(Dispatchers.IO) {
+            try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+                var sample = 1
+                while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 1400) sample *= 2
+                val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, options)
+                }?.asImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+    val bitmap = preview
+    if (bitmap == null) {
+        ArcAlert(
+            title = "Fotoğraf önizlemesi",
+            message = "Seçilen fotoğraf henüz yüklenemedi veya erişilemiyor. Öğrenci bilgilerini yine de tek tek kontrol edin.",
+            type = ArcAlertType.Warning
+        )
+        return
+    }
+    ArcImageCompare(
+        beforeContent = {
+            Image(
+                bitmap = bitmap,
+                contentDescription = "Öğrenci listesinin orijinal fotoğrafı",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        },
+        afterContent = {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("OCR çıktısından ilk satırlar", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                candidates.take(5).forEach {
+                    Text(
+                        text = "${it.studentNumber}  ${it.firstName}  ${it.lastName}",
+                        maxLines = 1,
+                        color = ArcTheme.colors.textSecondary,
+                        fontSize = 13.sp
+                    )
+                }
+                if (candidates.size > 5) Text(
+                    text = "Ve ${candidates.size - 5} satır daha; tamamını aşağıdan doğrulayın.",
+                    color = ArcTheme.colors.textMuted,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        beforeLabel = "Kaynak fotoğraf",
+        afterLabel = "Okunan alanlar",
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
