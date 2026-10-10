@@ -1,0 +1,24 @@
+# Android/Gradle
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+# Secrets/private exports
+.env
+.env.*
+!*.env.example
+*.csv
+*.sqlite
+*.sqlite3
+*.db
+# Keep approved source JSON in version control; never blanket-ignore JSON.
