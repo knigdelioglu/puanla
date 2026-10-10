@@ -34,6 +34,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -551,12 +553,20 @@ private fun ScoringControlPane(
 
                             Spacer(Modifier.height(18.dp))
 
-                            // Elastic Slider with live balloon bubble
+                            // Preview is local; persist exactly once on release (never per pointer pixel).
+                            var sliderPreview by remember(student.id, criterion.id) {
+                                mutableFloatStateOf((points ?: 0).toFloat())
+                            }
+                            LaunchedEffect(student.id, criterion.id, points) {
+                                sliderPreview = (points ?: 0).toFloat()
+                            }
                             ArcElasticSlider(
-                                value = (points ?: 0).toFloat(),
-                                onValueChange = { newPoints ->
-                                    onScore(newPoints.roundToInt(), currentScore?.evidenceNote)
+                                value = sliderPreview,
+                                onValueChange = { sliderPreview = it },
+                                onValueCommit = { released ->
+                                    onScore(released.roundToInt(), currentScore?.evidenceNote)
                                 },
+                                step = 1f,
                                 valueRange = 0f..maxPoints.toFloat(),
                                 label = "Ölçüt Puanı",
                                 formatValue = { "${it.roundToInt()} / $maxPoints" }
