@@ -51,6 +51,7 @@ import com.knigdelioglu.arc.compose.datavis.ArcMetricCard
 import com.knigdelioglu.arc.compose.datavis.ArcSparkline
 import com.knigdelioglu.arc.compose.datavis.ArcStatItem
 import com.knigdelioglu.arc.compose.datavis.ArcStatsBand
+import com.knigdelioglu.arc.compose.datavis.ArcUsageMeter
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcBadge
@@ -202,6 +203,14 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 ArcStatItem(label = "Kısmi Puanlanan", value = "$partialCount", detail = "Eksik ölçüt"),
                 ArcStatItem(label = "Sınıf Ortalaması", value = if (validScores.isNotEmpty()) "${averageScore.roundToInt()}" else "-", detail = "100 üzerinden")
             )
+        )
+
+        // A started assessment is not necessarily completed; show both separately.
+        ArcUsageMeter(
+            used = completedCount + partialCount,
+            total = totalStudents,
+            label = "Değerlendirmesi başlatılan öğrenciler",
+            modifier = Modifier.fillMaxWidth()
         )
 
         // Metric Cards Grid

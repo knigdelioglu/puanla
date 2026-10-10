@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -87,6 +88,14 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                     variant = ArcButtonVariant.Secondary,
                     size = ArcButtonSize.Sm
                 )
+
+                // Real local audit events, not simulated notifications.
+                ArcActionButton(
+                    onClick = { viewModel.isNotificationCenterOpen.value = true },
+                    size = ArcButtonSize.Sm
+                ) {
+                    Icon(Icons.Default.History, contentDescription = "İşlem Geçmişini Aç")
+                }
 
                 // Theme Switch
                 ArcThemeSwitch(

@@ -4,8 +4,17 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -15,8 +24,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.knigdelioglu.arc.compose.display.ArcToastMessage
 import com.knigdelioglu.arc.compose.display.ArcToastStack
+import com.knigdelioglu.arc.compose.display.ArcNotificationItem
+import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
+import com.knigdelioglu.arc.compose.controls.ArcButton
+import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcTabs
 import com.knigdelioglu.puanla.ui.components.AppCommandPaletteModal
@@ -46,6 +62,8 @@ fun PuanlaApp(
 
     val currentDestination by viewModel.currentDestination.collectAsState()
     val toastMessages by viewModel.toastMessages.collectAsState()
+    val showHistory by viewModel.isNotificationCenterOpen.collectAsState()
+    val recentLogs by viewModel.recentLogs.collectAsState()
 
     val destinations = remember { AppDestination.values() }
     val destinationLabels = remember { destinations.map { it.label } }
@@ -111,6 +129,51 @@ fun PuanlaApp(
                             toasts = arcToastMessages,
                             onDismissToast = { viewModel.dismissToast() }
                         )
+                    }
+                }
+
+                // Real Room audit log records shown through the Arc P1 notification center.
+                if (showHistory) {
+                    Dialog(onDismissRequest = { viewModel.isNotificationCenterOpen.value = false }) {
+                        Surface(
+                            modifier = Modifier.width(480.dp).height(430.dp),
+                            shape = ArcTheme.shapes.panel,
+                            color = ArcTheme.colors.surfaceRaised
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "Yerel İşlem Geçmişi",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ArcTheme.colors.foreground
+                                    )
+                                    ArcButton(
+                                        text = "Kapat",
+                                        onClick = { viewModel.isNotificationCenterOpen.value = false },
+                                        variant = ArcButtonVariant.Ghost
+                                    )
+                                }
+                                val dateFormat = remember { SimpleDateFormat("dd.MM HH:mm", Locale("tr", "TR")) }
+                                val items = remember(recentLogs) {
+                                    recentLogs.map {
+                                        ArcNotificationItem(
+                                            id = it.id, title = it.action,
+                                            timestamp = dateFormat.format(Date(it.timestamp)),
+                                            details = it.details
+                                        )
+                                    }
+                                }
+                                ArcNotificationCenter(
+                                    notifications = items,
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
+                            }
+                        }
                     }
                 }
 
