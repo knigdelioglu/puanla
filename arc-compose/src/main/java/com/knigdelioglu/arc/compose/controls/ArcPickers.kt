@@ -31,6 +31,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,11 +58,19 @@ fun ArcCalendar(
     selectedDay: Int?,
     onSelectDay: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    monthName: String = "Ekim 2026",
+    monthName: String = "",
     daysInMonth: Int = 31,
-    startDayOfWeekOffset: Int = 3 // Perşembe
+    startDayOfWeekOffset: Int = 3, // legacy preview argument; actual calendar follows month
+    onSelectDate: (String) -> Unit = {}
 ) {
     val colors = ArcTheme.colors
+    val monthFormat = remember { DateTimeFormatter.ofPattern("LLLL yyyy", Locale("tr", "TR")) }
+    var visibleMonth by remember(monthName) {
+        mutableStateOf(runCatching { YearMonth.parse(monthName, monthFormat) }.getOrElse { YearMonth.now() })
+    }
+    var selectedMonth by remember(monthName) { mutableStateOf(visibleMonth) }
+    val calendarDays = visibleMonth.lengthOfMonth()
+    val calendarOffset = visibleMonth.atDay(1).dayOfWeek.value - 1 // Monday = 0
     val daysOfWeek = listOf("Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pz")
 
     Surface(
@@ -74,13 +85,13 @@ fun ArcCalendar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(monthName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                Text(visibleMonth.format(monthFormat), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
                 Row {
-                    IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = colors.textSecondary)
+                    IconButton(onClick = { visibleMonth = visibleMonth.minusMonths(1) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "Önceki Ay", tint = colors.textSecondary)
                     }
-                    IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = colors.textSecondary)
+                    IconButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Sonraki Ay", tint = colors.textSecondary)
                     }
                 }
             }
@@ -102,7 +113,7 @@ fun ArcCalendar(
 
             Spacer(Modifier.height(8.dp))
 
-            val totalSlots = startDayOfWeekOffset + daysInMonth
+            val totalSlots = calendarOffset + calendarDays
             LazyVerticalGrid(
                 columns = GridCells.Fixed(7),
                 modifier = Modifier.height(200.dp),
@@ -110,16 +121,20 @@ fun ArcCalendar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(totalSlots) { index ->
-                    if (index < startDayOfWeekOffset) {
+                    if (index < calendarOffset) {
                         Box(modifier = Modifier.size(36.dp))
                     } else {
-                        val dayNumber = index - startDayOfWeekOffset + 1
-                        val isSelected = selectedDay == dayNumber
+                        val dayNumber = index - calendarOffset + 1
+                        val isSelected = selectedDay == dayNumber && selectedMonth == visibleMonth
                         Surface(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .clickable { onSelectDay(dayNumber) },
+                                .clickable {
+                                    selectedMonth = visibleMonth
+                                    onSelectDay(dayNumber)
+                                    onSelectDate(visibleMonth.atDay(dayNumber).toString())
+                                },
                             shape = CircleShape,
                             color = if (isSelected) colors.accent else Color.Transparent
                         ) {
