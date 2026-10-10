@@ -24,6 +24,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import java.time.LocalDate
+import java.time.ZoneOffset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -135,6 +142,11 @@ fun ArcCalendar(
 /**
  * Arc Date Picker: dropdown-triggered or embedded date selector.
  */
+/**
+ * Real Material3 date selector. Selected dates are ISO-8601 (yyyy-MM-dd).
+ * UTC conversion is required by Material3's DatePickerState contract.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArcDatePicker(
     selectedDate: String,
@@ -142,20 +154,39 @@ fun ArcDatePicker(
     modifier: Modifier = Modifier,
     label: String = "Değerlendirme Tarihi"
 ) {
-    var day by remember { mutableIntStateOf(10) }
-    ArcCalendar(
-        selectedDay = day,
-        onSelectDay = {
-            day = it
-            onDateSelected("$it Ekim 2026")
-        },
-        modifier = modifier
-    )
+    var isOpen by remember { mutableStateOf(false) }
+    val dateText = runCatching { LocalDate.parse(selectedDate) }.getOrNull()
+    ArcButton(
+        onClick = { isOpen = true },
+        modifier = modifier,
+        variant = ArcButtonVariant.Outline
+    ) {
+        Text("$label: ${dateText?.toString() ?: "Tarih Seç"}")
+    }
+    if (isOpen) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = dateText?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { isOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let {
+                        onDateSelected(LocalDate.ofEpochDay(Math.floorDiv(it, 86_400_000L)).toString())
+                    }
+                    isOpen = false
+                }) { Text("Seç") }
+            },
+            dismissButton = {
+                TextButton(onClick = { isOpen = false }) { Text("Vazgeç") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 }
 
-/**
- * Arc Date Range Picker: select start and end date range for long-term reports.
- */
+/** Start/end ISO dates. Each button opens the real native calendar picker. */
 @Composable
 fun ArcDateRangePicker(
     startDate: String,
@@ -163,24 +194,20 @@ fun ArcDateRangePicker(
     onRangeSelected: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier,
-        shape = ArcTheme.shapes.panel,
-        color = ArcTheme.colors.surfaceRaised,
-        border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Tarih Aralığı", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
-            Spacer(Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ArcButton(onClick = {}, variant = ArcButtonVariant.Outline, modifier = Modifier.weight(1f)) {
-                    Text("Başlangıç: $startDate", fontSize = 13.sp)
-                }
-                ArcButton(onClick = {}, variant = ArcButtonVariant.Outline, modifier = Modifier.weight(1f)) {
-                    Text("Bitiş: $endDate", fontSize = 13.sp)
-                }
-            }
-        }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Son güncelleme tarih aralığı", color = ArcTheme.colors.foreground, fontWeight = FontWeight.SemiBold)
+        ArcDatePicker(
+            selectedDate = startDate,
+            onDateSelected = { onRangeSelected(it, endDate) },
+            label = "Başlangıç",
+            modifier = Modifier.fillMaxWidth()
+        )
+        ArcDatePicker(
+            selectedDate = endDate,
+            onDateSelected = { onRangeSelected(startDate, it) },
+            label = "Bitiş",
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
