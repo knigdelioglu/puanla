@@ -335,7 +335,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                             .fillMaxWidth()
                             .height(260.dp)
                     ) {
-                        Box(modifier = Modifier.padding(12.dp)) {
+                        Box(modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
                             Text(
                                 text = generatedCsvContent,
                                 fontSize = 12.sp,
