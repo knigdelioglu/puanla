@@ -30,4 +30,6 @@
 
 ## Durum
 
-Başlangıç iskeleti ve teknik planlama aşamasındadır. Mevcut belgeler tamamlanmış kullanıcı işlevleri veya test edilmiş APK anlamına gelmez.
+Android Native `:app` ve ayrı `:arc-compose` modülleri geliştirme aşamasındadır. Room, hızlı puanlama, tablet ekranları ve yerel OCR kodları vardır. 2026-10-10 P0 güvenlik düzeltmeleriyle sahte rubrik/öğrenci tohumlama durdurulmuş, yıkıcı Room migration kaldırılmış, öğrencinin kimliğine bağlı puanlama ve işlem bazlı geri alma düzenlenmiş, tam JSON yedekleme/geri yükleme ve gerçek görsel seçimi eklenmiştir.
+
+**Sınırlar:** 99 Arc kaydının tümü üretim ekranlarında doğrulanmamıştır. Onaylı rubrik verisi yokken gerçek notlandırma yapılmaz. Gerçek cihaz üzerinde uçtan uca OCR, geri yükleme ve puanlama testleri hala gereklidir. [Dürüst Arc doğrulama matrisi](docs/verification/arc-implementation-matrix.md).
