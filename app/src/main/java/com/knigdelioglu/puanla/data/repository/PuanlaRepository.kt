@@ -95,30 +95,36 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
         gender: String? = null,
         boardingStatus: String? = null
     ): Result<StudentEntity> {
-        val trimmedNum = studentNumber.trim()
-        val existing = studentDao.getStudentByNumber(classroomId, trimmedNum)
-        if (existing != null) {
-            return Result.failure(IllegalArgumentException("Bu okul numarasına ($trimmedNum) sahip öğrenci zaten mevcut."))
-        }
-
-        val student = StudentEntity(
-            id = UUID.randomUUID().toString(),
-            classroomId = classroomId,
-            studentNumber = trimmedNum,
-            firstName = StudentNameRules.firstName(firstName),
-            lastName = StudentNameRules.lastName(lastName),
-            gender = gender?.trim(),
-            boardingStatus = boardingStatus?.trim()
-        )
         return try {
+            val trimmedNum = studentNumber.trim()
+            require(trimmedNum.isNotEmpty() && trimmedNum.all(Char::isDigit)) {
+                "Öğrenci numarası yalnızca rakamlardan oluşmalı."
+            }
+            val student = StudentEntity(
+                id = UUID.randomUUID().toString(),
+                classroomId = classroomId,
+                studentNumber = trimmedNum,
+                firstName = StudentNameRules.firstName(firstName),
+                lastName = StudentNameRules.lastName(lastName),
+                gender = gender?.trim(),
+                boardingStatus = boardingStatus?.trim()
+            )
+            // Both the duplicate check and insert must be part of one transaction;
+            // otherwise two near-simultaneous submissions can both pass the check.
             db.withTransaction {
+                require(classroomDao.getClassroomById(classroomId) != null) { "Sınıf bulunamadı." }
+                require(studentDao.getStudentByNumber(classroomId, trimmedNum) == null) {
+                    "Bu okul numarasına ($trimmedNum) sahip öğrenci zaten mevcut."
+                }
                 studentDao.insertStudent(student)
                 auditLogDao.insertLog(AuditLogEntity(
                     id = UUID.randomUUID().toString(), action = "STUDENT_ADDED",
-                    details = "${student.studentNumber} - ${student.firstName} ${student.lastName} (${classroomId})"
+                    details = "${student.studentNumber} - ${student.firstName} ${student.lastName} ($classroomId)"
                 ))
             }
             Result.success(student)
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            throw cancel
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -127,8 +133,13 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     suspend fun addStudents(students: List<StudentEntity>) = db.withTransaction {
         require(students.isNotEmpty()) { "Aktarılacak onaylı öğrenci yok." }
         require(students.all {
-            it.studentNumber.isNotBlank() && it.firstName.isNotBlank() && it.lastName.isNotBlank()
-        }) { "Eksik öğrenci bilgisi var." }
+            it.studentNumber.isNotBlank() && it.studentNumber.all(Char::isDigit) &&
+                it.firstName.isNotBlank() && it.lastName.isNotBlank()
+        }) { "Eksik veya geçersiz öğrenci numarası/ad-soyad var." }
+        students.forEach {
+            StudentNameRules.firstName(it.firstName)
+            StudentNameRules.lastName(it.lastName)
+        }
         require(students.map { "${it.classroomId}/${it.studentNumber}" }.distinct().size == students.size) {
             "Aktarım listesindeki okul numaraları tekrar ediyor."
         }
