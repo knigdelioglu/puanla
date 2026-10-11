@@ -15,12 +15,12 @@
 | # | Arc Kaydı | Öncelik | Compose API (`com.knigdelioglu.arc.compose.*`) | Puanla Ekranı / Kullanım Alanı | Durum |
 |---|---|---|---|---|---|
 | 1 | `arc-foundation` | P0 | `ArcTheme`, `ArcColors`, `ArcShapes`, `ArcSpacing` | Tüm uygulama kabuğu, açık/koyu mod ve yüzey hiyerarşisi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 2 | `arc-motion-tokens` | P0 | `ArcMotionTokens`, `ArcMotion` (Yay, Snappy, Smooth) | Tüm ekranlar, reduced motion desteği ile animasyonlar | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 2 | `arc-motion-tokens` | P0 | `ArcMotionTokens`, `ArcMotion` (Yay, Snappy, Smooth) | ArcElasticSlider animasyonları ve ArcTheme üzerinden azaltılmış hareket | **Dolaylı üretim kullanımı var; bütün animasyonlar denetlenmedi** |
 | 3 | `button` | P0 | `ArcButton` (Primary, Secondary, Outline, Ghost, Danger) | Çalışma alanı, sınıf ekleme, kaydetme, onay butonları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 4 | `action-button` | P0 | `ArcActionButton` (Kompakt ikon ve eylem butonu) | Önceki/sonraki öğrenci gezinmesi, sayı artırma/azaltma | **Yalnız galeri çağrısı (işlev teyitsiz)** |
 | 5 | `split-button` | P0 | `ArcSplitButton` (Bölünmüş ana eylem ve açılır menü) | Puanları CSV olarak dışa aktar / Farklı formatta aktar | **Yalnız galeri çağrısı (işlev teyitsiz)** |
 | 6 | `button-group` | P0 | `ArcButtonGroup` (Bitişik buton kümesi) | Önceki/sonraki öğrenci ve hızlı yönlendirme butonları | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 7 | `floating-button-group` | P0 | `ArcFloatingButtonGroup` (Yüzen alt eylem çubuğu) | Puanlama çalışma alanında sabit Önceki / Geri Al / Sonraki çubuğu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 7 | `floating-button-group` | P0 | `ArcFloatingButtonGroup` (Yüzen alt eylem çubuğu) | Puanlama ekranında Önceki / Geri Al / Sonraki | **Normal ekranda gerçek ViewModel eylemlerine bağlı; cihaz testi gerekli** |
 | 8 | `dropdown-menu` | P0 | `ArcDropdownMenu`, `ArcDropdownMenuItem` | Üst bar şube ve rubrik seçicileri, satır menüleri | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 9 | `drawer` | P0 | `ArcDrawer` (Yan çekmece paneli) | Tablet yan ayrıntı paneli, sınıf/öğrenci detayları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 10 | `input` | P0 | `ArcInput` (Tek satırlı metin ve sayı girişi) | Öğrenci numarası, ad/soyad, sınıf adı girişleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
@@ -28,15 +28,15 @@
 | 12 | `combobox` | P0 | `ArcCombobox` (Aramalı seçim kutusu) | Hızlı öğrenci arama ve doğrudan seçme alanı | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 13 | `checkbox` | P0 | `ArcCheckbox` (Özelleştirilmiş onay kutusu) | Grup çalışması 7 hazırlık maddesi ve OCR satır seçimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 14 | `switch` | P0 | `ArcSwitch` (Fiziksel yaylı toggle anahtarı) | Koyu tema, titreşim, otomatik sonraki öğrenciye geçiş ayarları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 15 | `multi-select` | P0 | `ArcMultiSelect` (Çoklu öğrenci/seçim kutusu) | Grup üyelerini seçme ve toplu öğrenci işlemleri | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 15 | `multi-select` | P0 | `ArcMultiSelect` (Çoklu öğrenci/seçim kutusu) | Grup üyesi seçimindeki öğrenci ID kümesi | **Normal ekranda grup oluşturma callback'ine bağlı; cihaz testi gerekli** |
 | 16 | `number-field` | P0 | `ArcNumberField` (Erişilebilir ± butonlu puan kontrolü) | Ölçüt puanını doğrudan tam sayı olarak verme (+/- butonlar) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 17 | `search-field` | P0 | `ArcSearchField` (Arama alanı) | Öğrenci listesinde ad ve numara ile gerçek zamanlı arama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 18 | `file-dropzone` | P0 | `ArcFileDropzone` (Dosya sürükle-bırak / tıklama alanı) | Sınıf listesi fotoğrafı seçme ve yerel JSON yedeği yükleme | **Normal ekran API çağrısı var (işlev teyitsiz)** |
+| 18 | `file-dropzone` | P0 | `ArcFileDropzone` (Dosya sürükle-bırak / tıklama alanı) | OCR fotoğraf seçicisi + Android URI sürükle/bırak (yedek SAF arayüzü ayrıdır) | **Doğrudan bağlı; gerçek çapraz uygulama drop cihaz testi gerekli** |
 | 19 | `radio-group` | P0 | `ArcRadioGroup` (Tekli seçim grubu) | Cinsiyet seçimi, rubrik türü ve dışa aktarım seçenekleri | **Yalnız galeri çağrısı (işlev teyitsiz)** |
 | 20 | `segmented-control` | P0 | `ArcSegmentedControl` (Kayan hap arka planlı kontrol) | Ölçüt niteliksel düzeyleri (Yetersiz, Geliştirilmeli, İyi, Çok İyi) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 21 | `dialog` | P0 | `ArcDialog` (Modal onay ve işlem penceresi) | Sınıf silme, yedekten geri yükleme ve öğrenci ekleme pencereleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 22 | `popover` | P0 | `ArcPopover` (Noktasal bağlamsal pencere) | Ölçüt yönergesi ve rubrik ipuçlarının açılır gösterimi | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 23 | `tooltip` | P0 | `ArcTooltip` (İpucu baloncuğu) | İkonlu butonların açıklamaları ve erişilebilirlik ipuçları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 23 | `tooltip` | P0 | `ArcTooltip` (İpucu baloncuğu) | Üst bardaki yerel işlem geçmişi eylemi | **Material3 gerçek tooltip ile normal ekran bağlantısı var; cihaz testi gerekli** |
 | 24 | `tabs` | P0 | `ArcTabs` (Sekmeli gezinme çubuğu) | Ana ekranlar (Değerlendirme, Sınıflar, OCR, Gruplar, Raporlar) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 25 | `expandable-card` | P0 | `ArcExpandableCard` (Genişleyebilir kart) | Uzun ölçüt tanımları ve MEB rubrik yönerge ayrıntıları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 26 | `alert` | P0 | `ArcAlert` (Info, Success, Warning, Danger uyarıları) | OCR belirsizlik uyarıları, veri koruma bilgilendirmesi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
