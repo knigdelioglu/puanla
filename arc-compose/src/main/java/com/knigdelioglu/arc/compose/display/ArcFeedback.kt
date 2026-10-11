@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -309,6 +310,8 @@ fun ArcSwipeActions(
     content: @Composable () -> Unit
 ) {
     var offsetX by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val revealPx = with(density) { 112.dp.toPx() }
 
     Box(modifier = modifier.fillMaxWidth()) {
         // Revealed Actions Behind
@@ -319,10 +322,16 @@ fun ArcSwipeActions(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ArcActionButton(onClick = onEdit, size = ArcButtonSize.Sm) {
+            ArcActionButton(onClick = {
+                offsetX = 0f
+                onEdit()
+            }, size = ArcButtonSize.Sm) {
                 Icon(Icons.Default.Edit, contentDescription = "Düzenle", modifier = Modifier.size(16.dp))
             }
-            ArcActionButton(onClick = onDelete, size = ArcButtonSize.Sm, variant = ArcButtonVariant.Danger) {
+            ArcActionButton(onClick = {
+                offsetX = 0f
+                onDelete()
+            }, size = ArcButtonSize.Sm, variant = ArcButtonVariant.Danger) {
                 Icon(Icons.Default.Delete, contentDescription = "Sil", modifier = Modifier.size(16.dp))
             }
         }
@@ -331,19 +340,15 @@ fun ArcSwipeActions(
         Box(
             modifier = Modifier
                 .offset { IntOffset(offsetX.roundToInt(), 0) }
-                .pointerInput(Unit) {
+                .pointerInput(revealPx) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            if (offsetX < -80f) {
-                                offsetX = -120f
-                            } else {
-                                offsetX = 0f
-                            }
+                            offsetX = if (offsetX < -revealPx / 2f) -revealPx else 0f
                         },
                         onDragCancel = { offsetX = 0f },
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            offsetX = (offsetX + dragAmount).coerceIn(-120f, 0f)
+                            offsetX = (offsetX + dragAmount).coerceIn(-revealPx, 0f)
                         }
                     )
                 }

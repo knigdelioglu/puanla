@@ -365,7 +365,8 @@ fun <T> ArcSortableDataTable(
     columns: List<ArcTableColumn<T>>,
     modifier: Modifier = Modifier,
     onRowClick: ((T) -> Unit)? = null,
-    pageSize: Int? = null
+    pageSize: Int? = null,
+    rowKey: ((T) -> Any)? = null
 ) {
     var sortColumnIndex by remember { mutableStateOf<Int?>(null) }
     var sortAscending by remember { mutableStateOf(true) }
@@ -445,7 +446,7 @@ fun <T> ArcSortableDataTable(
 
             // Items Rows
             LazyColumn(modifier = Modifier.fillMaxWidth().then(if (pageSize != null) Modifier.weight(1f) else Modifier)) {
-                items(visibleItems) { item ->
+                items(visibleItems, key = rowKey) { item ->
                     Surface(
                         color = Color.Transparent,
                         modifier = Modifier

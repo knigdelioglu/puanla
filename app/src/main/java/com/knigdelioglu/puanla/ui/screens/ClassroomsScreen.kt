@@ -408,7 +408,8 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                         items = filteredStudents,
                         columns = columns,
                         modifier = Modifier.fillMaxSize(),
-                        pageSize = 25
+                        pageSize = 25,
+                        rowKey = { it.id }
                     )
                 }
             }

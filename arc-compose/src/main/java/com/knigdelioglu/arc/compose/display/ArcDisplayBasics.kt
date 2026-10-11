@@ -340,22 +340,25 @@ fun ArcSkeleton(
     modifier: Modifier = Modifier,
     shape: Shape = ArcTheme.shapes.control
 ) {
-    val transition = rememberInfiniteTransition(label = "skeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "skeletonAlpha"
-    )
-
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(ArcTheme.colors.surfaceMuted.copy(alpha = alpha))
-    )
+    if (ArcTheme.motion.reducedMotion) {
+        Box(modifier = modifier.clip(shape).background(ArcTheme.colors.surfaceMuted))
+    } else {
+        val transition = rememberInfiniteTransition(label = "skeleton")
+        val alpha by transition.animateFloat(
+            initialValue = 0.3f,
+            targetValue = 0.8f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "skeletonAlpha"
+        )
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(ArcTheme.colors.surfaceMuted.copy(alpha = alpha))
+        )
+    }
 }
 
 /**
