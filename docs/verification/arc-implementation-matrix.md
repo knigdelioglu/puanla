@@ -113,7 +113,7 @@
 | 83 | `hold-to-confirm` | P2 | `ArcHoldToConfirm` (Basılı tutarak onaylama butonu) | Tüm sınıf puanlarını sıfırlama veya yedeği geri yükleme | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 84 | `card-stack` | P2 | `ArcCardStack` (Kart destesi etkileşimi) | Öğrencileri kart destesi şeklinde tek tek gözden geçirme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 85 | `activity-heatmap` | P2 | `ArcActivityHeatmap` (Etkinlik ısı haritası) | Öğretmenin haftalık/aylık puanlama yoğunluğu haritası | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 86 | `signature-pad` | P2 | `ArcSignaturePad` (Kalem/Stylus imza ve çizim alanı) | Android Stylus kalem ile öğretmen onay imzası / el notu | **Normal ekran API çağrısı var (işlev teyitsiz)** |
+| 86 | `signature-pad` | P2 | `ArcSignaturePad` (Kalem/Stylus imza ve çizim alanı) | Android Stylus kalem ile öğretmen onay imzası / el notu | **Yalnız bileşen kataloğunda; kaydedilmeyen imza Ayarlar'dan kaldırıldı** |
 | 87 | `date-range-picker` | P2 | `ArcDateRangePicker` (Tarih aralığı seçici) | Rapor filtrelerinde dönemlik/tarih aralıklı filtreleme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 88 | `color-picker` | P2 | `ArcColorPicker` (Renk seçici palet) | Şube veya grup renklerini kişiselleştirme | **Yalnız galeri çağrısı (işlev teyitsiz)** |
 | 89 | `morph-select` | P2 | `ArcMorphSelect` (Dönüşümlü seçim menüsü) | Rubrik ve şube seçiminde akıcı morph animasyonu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
@@ -121,11 +121,11 @@
 | 91 | `waffle-chart` | P2 | `ArcWaffleChart` (100 karelik durum ızgarası) | 100 üzerinden sınıf başarı ve tamamlanma yüzdesi | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 92 | `slope-chart` | P2 | `ArcSlopeChart` (Eğim grafiği) | 1. Değerlendirme ile 2. Değerlendirme arasındaki eğim | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 | 93 | `announcement-bar` | P2 | `ArcAnnouncementBar` (Duyuru çubuğu) | Çevrimdışı mod uyarısı veya yedekleme hatırlatması | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 94 | `json-viewer` | P2 | `ArcJsonViewer` (JSON görüntüleyici) | Rubrik kaynak JSON yapısı ve yedek dosyası inceleme | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 95 | `shortcut-recorder` | P2 | `ArcShortcutRecorder` (Klavye kısayolu kaydedici) | Tablet fiziksel klavye kısayollarını özelleştirme | **Normal ekran API çağrısı var (işlev teyitsiz)** |
+| 94 | `json-viewer` | P2 | `ArcJsonViewer` (JSON görüntüleyici) | Rubrik kaynak JSON yapısı ve yedek dosyası inceleme | **Yalnız bileşen kataloğunda; Ayarlar'daki temsili/işlevsiz gösterim kaldırıldı** |
+| 95 | `shortcut-recorder` | P2 | `ArcShortcutRecorder` (Klavye kısayolu kaydedici) | Tablet fiziksel klavye kısayollarını özelleştirme | **Yalnız bileşen kataloğunda; Ayarlar'daki temsili/işlevsiz gösterim kaldırıldı** |
 | 96 | `slot-text` | P2 | `ArcSlotText` (Mekanik sayaç / slot yazı animasyonu) | Toplam puan hesaplanırken makara tarzı dönen rakamlar | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 97 | `changelog-feed` | P2 | `ArcChangelogFeed` (Sürüm geçmişi akışı) | Puanla güncellemeleri ve yenilikler paneli | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 98 | `faq-section` | P2 | `ArcFaqSection` (Sıkça sorulan sorular paneli) | Değerlendirme güvenliği, puanlama kuralları SSS paneli | **Normal ekran API çağrısı var (işlev teyitsiz)** |
+| 97 | `changelog-feed` | P2 | `ArcChangelogFeed` (Sürüm geçmişi akışı) | Puanla güncellemeleri ve yenilikler paneli | **Yalnız bileşen kataloğunda; Ayarlar'daki temsili/işlevsiz gösterim kaldırıldı** |
+| 98 | `faq-section` | P2 | `ArcFaqSection` (Sıkça sorulan sorular paneli) | Değerlendirme güvenliği, puanlama kuralları SSS paneli | **Yalnız bileşen kataloğunda; Ayarlar'daki temsili/işlevsiz gösterim kaldırıldı** |
 | 99 | `comparison-table` | P2 | `ArcComparisonTable` (Karşılaştırma tablosu) | İki öğrencinin veya iki şubenin ölçüt bazında karşılaştırması | **Normal ekran çağrısı yok (entegrasyon eksik)** |
 
 ---
@@ -161,3 +161,11 @@
 
 - Öğrenci tablosunda numara hücresine uzun basma `ArcContextMenu` açar. `ArcContextAction` eylemleri menüyü kapatıp seçili öğrencinin gerçek puanlama ekranına gider veya okul numarasını sistem panosuna kopyalar.
 - Eski katalog `menuContent` API'si korunmuştur; gerçek tablet uzun basma, fare sağ tıklama ve erişilebilirlik henüz uçtan uca test edilmemiştir.
+
+## 11 Ekim 2026 — Veri güvenliği ve kayıt sıralaması (P1)
+
+- **Geri yükleme için iki aşama:** SAF dosyası en fazla 16 MiB olarak okunur; JSON şeması ve tüm tablo ilişkileri kayıt değiştirilmeden önce doğrulanır. Görünen yedek sayıları sonrası ayrı bir `ArcConfirmMorph` eylemiyle üzerine yazma onaylanır. Dosya seçiminin kendisi asla yedeği uygulamaz.
+- **Geri alma bütünlüğü:** Aynı öğrenci-rubrik-ölçüt yazımları `Mutex` ile sıralanır. Puan değiştirilirken gözlem notu korunur. Bir sonraki işlem puanı değiştirmişse önceki puan geri alma eylemi yeni değeri ezmez.
+- Başarılı restore eski oturumun geri alma kuyruğunu siler ve eski veriyle ilişkili bekleyen not/puan yazımları iptal edilir.
+- **Ayar temizliği:** Yalnızca hafızada değişip gerçekte klavye davranışını etkilemeyen kısayol kaydedici, hiçbir yere kaydedilmeyen imza alanı, temsili JSON/FAQ ve statik sürüm listesi Ayarlar'dan çıkarıldı. Arc katalog öğeleri olarak kalabilirler; ürün özelliği sayılmazlar.
+- `BackupImportTest` geçerli özet, bozuk ilişki ve büyük dosya reddini sınar. Gerçek cihaz SAF seçimi, kapanan diyaloglar, eşzamanlı puan-geri alma ve büyük yedek/restore senaryoları için enstrümantasyon testleri hâlâ gereklidir.
