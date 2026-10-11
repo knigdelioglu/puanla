@@ -67,36 +67,36 @@
 
 | # | Arc Kaydı | Öncelik | Compose API (`com.knigdelioglu.arc.compose.*`) | Puanla Ekranı / Kullanım Alanı | Durum |
 |---|---|---|---|---|---|
-| 47 | `expanding-button-group` | P1 | `ArcExpandingButtonGroup` (Genişleyen buton grubu) | Kompakt araç çubuğunda odaklanan eylemin başlık açması | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 48 | `context-menu` | P1 | `ArcContextMenu` (Bağlam menüsü) | Öğrenci numarasına uzun basarak o öğrenciyi puanlama veya numarayı kopyalama | **Öğrenci tablosunda gerçek eylemlere bağlı; tablet etkileşim testi açık** |
-| 49 | `copy-button` | P1 | `ArcCopyButton` (Kopyalama butonu) | Öğrenci numarası veya CSV verisini tek dokunuşla kopyalama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 50 | `theme-switch` | P1 | `ArcThemeSwitch` (Açık/koyu tema geçiş düğmesi) | Üst araç çubuğu ve Ayarlar ekranında tema değişimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 51 | `avatar` | P1 | `ArcAvatar` (Baş harf avatarları) | Öğrenci ad-soyad baş harflerinden anonim profil görseli | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 52 | `avatar-group` | P1 | `ArcAvatarGroup` (İç içe geçmiş avatar grubu) | Grup çalışmasında grup üyelerinin avatarları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 53 | `calendar` | P1 | `ArcCalendar` (Aylık takvim görünümü) | Değerlendirme oturumunun yapıldığı tarihi seçme | **Takvim ay ve gün gezinmesi çalışır; yalnız kütüphane/katalog tarafı, uygulama ekranına bağlanmadı** |
-| 54 | `date-picker` | P1 | `ArcDatePicker` (Tarih seçici) | Rapor filtrelerinde değerlendirme tarihi filtreleme | **Rapor tarih aralığı filtresinde ArcDateRangePicker üzerinden gerçek ArcDatePicker kullanılır; cihaz testi açık** |
-| 55 | `accordion` | P1 | `ArcAccordion` (Açılır kapanır akordeon paneller) | MEB rubrik yönergeleri ve değerlendirme kriterleri yardım alanı | **Puanlama ekranında ölçüt yönergesi ve puan düzeyleri ArcAccordion ile açılır; cihaz testi açık** |
-| 56 | `breadcrumb` | P1 | `ArcBreadcrumb` (Ekmek kırıntısı hiyerarşik yol) | Sınıf › Şube › Rubrik › Öğrenci hiyerarşisi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 57 | `toast` | P1 | `ArcToast` (Tekli bildirim) | Hızlı bilgi mesajları ve durum geri bildirimleri | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 58 | `tree-view` | P1 | `ArcTreeView` (Hiyerarşik ağaç görünümü) | MEB Rubrik Tema › Öğrenme Çıktısı › Ölçütler ağacı | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 59 | `pagination` | P1 | `ArcPagination` (Sayfalama kontrolü) | Kalabalık sınıf ve çok sayıda sonuç listelerinde sayfalama | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 60 | `sparkline` | P1 | `ArcSparkline` (Kompakt mini trend çizgisi) | Sınıfın değerlendirme süreci boyunca başarı eğilimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 61 | `gauge` | P1 | `ArcGauge` (Dairesel gösterge ibresi) | Sınıfın değerlendirme tamamlanma yüzdesi göstergesi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 62 | `animated-counter` | P1 | `ArcAnimatedCounter` (Animasyonlu sayı sayacı) | Puan toplamı değiştikçe akıcı sayı geçişi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 63 | `expanding-search` | P1 | `ArcExpandingSearch` (Genişleyen arama çubuğu) | Tablet başlığında yer tasarrufu sağlayan arama butonu | **Sınıf öğrenci aramasında ArcExpandingSearch bağlı; cihaz testi açık** |
-| 64 | `usage-meter` | P1 | `ArcUsageMeter` (Kapasite ve oran ölçer) | Değerlendirilen / Kalan öğrenci kota ve oran çubuğu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 65 | `image-compare` | P1 | `ArcImageCompare` (Görüntü karşılaştırma sürgüsü) | OCR kaynak fotoğrafı ile işlenen metin bölgesi karşılaştırması | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 66 | `carousel` | P1 | `ArcCarousel` (Çoklu sayfa karuseli) | Çok sayfalı sınıf listesi fotoğrafları arasında kaydırma | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 67 | `bar-chart` | P1 | `ArcBarChart` (Sütun grafik) | Sınıfın not dağılımı (0-49, 50-69, 70-84, 85-100) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 68 | `timeline` | P1 | `ArcTimeline` (Zaman çizelgesi) | Değerlendirme geçmişi, yedek alma ve OCR denetim günlüğü | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 69 | `user-menu` | P1 | `ArcUserMenu` (Öğretmen profil ve işlem menüsü) | Sağ üst köşe öğretmen oturum/ayarlar menüsü | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 70 | `donut-chart` | P1 | `ArcDonutChart` (Halka grafik) | Tamamlanan, Kısmi ve Başlanmayan öğrenci oranları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 71 | `confirm-morph` | P1 | `ArcConfirmMorph` (Dönüşümlü onay butonu) | Tekil öğrenciyi veya puanı yerinde onaylayarak silme | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 72 | `scroll-area` | P1 | `ArcScrollArea` (Özel kaydırma alanı) | Geniş panellerde pürüzsüz kaydırma ve gösterge | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 73 | `command-palette` | P1 | `ArcCommandPalette` (Komut paleti modalı) | Klavyeden Cmd+K / Ctrl+K ile öğrenci, rubrik ve eylem arama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 74 | `notification-center` | P1 | `ArcNotificationCenter` (Bildirim merkezi) | OCR sonuçları, yedekleme bildirimleri ve sistem uyarıları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 75 | `empty-states` | P1 | `ArcEmptyStates` (Durumsal boş ekran şablonları) | Rapor yok, OCR taranmadı veya sınıf seçilmedi durumları | **Sınıfsız durumda ArcEmptyStates.NoClassrooms bağlı; cihaz testi açık** |
-| 76 | `stats-band` | P1 | `ArcStatsBand` (Çoklu istatistik şeridi) | Raporlar ekranı üst özet bandı (Tam, Kısmi, Ortalama vb.) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
+| 47 | `expanding-button-group` | P1 | `ArcExpandingButtonGroup` (Genişleyen buton grubu) | Dar puanlama ekranında Öğrenciler / Ölçütler / Puanlama gezintisi | **ArcExpandingButtonGroup gerçek sekme durumuna bağlı; Compose CI geçti, cihaz testi açık** |
+| 48 | `context-menu` | P1 | `ArcContextMenu` (Bağlam menüsü) | Öğrenci numarasına uzun basarak puanlama veya okul numarasını kopyalama | **ArcContextMenu gerçek eylemlere bağlı; uzun basma cihaz testi açık** |
+| 49 | `copy-button` | P1 | `ArcCopyButton` (Kopyalama butonu) | Rapor CSV önizlemesinden tek dokunuşla kopyalama | **ArcCopyButton gerçek CSV içeriğine bağlı; cihaz testi açık** |
+| 50 | `theme-switch` | P1 | `ArcThemeSwitch` (Açık/koyu tema geçiş düğmesi) | Üst bar ve Ayarlar içinden kalıcı açık/koyu tema değişimi | **ArcThemeSwitch ve yerel tercih saklama bağlı; cihaz testi açık** |
+| 51 | `avatar` | P1 | `ArcAvatar` (Baş harf avatarları) | Öğrenci baş harflerinden cihaz içi avatar | **ArcAvatar gerçek öğrenci adından besleniyor** |
+| 52 | `avatar-group` | P1 | `ArcAvatarGroup` (İç içe geçmiş avatar grubu) | Grup üyelerinin baş harfleri | **ArcAvatarGroup gerçek üyelerden besleniyor** |
+| 53 | `calendar` | P1 | `ArcCalendar` (Aylık takvim görünümü) | Raporları değerlendirme son değişiklik tarihine göre aylık takvimden süzme | **ArcCalendar onSelectDate ile gerçek başlangıç/bitiş tarihini güncelliyor** |
+| 54 | `date-picker` | P1 | `ArcDatePicker` (Tarih seçici) | Raporlardaki tarih aralığı seçimi | **ArcDatePicker, ArcDateRangePicker içinden kullanılıyor; cihaz testi açık** |
+| 55 | `accordion` | P1 | `ArcAccordion` (Açılır kapanır akordeon paneller) | Puanlama ölçüt yönergeleri ve puan düzeyleri | **ArcAccordion gerçek kriter açıklamalarını açıyor** |
+| 56 | `breadcrumb` | P1 | `ArcBreadcrumb` (Ekmek kırıntısı hiyerarşik yol) | Seçili sınıf ve rubriğin üst bar hiyerarşisi | **ArcBreadcrumb gerçek ViewModel seçimlerinden besleniyor** |
+| 57 | `toast` | P1 | `ArcToast` (Tekli bildirim) | Puan kaydetme, hata ve geri al mesajları | **ArcToast, üretimde ArcToastStack içinden gösteriliyor** |
+| 58 | `tree-view` | P1 | `ArcTreeView` (Hiyerarşik ağaç görünümü) | Gerçek rubrik ölçütlerinin açılır hiyerarşik seçimi | **ArcTreeView ölçüt ID'siyle gerçek ölçüt seçiyor; hayalî tema eklenmedi** |
+| 59 | `pagination` | P1 | `ArcPagination` (Sayfalama kontrolü) | Sınıf öğrenci listesinde 25 kayıtlık sayfalama | **ArcPagination, ArcSortableDataTable içinde gerçek sınıf verisini sayfalıyor** |
+| 60 | `sparkline` | P1 | `ArcSparkline` (Kompakt mini trend çizgisi) | Öğrenci sıra numarasına göre kesinleşmiş notların mini grafiği | **ArcSparkline gerçek kesin not değerlerinden besleniyor; zaman trendi değildir** |
+| 61 | `gauge` | P1 | `ArcGauge` (Dairesel gösterge ibresi) | Değerlendirmesi tamamlanan öğrenci oranı | **ArcGauge gerçek tamamlanma oranına bağlı** |
+| 62 | `animated-counter` | P1 | `ArcAnimatedCounter` (Animasyonlu sayı sayacı) | Seçili öğrencinin kesinleşmiş not sayacı | **ArcAnimatedCounter gerçek değerlendirme toplamını gösteriyor** |
+| 63 | `expanding-search` | P1 | `ArcExpandingSearch` (Genişleyen arama çubuğu) | Sınıf ve öğrenci yönetiminde öğrenci arama | **ArcExpandingSearch filtrelenen listeye bağlı** |
+| 64 | `usage-meter` | P1 | `ArcUsageMeter` (Kapasite ve oran ölçer) | Tamamlanan ve kısmi puanlanan öğrenci oranı | **ArcUsageMeter rapor ekranında gerçek öğrenci sayısını gösteriyor** |
+| 65 | `image-compare` | P1 | `ArcImageCompare` (Görüntü karşılaştırma sürgüsü) | Kaynak OCR fotoğrafını metin taslağıyla kıyaslama | **ArcImageCompare gerçek kaynak URI ve OCR adaylarından besleniyor; hücre kutusu karşılaştırması yok** |
+| 66 | `carousel` | P1 | `ArcCarousel` (Çoklu sayfa karuseli) | OCR doğrulamasında öğrencileri tek tek inceleme ve onaylama | **ArcCarousel gerçek OCR adaylarını sayfalıyor; çok fotoğraflı OCR desteği iddia edilmiyor** |
+| 67 | `bar-chart` | P1 | `ArcBarChart` (Sütun grafik) | Tamamlanmış notların dağılımı | **ArcBarChart gerçek kesin not dağılımına bağlı** |
+| 68 | `timeline` | P1 | `ArcTimeline` (Zaman çizelgesi) | Room denetim günlüğündeki gerçek işlemler | **ArcTimeline denetim kayıtlarını gösteriyor** |
+| 69 | `user-menu` | P1 | `ArcUserMenu` (Öğretmen profil ve işlem menüsü) | Yerel öğretmen ayarlarına geçiş ve sınıfın yılı | **ArcUserMenu gerçek Ayarlar gezintisine bağlı; hesap/oturum açma iddiası yok** |
+| 70 | `donut-chart` | P1 | `ArcDonutChart` (Halka grafik) | Tamamlanan, kısmi ve başlanmayan öğrenci grupları | **ArcDonutChart gerçek değerlendirme durumlarına bağlı** |
+| 71 | `confirm-morph` | P1 | `ArcConfirmMorph` (Dönüşümlü onay butonu) | Onaylanmış OCR kayıtlarının aktarımı ve yedek geri yükleme | **ArcConfirmMorph iki aşamalı gerçek veri mutasyonunu onaylıyor** |
+| 72 | `scroll-area` | P1 | `ArcScrollArea` (Özel kaydırma alanı) | Ayarlar ekranının tek eksenli kontrollü kaydırılması | **ArcScrollArea gerçek verticalScroll ve kaydırma sınırı göstergesi uyguluyor** |
+| 73 | `command-palette` | P1 | `ArcCommandPalette` (Komut paleti modalı) | Ctrl/⌘+K komutuyla öğrenci, sınıf ve eylemlere geçiş | **ArcCommandPalette gerçek komut/eğitim listesiyle bağlı** |
+| 74 | `notification-center` | P1 | `ArcNotificationCenter` (Bildirim merkezi) | Yerel Room işlem geçmişini inceleme | **ArcNotificationCenter gerçek AuditLogEntity kayıtlarını gösteriyor** |
+| 75 | `empty-states` | P1 | `ArcEmptyStates` (Durumsal boş ekran şablonları) | Sınıf bulunmadığında oluşturma çağrısı | **ArcEmptyStates.NoClassrooms gerçek sınıf oluşturma diyalogunu açıyor** |
+| 76 | `stats-band` | P1 | `ArcStatsBand` (Çoklu istatistik şeridi) | Sınıf metriklerinin üst özet şeridi | **ArcStatsBand güncel değerlendirme sonuçlarıyla bağlı** |
 
 ---
 
@@ -205,3 +205,11 @@
 - **OCR:** `ArcFileUpload` önceki seçili görselin gerçek dosya bilgisini gösterir ve kaldırır. `ArcSkeleton` OCR taraması sırasında gösterilir. `ArcSlider`, fotoğraf/OCR karşılaştırmasında görüntü yakınlaştırmasını gerçekten değiştirir.
 - **Sonuç:** P0 matrisindeki **46 kaydın tamamı en az bir normal üretim akışında doğrudan veya Arc alt bileşeni üzerinden kullanılmaktadır**; bu beyan kaynak kodu bağlantısını belirtir, *gerçek tablette uçtan uca doğrulama* değildir. Kalan P1/P2 katalog girdileri ürün kapsamından bağımsız değerlendirilir.
 - **Gerçek cihazda test edilmeyenler:** kaydırma jestleri, drawer dışına dokunarak kapatma, modal sheet geri düğmesi, küçük ekranlarda menü taşması, dosya sürükle-bırak URI izinleri, uzun rubrik başlıkları, fiziksel klavye/TalkBack ve OCR/CSV SAF dosya izinleri.
+
+## 11 Ekim 2026 — P1 üretim bağlantıları ve doğrulama kapsamı
+
+- 30 P1 kaydının 27'si normal Android ekranından doğrudan çağrılıyor; 3'ü bileşen bileşimiyle gerçek işlev görüyor: `ArcDatePicker` (`ArcDateRangePicker` içinden), `ArcToast` (`ArcToastStack` içinden), `ArcPagination` (`ArcSortableDataTable` içinden). Bunları sırf istatistiği artırmak için ayrı birer kopya olarak eklemek gereksizdir.
+- **Bu aşamada eklenenler:** `ArcExpandingButtonGroup` kompakt puanlama gezinmesine, `ArcTreeView` gerçek ölçüt IDsine, `ArcCalendar` rapor tarih filtresine, `ArcCarousel` OCR aday incelemesine, `ArcUserMenu` yerel Ayarlar geçişine bağlandı. `ArcScrollArea` önceki boş sarmalayıcı yerine gerçek kaydırma ve alt sınır göstergesi kullanıyor; Ayarlar sayfası bununla çalışıyor.
+- `ArcCarousel` içindeki geçersiz güncel indeks, veri listesi küçülürken güvenli sınıra çekiliyor. OCR aday sayfasının açık onayı tekil aday kimliğine bağlanmıştır.
+- **Yanlış algı oluşmaması için:** `ArcTreeView` MEB kaynaklı Tema/Öğrenme Çıktısı hiyerarşisi oluşturmaz; mevcut rubriğin gerçek ölçütlerinden iki düzeyli ağaç yapar. `ArcCalendar` değerlendirme oturumu geçmişini yazmaz; var olan değerlendirmelerin *son değişiklik* tarihini filtreler. `ArcCarousel` çoklu fotoğrafı tek PDF/OCR işine birleştirme özelliği değildir. `ArcUserMenu` bir kullanıcı hesabı veya bulut oturumu açmaz.
+- **CI ve test sınırı:** Derleme/birim testleri yeni composable bağlantılarını doğrular; tablet üzerindeki odak, IME, dokunma, geniş/dar ekran, TalkBack, dışarı sürükleme ve modal kapatma deneyimini kapsamaz. Bu senaryolar yerel Android cihaz/enstrümantasyon testlerini gerektirir.
