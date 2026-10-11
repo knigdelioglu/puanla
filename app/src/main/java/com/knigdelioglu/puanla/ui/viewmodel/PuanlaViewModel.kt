@@ -404,8 +404,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun undoAction(id: String) {
-        // A new write can still be in flight when the user presses Undo.
-        // Never accidentally undo a different or not-yet-saved action.
+        val undoJob = currentCoroutineContext()[Job]
+        if (isRestoring.value) {
+            showToast("Geri yükleme sırasında puan geri alınamaz.")
+            return
+        }
+        // A write can still be in flight when Undo is pressed.
         if (activeScoreJobs.any { it.isActive }) {
             showToast("Puan kaydı sürüyor; tamamlandıktan sonra geri alabilirsiniz.")
             return
@@ -415,6 +419,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             showToast("Bu geri alma işlemi güncel değil; daha yeni bir puanlama yapıldı.")
             return
         }
+        // An undo is itself a database mutation. Track it so a concurrent backup
+        // restore can cancel AND await it before replacing the score tables.
+        if (undoJob != null) activeScoreJobs.add(undoJob)
         try {
             if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
             else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
@@ -424,6 +431,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         } catch (e: Exception) {
             undoStack.restore(id, action)
             showToast("Geri alma başarısız: ${e.message}")
+        } finally {
+            if (undoJob != null) activeScoreJobs.remove(undoJob)
         }
     }
 
