@@ -54,6 +54,8 @@ import com.knigdelioglu.arc.compose.controls.ArcInput
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
 import com.knigdelioglu.arc.compose.controls.ArcExpandingSearch
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcRadioGroup
+import com.knigdelioglu.arc.compose.display.ArcPopover
 import com.knigdelioglu.arc.compose.datavis.ArcChipGroup
 import com.knigdelioglu.arc.compose.datavis.ArcSortableDataTable
 import com.knigdelioglu.arc.compose.datavis.ArcTableColumn
@@ -85,6 +87,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     var inspectedStudent by remember { mutableStateOf<StudentEntity?>(null) }
     var studentPendingDeletion by remember { mutableStateOf<StudentEntity?>(null) }
     var assessmentStatus by remember { mutableStateOf("Tümü") }
+    var showStatusFilters by remember { mutableStateOf(false) }
 
     val gradeChips = listOf("Tümü", "9. Sınıf", "10. Sınıf", "11. Sınıf", "12. Sınıf")
 
@@ -178,11 +181,28 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                         onItemSelected = { selectedGradeFilter = gradeChips.indexOf(it).coerceAtLeast(0) }
                     )
                     if (selectedClassroom != null) {
-                        ArcChipGroup(
-                            items = listOf("Tümü", "Tamamlanan", "Kısmi", "Puanlanmadı"),
-                            selectedItem = assessmentStatus,
-                            onItemSelected = { assessmentStatus = it }
-                        )
+                        Box {
+                            ArcButton(
+                                text = "Durum: $assessmentStatus",
+                                onClick = { showStatusFilters = !showStatusFilters },
+                                variant = ArcButtonVariant.Outline,
+                                size = ArcButtonSize.Sm
+                            )
+                            ArcPopover(
+                                isOpen = showStatusFilters,
+                                onDismiss = { showStatusFilters = false }
+                            ) {
+                                ArcRadioGroup(
+                                    options = listOf("Tümü", "Tamamlanan", "Kısmi", "Puanlanmadı"),
+                                    selectedOption = assessmentStatus,
+                                    onOptionSelected = {
+                                        assessmentStatus = it
+                                        showStatusFilters = false
+                                    },
+                                    modifier = Modifier.width(185.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
