@@ -169,3 +169,11 @@
 - Başarılı restore eski oturumun geri alma kuyruğunu siler ve eski veriyle ilişkili bekleyen not/puan yazımları iptal edilir.
 - **Ayar temizliği:** Yalnızca hafızada değişip gerçekte klavye davranışını etkilemeyen kısayol kaydedici, hiçbir yere kaydedilmeyen imza alanı, temsili JSON/FAQ ve statik sürüm listesi Ayarlar'dan çıkarıldı. Arc katalog öğeleri olarak kalabilirler; ürün özelliği sayılmazlar.
 - `BackupImportTest` geçerli özet, bozuk ilişki ve büyük dosya reddini sınar. Gerçek cihaz SAF seçimi, kapanan diyaloglar, eşzamanlı puan-geri alma ve büyük yedek/restore senaryoları için enstrümantasyon testleri hâlâ gereklidir.
+
+## 11 Ekim 2026 — P1 ad/soyad ve geri alma tutarlılığı
+
+- Hızlı puanlama tostu artık rastgele son Undo eylemini değil, oluşturduğu puan işleminin benzersiz ID'sini hedefler. Eski tosta basıldığında daha yeni öğrenci puanı geri alınmaz.
+- `UndoHistory` bunun sıralamasını izler; başarısız veya iptal edilen eylemlere yeniden deneme olanağı tanır. `UndoHistoryTest` üretim sınıfını kullanır.
+- Öğrenci ad ve soyad düzenlemeleri tek satırın tüm eski kopyasını kaydetmek yerine yalnız seçili alanı Room transaction'ı içinde günceller. Boş ad/soyad ve bozuk metinler yedeği geçersiz hâle getiremeden reddedilir (`StudentNameRulesTest`).
+- Tekil öğrenci eklemede numara doğrulama ve benzersizlik kontrolü tek transaction'dadır; doğrulama hatalarında coroutine düşmek yerine uygulama hata sonucu döndürür.
+- Tam yedek almadan önce tamamlanmamış puan ve gözlem notları beklenir. Restore öncesi iptal edilen puan / not / geri alma yazımları sonlanana dek beklenir. Bunlar henüz enstrümantasyon testi ile uçtan uca kanıtlanmış değildir.

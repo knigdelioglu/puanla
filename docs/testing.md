@@ -24,3 +24,12 @@ Başarılı birim test ve APK derlemesi, gerçek cihaz fonksiyonlarının çalı
 ## Eklenen P1 rapor tarihi testleri (11 Ekim 2026)
 
 `AssessmentDateFilterTest` üretimde kullanılan son-değişiklik tarihi filtresini Europe/Istanbul gün sınırlarıyla ve açık başlangıç/bitiş aralıklarıyla doğrular. Material3 tarih penceresi, tablet üzerindeki gerçek dokunma akışı ve takvim ay değiştirme davranışı yalnız birim testle doğrulanamaz; cihaz testi açıktır.
+
+## 11 Ekim 2026 — P1 veri bütünlüğü sertleştirmesi
+
+- `UndoHistoryTest`: Bir bildirimden gelen eski geri alma eylemi, daha yeni başka bir puan kaydını geri alamaz. Başarısız geri alma ve yedek sonrası geçmiş temizliği de birim testindedir.
+- `StudentNameRulesTest`: Boş / rakamlı / aşırı uzun / kontrol karakterli ad-soyad reddedilir; Türkçe soyadı büyük harfe çevirme ve çok sözcüklü ad desteklenir. Sınıf listesi ayrı ad ve soyad alanlarını işlem bazında günceller.
+- Tekil öğrenci kaydında okul numarası tekrarı kontrolü ve ekleme aynı Room transaction'ındadır; doğrulama hataları `Result.failure` üzerinden kullanıcıya döner.
+- Puan ve gözlem notu yazımları, tam JSON yedeği üretilmeden önce tamamlanır. Geri yüklemede bekleyen puan, not ve geri alma işlemleri iptal edilip `joinAll` ile sonlanmaları beklenir.
+- Farklı yedek dosyası seçildiğinde önceki ikinci onay otomatik sıfırlanır.
+- **Cihazda hâlâ doğrulanması gerekenler:** hızlı art arda ölçüt puanlama + eski toast geri alma, ad/soyad eşzamanlı düzenleme, en son gözlem notunu girip hemen yedek alma, Android SAF üzerinden gerçek dosya seçme ve geri yükleme, sınıf ve grup işlemleri sırasında restore.
