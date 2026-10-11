@@ -15,7 +15,7 @@ Kaynak: Kullanıcının sağladığı **Puanla — Ürün Amacı ve İşlevsel K
 7. **Güven:** Çevrimdışı veri kullanımı, yerel kayıt, yedekleme/geri yükleme; öğrencilerin kişisel bilgileri gereksiz dış hizmetlere çıkmaz.
 
 ## Mevcut içerik bilgisi
-Önceki 11. sınıf TDE içeriğinde 8 rubrik adı: **İletişim Engelleri, E-posta, Türk Dünyası Konuşma, Müze İzlenim Yazısı, Kemal Tahir Mülakat, Diyalog Dönüştürme, Tiyatro Canlandırma, Afiş**. Toplam 48 değerlendirme ölçütü; İletişim Engelleri ile bağlantılı 7 maddelik grup hazırlığı listesi. Tam ölçüt metinleri ve puan ağırlıkları kullanıcı raporunda **yoktur**. Bu nedenle içerik üretimi yapılmaz, özgün JSON beklenir.
+Kullanıcının sağladığı `35-ogrenci-rubrik-puanlama.xlsx` dosyası 11. sınıf için 8 rubrik ve 48 ölçüt içerir: **İletişim Engelleri, E-posta, Türk Dünyası Konuşma, Müze İzlenim Yazısı, Kemal Tahir Mülakat, Diyalog Dönüştürme, Tiyatro Canlandırma, Afiş**. Her rubrik 100 puandır. Ölçüt metinleri ve puan ağırlıkları `data/rubrics.json` dosyasına aktarılmıştır. Yalnızca kaynakta bulunan İletişim Engelleri ölçüt açıklamaları ve 7 maddelik grup hazırlık listesi eklenmiştir; grup hazırlığı bireysel nota dâhil değildir. Kaynak çalışma kitabındaki boş sınıf listesi aktarılmamıştır.
 
 ## Değişmez kabul koşulları
 - Aynı sınıfta farklı öğrenciler ve farklı sınıflarda aynı öğrenci için kayıt izolasyonu.

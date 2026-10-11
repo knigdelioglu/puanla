@@ -2,6 +2,8 @@
 
 Bu klasör rubrik JSON dosyaları ve şema gibi **kaynak veriler** içindir. Uygulamanın çalışma zamanı öğrenci kayıtları burada tutulmaz.
 
-Yeni depoda önceki uygulamanın `rubrics.json` dosyası bulunmuyor. 10 Ekim 2026 tarihli ürün raporu 11. sınıf TDE için 8 rubrik, 48 ölçüt ve bir rubriğe bağlı 7 maddelik grup hazırlık listesi bulunduğunu belirtir; fakat **ölçüt metinleri ve puan ağırlıkları raporda mevcut değildir**.
+`rubrics.json`, kullanıcının sağladığı `35-ogrenci-rubrik-puanlama.xlsx` çalışma kitabından aktarılmış onaylı rubrik kataloğudur. Android uygulaması bu dosyayı paket varlığı olarak okur ve eksik rubrikleri Room'a ilk açılışta, tek transaction içinde ekler. Katalog yalnızca **11. sınıf** için geçerlidir.
 
-Eski, doğrulanmış `data/rubrics.json` bulunduğunda orijinal içerik korunarak içeri alınmalıdır. Ölçütleri tahmin ederek JSON üretmeyin. Bu klasör Android kaynaklarından ayrı tutulur; dönüştürme/versiyonlama işlemleri açık talep ve test gerektirir.
+Katalogda 8 rubrik ve 48 ölçüt vardır; her rubriğin azami puanı 100'dür. Çalışma kitabında yalnızca “İletişim Engelleri” rubriğinin ölçüt açıklamaları ve 7 maddelik grup hazırlık listesi bulunur. Diğer rubriklerde bulunmayan açıklama/düzeyler üretilmemiştir. Grup hazırlık listesi bireysel nota eklenmez. Boş “Sınıf Listesi” sekmesinden öğrenci veya sınıf aktarılmamıştır.
+
+Kaynak dosyadaki rubrik başlıkları, ölçüt metinleri, puan ağırlıkları ve sıralama değiştirilmeden aktarılmalıdır. Yeni bir kaynak geldiğinde içerik otomatik dönüştürülmeden önce açık talep ve test gerekir.

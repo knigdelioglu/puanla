@@ -96,8 +96,14 @@ interface RubricDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRubric(rubric: RubricEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRubricIfAbsent(rubric: RubricEntity)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCriteria(criteria: List<CriterionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertCriteriaFromApprovedSource(criteria: List<CriterionEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLevels(levels: List<CriterionLevelEntity>)

@@ -8,7 +8,11 @@ import com.knigdelioglu.puanla.data.local.CriterionScoreEntity
 import com.knigdelioglu.puanla.data.local.GroupTaskEntity
 import com.knigdelioglu.puanla.data.local.PuanlaDatabase
 import com.knigdelioglu.puanla.data.local.RubricEntity
+import com.knigdelioglu.puanla.data.local.RubricCatalog
+import com.knigdelioglu.puanla.data.local.RubricCatalogParser
 import com.knigdelioglu.puanla.data.local.RubricSeeder
+import com.knigdelioglu.puanla.data.local.toCriterionEntities
+import com.knigdelioglu.puanla.data.local.toEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.domain.export.CsvCriterion
 import com.knigdelioglu.puanla.domain.export.CsvStudent
@@ -23,13 +27,20 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.group.GroupChecklistRules
 
-class PuanlaRepository(private val db: PuanlaDatabase) {
+class PuanlaRepository(
+    private val db: PuanlaDatabase,
+    private val rubricCatalogSource: suspend () -> String
+) {
 
     private val classroomDao = db.classroomDao()
     private val studentDao = db.studentDao()
@@ -38,8 +49,25 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     private val groupTaskDao = db.groupTaskDao()
     private val auditLogDao = db.auditLogDao()
 
+    private val rubricCatalogMutex = Mutex()
+    @Volatile private var rubricCatalog: RubricCatalog? = null
+
+    private suspend fun loadRubricCatalog(): RubricCatalog = rubricCatalogMutex.withLock {
+        rubricCatalog ?: withContext(Dispatchers.IO) {
+            RubricCatalogParser.parse(rubricCatalogSource())
+        }.also { rubricCatalog = it }
+    }
+
     suspend fun initialize() {
-        // No approved rubric source is in the repository. Never seed invented assessment criteria.
+        val catalog = loadRubricCatalog()
+        db.withTransaction {
+            catalog.rubrics.forEach { definition ->
+                if (rubricDao.getRubricById(definition.id) == null) {
+                    rubricDao.insertRubricIfAbsent(definition.toEntity())
+                    rubricDao.insertCriteriaFromApprovedSource(definition.toCriterionEntities())
+                }
+            }
+        }
     }
 
     // Classrooms
@@ -208,6 +236,10 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
 
     suspend fun getCriteriaForRubric(rubricId: String): List<CriterionEntity> =
         rubricDao.getCriteriaForRubric(rubricId)
+
+    suspend fun getGroupPreparationChecklist(rubricId: String): List<String> =
+        loadRubricCatalog().rubrics.firstOrNull { it.id == rubricId }
+            ?.groupPreparationChecklist?.items.orEmpty()
 
     fun getCriteriaForRubricFlow(rubricId: String): Flow<List<CriterionEntity>> =
         rubricDao.getCriteriaForRubricFlow(rubricId)
