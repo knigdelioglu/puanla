@@ -97,12 +97,16 @@ fun ArcElasticSlider(
 
     val fraction = ((displayValue - min) / span).coerceIn(0f, 1f)
 
+    // Respect ArcTheme(reducedMotion=true) rather than using Compose defaults.
+    val motion = ArcMotion.current
     val thumbElevation by animateDpAsState(
         targetValue = if (isDragging) 6.dp else 2.dp,
+        animationSpec = motion.fastTween(),
         label = "arcSliderThumbElev"
     )
     val thumbSize by animateDpAsState(
         targetValue = if (isDragging) 30.dp else 24.dp,
+        animationSpec = motion.fastTween(),
         label = "arcSliderThumbSize"
     )
 

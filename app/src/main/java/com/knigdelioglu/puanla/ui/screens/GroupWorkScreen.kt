@@ -40,6 +40,10 @@ import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcCheckbox
 import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcInput
+import com.knigdelioglu.arc.compose.controls.ArcMultiSelect
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcAvatarGroup
@@ -333,50 +337,21 @@ private fun CreateGroupDialog(
                 )
                 Spacer(Modifier.height(8.dp))
 
-                LazyColumn(
-                    modifier = Modifier.height(200.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(students) { std ->
-                        val isSelected = selectedStudentIds.contains(std.id)
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedStudentIds = if (isSelected) {
-                                        selectedStudentIds - std.id
-                                    } else {
-                                        selectedStudentIds + std.id
-                                    }
-                                },
-                            shape = ArcTheme.shapes.control,
-                            color = if (isSelected) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surface,
-                            border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ArcCheckbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { checked ->
-                                        selectedStudentIds = if (checked) {
-                                            selectedStudentIds + std.id
-                                        } else {
-                                            selectedStudentIds - std.id
-                                        }
-                                    }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "${std.studentNumber} - ${std.fullName}",
-                                    fontSize = 13.sp,
-                                    color = ArcTheme.colors.foreground
-                                )
-                            }
-                        }
-                    }
-                }
+                // One controlled Arc selection component, no nested row/checkbox
+                // click handlers that could toggle the same pupil twice.
+                ArcMultiSelect(
+                    selectedItems = selectedStudentIds,
+                    items = students.map { it.id },
+                    onSelectionChanged = { selectedStudentIds = it },
+                    labelProvider = { id ->
+                        students.firstOrNull { it.id == id }?.let {
+                            "${it.studentNumber} - ${it.fullName}"
+                        } ?: id
+                    },
+                    modifier = Modifier
+                        .heightIn(max = 200.dp)
+                        .verticalScroll(rememberScrollState())
+                )
 
                 Spacer(Modifier.height(20.dp))
 

@@ -34,6 +34,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
@@ -91,6 +93,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
+    val scope = rememberCoroutineScope()
+    val undoSelected: () -> Unit = { scope.launch { viewModel.undoLastAction() } }
 
     var searchQuery by remember { mutableStateOf("") }
     var activeCriterionIndex by remember { mutableIntStateOf(0) }
@@ -171,7 +175,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                             activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
                         },
                         onPrevStudent = { viewModel.previousStudent() },
-                        onNextStudent = { viewModel.nextStudent() }
+                        onNextStudent = { viewModel.nextStudent() },
+                        onUndo = undoSelected
                     )
                 }
             )
@@ -206,7 +211,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                     activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
                 },
                 onPrevStudent = { viewModel.previousStudent() },
-                onNextStudent = { viewModel.nextStudent() }
+                onNextStudent = { viewModel.nextStudent() },
+                onUndo = undoSelected
             )
         }
     }
@@ -444,7 +450,8 @@ private fun ScoringControlPane(
     onClearScore: () -> Unit,
     onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
-    onNextStudent: () -> Unit
+    onNextStudent: () -> Unit,
+    onUndo: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val colors = ArcTheme.colors
@@ -678,24 +685,29 @@ private fun ScoringControlPane(
 
             Spacer(Modifier.height(12.dp))
 
-            // Navigation Bar for Quick Student Switching
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ArcButton(
-                    text = "Önceki Öğrenci",
-                    onClick = onPrevStudent,
-                    variant = ArcButtonVariant.Outline,
-                    size = ArcButtonSize.Md
-                )
-                ArcButton(
-                    text = "Sonraki Öğrenci",
-                    onClick = onNextStudent,
-                    variant = ArcButtonVariant.Primary,
-                    size = ArcButtonSize.Md
-                )
+            // P0 Arc tablet toolbar: visible navigation + actual undo action.
+            // Kept outside the scrolling criterion content.
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ArcFloatingButtonGroup {
+                    ArcButton(
+                        text = "Önceki",
+                        onClick = onPrevStudent,
+                        variant = ArcButtonVariant.Outline,
+                        size = ArcButtonSize.Sm
+                    )
+                    ArcButton(
+                        text = "Geri Al",
+                        onClick = onUndo,
+                        variant = ArcButtonVariant.Secondary,
+                        size = ArcButtonSize.Sm
+                    )
+                    ArcButton(
+                        text = "Sonraki",
+                        onClick = onNextStudent,
+                        variant = ArcButtonVariant.Primary,
+                        size = ArcButtonSize.Sm
+                    )
+                }
             }
         }
     }
@@ -719,7 +731,8 @@ private fun CompactScoringLayout(
     onClearScore: () -> Unit,
     onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
-    onNextStudent: () -> Unit
+    onNextStudent: () -> Unit,
+    onUndo: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
 
@@ -764,7 +777,8 @@ private fun CompactScoringLayout(
                 onClearScore = onClearScore,
                 onNoteChange = onNoteChange,
                 onPrevStudent = onPrevStudent,
-                onNextStudent = onNextStudent
+                onNextStudent = onNextStudent,
+                onUndo = onUndo
             )
         }
     }
