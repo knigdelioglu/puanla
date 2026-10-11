@@ -663,12 +663,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
         launchMutation {
-            val array = JSONArray(task.checklistJson)
-            if (itemIndex in 0 until array.length()) {
-                val obj = array.getJSONObject(itemIndex)
-                obj.put("checked", !obj.getBoolean("checked"))
-                val updated = task.copy(checklistJson = array.toString())
-                repository.saveGroupTask(updated)
+            try {
+                repository.toggleGroupChecklistItem(task.id, itemIndex)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Grup görevi güncellenemedi: ${e.message}")
             }
         }
     }

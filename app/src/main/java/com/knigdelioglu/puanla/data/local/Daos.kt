@@ -150,6 +150,9 @@ interface AuditLogDao {
 
 @Dao
 interface GroupTaskDao {
+    @Query("SELECT * FROM group_tasks WHERE id = :id LIMIT 1")
+    suspend fun getGroupTaskById(id: String): GroupTaskEntity?
+
     @Query("SELECT * FROM group_tasks WHERE classroomId = :classroomId AND rubricId = :rubricId")
     fun getGroupTasksFlow(classroomId: String, rubricId: String): Flow<List<GroupTaskEntity>>
 

@@ -27,6 +27,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
+import com.knigdelioglu.puanla.domain.group.GroupChecklistRules
 
 class PuanlaRepository(private val db: PuanlaDatabase) {
 
@@ -314,6 +315,14 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
 
     suspend fun deleteGroupTask(task: GroupTaskEntity) {
         groupTaskDao.deleteGroupTask(task)
+    }
+
+    /** Atomic read-modify-write of the most recent checklist. */
+    suspend fun toggleGroupChecklistItem(taskId: String, index: Int) = db.withTransaction {
+        val current = requireNotNull(groupTaskDao.getGroupTaskById(taskId)) { "Grup bulunamadı." }
+        groupTaskDao.insertOrUpdateGroupTask(
+            current.copy(checklistJson = GroupChecklistRules.toggle(current.checklistJson, index))
+        )
     }
 
     // Audit logs
