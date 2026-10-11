@@ -35,6 +35,12 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -273,15 +279,21 @@ fun ArcPopover(
 }
 
 /**
- * Arc Tooltip: hover and long-press accessibility label.
+ * Arc Tooltip: Material3 hover, focus and touch long-press hint.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArcTooltip(
     tooltipText: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    Box(modifier = modifier) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(tooltipText) } },
+        state = rememberTooltipState(),
+        modifier = modifier
+    ) {
         content()
     }
 }

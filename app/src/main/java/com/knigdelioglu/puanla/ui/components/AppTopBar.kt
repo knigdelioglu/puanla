@@ -19,6 +19,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcSelect
+import com.knigdelioglu.arc.compose.display.ArcTooltip
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
@@ -90,11 +91,13 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                 )
 
                 // Real local audit events, not simulated notifications.
-                ArcActionButton(
-                    onClick = { viewModel.isNotificationCenterOpen.value = true },
-                    size = ArcButtonSize.Sm
-                ) {
-                    Icon(Icons.Default.History, contentDescription = "İşlem Geçmişini Aç")
+                ArcTooltip(tooltipText = "Yerel işlem geçmişini aç") {
+                    ArcActionButton(
+                        onClick = { viewModel.isNotificationCenterOpen.value = true },
+                        size = ArcButtonSize.Sm
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = "İşlem Geçmişini Aç")
+                    }
                 }
 
                 // Theme Switch
