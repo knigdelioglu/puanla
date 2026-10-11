@@ -44,6 +44,9 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcContextAction
+import com.knigdelioglu.arc.compose.display.ArcSwipeActions
+import com.knigdelioglu.arc.compose.navigation.ArcDrawer
+import com.knigdelioglu.arc.compose.datavis.ArcFilterToolbar
 import com.knigdelioglu.arc.compose.controls.ArcContextMenu
 import com.knigdelioglu.arc.compose.controls.ArcHoldToConfirm
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
@@ -79,6 +82,9 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     var selectedGradeFilter by remember { mutableIntStateOf(0) } // 0: Tümü, 9..12
     var isAddClassDialogOpen by remember { mutableStateOf(false) }
     var isAddStudentDialogOpen by remember { mutableStateOf(false) }
+    var inspectedStudent by remember { mutableStateOf<StudentEntity?>(null) }
+    var studentPendingDeletion by remember { mutableStateOf<StudentEntity?>(null) }
+    var assessmentStatus by remember { mutableStateOf("Tümü") }
 
     val gradeChips = listOf("Tümü", "9. Sınıf", "10. Sınıf", "11. Sınıf", "12. Sınıf")
 
@@ -90,15 +96,24 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
         }
     }
 
-    val filteredStudents = remember(students, searchQuery) {
-        if (searchQuery.isBlank()) students
-        else students.filter {
-            it.fullName.contains(searchQuery, ignoreCase = true) || it.studentNumber.contains(searchQuery)
-        }
-    }
-
     val assessmentMap = remember(classAssessments) {
         classAssessments.associateBy { it.studentId }
+    }
+
+    val filteredStudents = remember(students, searchQuery, assessmentStatus, assessmentMap) {
+        students.filter { student ->
+            val matchesText = searchQuery.isBlank() ||
+                student.fullName.contains(searchQuery, ignoreCase = true) ||
+                student.studentNumber.contains(searchQuery)
+            val asm = assessmentMap[student.id]
+            val matchesStatus = when (assessmentStatus) {
+                "Tamamlanan" -> asm?.isCompleted == true
+                "Kısmi" -> asm?.isCompleted != true && (asm?.scoredCount ?: 0) > 0
+                "Puanlanmadı" -> asm?.isCompleted != true && (asm?.scoredCount ?: 0) == 0
+                else -> true
+            }
+            matchesText && matchesStatus
+        }
     }
 
     Column(
@@ -144,11 +159,33 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
             }
         }
 
-        // Grade Filter Chips
-        ArcChipGroup(
-            items = gradeChips,
-            selectedItem = gradeChips.getOrNull(selectedGradeFilter) ?: gradeChips.first(),
-            onItemSelected = { selectedGradeFilter = gradeChips.indexOf(it).coerceAtLeast(0) }
+        // Arc P0: shared search/filter toolbar (actual roster status + school grade).
+        ArcFilterToolbar(
+            searchSlot = {
+                if (selectedClassroom != null) {
+                    ArcExpandingSearch(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        placeholder = "Öğrenci adı veya numarası"
+                    )
+                }
+            },
+            filterChipsSlot = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ArcChipGroup(
+                        items = gradeChips,
+                        selectedItem = gradeChips.getOrNull(selectedGradeFilter) ?: gradeChips.first(),
+                        onItemSelected = { selectedGradeFilter = gradeChips.indexOf(it).coerceAtLeast(0) }
+                    )
+                    if (selectedClassroom != null) {
+                        ArcChipGroup(
+                            items = listOf("Tümü", "Tamamlanan", "Kısmi", "Puanlanmadı"),
+                            selectedItem = assessmentStatus,
+                            onItemSelected = { assessmentStatus = it }
+                        )
+                    }
+                }
+            }
         )
 
 
@@ -236,10 +273,11 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = ArcTheme.colors.foreground
                     )
-                    ArcExpandingSearch(
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it },
-                        placeholder = "Öğrenci ara..."
+                    ArcButton(
+                        text = "Filtreyi Temizle",
+                        onClick = { searchQuery = ""; assessmentStatus = "Tümü" },
+                        variant = ArcButtonVariant.Ghost,
+                        size = ArcButtonSize.Sm
                     )
                 }
 
@@ -260,7 +298,11 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             comparator = compareBy { it.studentNumber.toIntOrNull() ?: 0 }
                         ) { student ->
                             val clipboard = LocalClipboardManager.current
-                            ArcContextMenu(
+                            ArcSwipeActions(
+                                onEdit = { inspectedStudent = student },
+                                onDelete = { studentPendingDeletion = student }
+                            ) {
+                                ArcContextMenu(
                                 actions = listOf(
                                     ArcContextAction("Bu Öğrenciyi Puanla") {
                                         viewModel.selectStudent(student)
@@ -287,7 +329,8 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                                         )
                                     }
                                 }
-                            )
+                                )
+                            }
                         },
                         ArcTableColumn<StudentEntity>(
                             title = "Adı",
@@ -334,29 +377,10 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             title = "İşlem",
                             weight = 0.8f
                         ) { student ->
-                            var showDeleteDialog by remember { mutableStateOf(false) }
-
-                            IconButton(onClick = { showDeleteDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Sil",
-                                    tint = ArcTheme.colors.danger,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            IconButton(onClick = { studentPendingDeletion = student }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Öğrenciyi Sil",
+                                    tint = ArcTheme.colors.danger, modifier = Modifier.size(20.dp))
                             }
-
-                            ArcDialog(
-                                isOpen = showDeleteDialog,
-                                onDismissRequest = { showDeleteDialog = false },
-                                title = "Öğrenciyi Sil",
-                                description = "${student.fullName} (${student.studentNumber}) kaydı silinecektir. Bu işlem geri alınamaz.",
-                                confirmText = "Sil",
-                                cancelText = "Vazgeç",
-                                onConfirm = {
-                                    viewModel.deleteStudent(student)
-                                    showDeleteDialog = false
-                                }
-                            )
                         }
                     )
 
@@ -369,6 +393,58 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 }
             }
         }
+    }
+
+    val inspected = inspectedStudent?.let { old -> students.firstOrNull { it.id == old.id } }
+    ArcDrawer(
+        isOpen = inspected != null,
+        onClose = { inspectedStudent = null },
+        title = "Öğrenci Bilgileri"
+    ) {
+        inspected?.let { student ->
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Text("Okul no: ${student.studentNumber}", color = ArcTheme.colors.textSecondary)
+                Text("Adı", fontWeight = FontWeight.SemiBold)
+                ArcInlineEdit(
+                    value = student.firstName,
+                    onCommit = { viewModel.updateStudentName(student.id, firstName = it) }
+                )
+                Text("Soyadı", fontWeight = FontWeight.SemiBold)
+                ArcInlineEdit(
+                    value = student.lastName,
+                    onCommit = { viewModel.updateStudentName(student.id, lastName = it) }
+                )
+                val assessment = assessmentMap[student.id]
+                Text(
+                    text = when {
+                        assessment?.isCompleted == true -> "Değerlendirme tamamlandı: ${assessment.definitiveTotal}"
+                        (assessment?.scoredCount ?: 0) > 0 -> "Kısmi değerlendirme: ${assessment?.scoredCount} ölçüt"
+                        else -> "Henüz puanlanmadı"
+                    },
+                    color = ArcTheme.colors.textSecondary
+                )
+                ArcButton(text = "Bu Öğrenciyi Puanla", onClick = {
+                    viewModel.selectStudent(student)
+                    viewModel.currentDestination.value = AppDestination.WORKSPACE
+                    inspectedStudent = null
+                })
+            }
+        }
+    }
+    studentPendingDeletion?.let { student ->
+        ArcDialog(
+            isOpen = true,
+            onDismissRequest = { studentPendingDeletion = null },
+            title = "Öğrenciyi Sil",
+            description = "${student.fullName} (${student.studentNumber}) kaydı silinecektir. Bu işlem geri alınamaz.",
+            confirmText = "Sil",
+            cancelText = "Vazgeç",
+            onConfirm = {
+                viewModel.deleteStudent(student)
+                studentPendingDeletion = null
+                if (inspectedStudent?.id == student.id) inspectedStudent = null
+            }
+        )
     }
 
     // Add Classroom Dialog
