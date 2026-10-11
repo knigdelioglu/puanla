@@ -17,14 +17,19 @@ import com.knigdelioglu.puanla.data.local.RubricEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.repository.PuanlaRepository
+import com.knigdelioglu.arc.compose.foundation.ArcAccent
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
+import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
+import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
 import com.knigdelioglu.puanla.domain.report.assessmentActivityByDay
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
+import com.knigdelioglu.puanla.ui.preferences.AppearancePreferenceRules
+import com.knigdelioglu.puanla.ui.preferences.MotionPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -54,8 +59,7 @@ enum class AppDestination(val label: String, val iconName: String) {
     OCR_IMPORT("Fotoğraftan Aktarım", "DocumentScanner"),
     GROUP_WORK("Grup Çalışmaları", "Group"),
     REPORTS("Raporlar & Analiz", "BarChart"),
-    SETTINGS("Ayarlar & Güvenlik", "Settings"),
-    CATALOG("Arc Bileşen Kataloğu", "Widgets")
+    SETTINGS("Ayarlar", "Settings")
 }
 
 data class UndoAction(
@@ -80,7 +84,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val darkMode = MutableStateFlow<Boolean?>(
         if (arcPrefs.contains("dark_mode")) arcPrefs.getBoolean("dark_mode", false) else null
     ) // null = system
-    val reduceMotion = MutableStateFlow(arcPrefs.getBoolean("reduce_motion", false))
+    val reduceMotion = MutableStateFlow(
+        MotionPreference.fromStoredValue(
+            value = arcPrefs.getString("motion_preference", null),
+            legacyBoolean = if (arcPrefs.contains("reduce_motion")) arcPrefs.getBoolean("reduce_motion", false) else null
+        )
+    )
+    val accent = MutableStateFlow(AppearancePreferenceRules.accentFromStoredValue(arcPrefs.getString("accent", null)))
+    val commandPaletteShortcut = MutableStateFlow(arcPrefs.getString("command_palette_shortcut", "Ctrl+K") ?: "Ctrl+K")
+    val commandPaletteShortcutIsCustom = MutableStateFlow(arcPrefs.contains("command_palette_shortcut"))
 
     fun setDarkMode(enabled: Boolean?) {
         darkMode.value = enabled
@@ -89,9 +101,23 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }.apply()
     }
 
-    fun setReducedMotion(enabled: Boolean) {
-        reduceMotion.value = enabled
-        arcPrefs.edit().putBoolean("reduce_motion", enabled).apply()
+    fun setReducedMotion(preference: MotionPreference) {
+        reduceMotion.value = preference
+        arcPrefs.edit()
+            .putString("motion_preference", preference.storedValue)
+            .remove("reduce_motion")
+            .apply()
+    }
+
+    fun setAccent(value: ArcAccent) {
+        accent.value = value
+        arcPrefs.edit().putString("accent", value.name).apply()
+    }
+
+    fun setCommandPaletteShortcut(value: String) {
+        commandPaletteShortcut.value = value
+        commandPaletteShortcutIsCustom.value = true
+        arcPrefs.edit().putString("command_palette_shortcut", value).apply()
     }
 
     // Active Selection State
@@ -614,7 +640,17 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     fun updateOcrCandidate(index: Int, candidate: OcrStudentRow) {
         val list = ocrCandidates.value.toMutableList()
         if (index in list.indices) {
-            list[index] = candidate
+            val previous = list[index]
+            val identityChanged = previous.studentNumber != candidate.studentNumber ||
+                previous.firstName != candidate.firstName || previous.lastName != candidate.lastName
+            list[index] = if (identityChanged) {
+                candidate.copy(isConfirmedDistinctFromPossibleMatch = false)
+            } else candidate
+            if (identityChanged) {
+                list.indices.filter { it != index && list[it].isConfirmedDistinctFromPossibleMatch }.forEach { otherIndex ->
+                    list[otherIndex] = list[otherIndex].copy(isConfirmedDistinctFromPossibleMatch = false)
+                }
+            }
             ocrCandidates.value = list
         }
     }
@@ -626,8 +662,19 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             showToast(ocrError.value ?: "Aktarım ertelendi.")
         }) {
             try {
-                val selected = ocrCandidates.value.filter { it.isApproved }
+                val candidates = ocrCandidates.value
+                val selected = candidates.filter { it.isApproved }
                 require(selected.isNotEmpty()) { "Onaylanmış öğrenci yok." }
+                val currentRoster = repository.getStudentsForClassroom(classroom.id).map {
+                    OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName)
+                }
+                val duplicateValidation = OcrImportDuplicateDetector.validateSelectedCandidates(candidates, currentRoster)
+                require(duplicateValidation.schoolNumberConflicts.isEmpty()) {
+                    "Aynı okul numarasına sahip satır var. Okul numarasını düzeltin veya satırı aktarımdan çıkarın."
+                }
+                require(duplicateValidation.unconfirmedPossibleMatches.isEmpty()) {
+                    "Olası mükerrer satır için ayrı bir öğrenci olduğunu ayrıca onaylayın veya satırı aktarımdan çıkarın."
+                }
                 require(selected.all {
                     it.studentNumber.isNotBlank() && it.studentNumber.all(Char::isDigit) &&
                         it.firstName.isNotBlank() && it.lastName.isNotBlank()

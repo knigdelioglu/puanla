@@ -1,5 +1,7 @@
 # Puanla × Arc Library: 99 Kayıtlık Statik Entegrasyon Denetimi
 
+> **Tarihsel anlık görüntü:** Bu matris 10 Ekim 2026'da Puanla'nın eski yerel `:arc-compose` modülü için hazırlanmıştır. 11 Ekim 2026'daki ortak `:design-system` geçişinden sonra dosya yolları ve bileşen durumları güncel kabul edilmemelidir. Güncel eşleşme ve geçiş durumu: [Compose Design System → Puanla entegrasyon raporu](../research/compose-design-system-puanla-integration.md).
+
 **Tarih:** 10 Ekim 2026  
 **Platform:** Android Native (Kotlin 2.0.21 + Jetpack Compose + Material 3 + Room 2.6.1 + Google ML Kit)  
 **Modül:** `:arc-compose` (Bağımsız, yeniden kullanılabilir Compose UI kütüphanesi, MIT Lisansı korumalı)  

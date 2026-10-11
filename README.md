@@ -19,7 +19,7 @@
 
 - **Kotlin, Jetpack Compose ve Android SDK** — React Native, Expo, Flutter veya PWA kullanılmaz.
 - **Tablet öncelikli adaptif arayüz** — geniş ekranlar, yatay/dikey yön, kalem ve dokunma ergonomisi dikkate alınır.
-- **Arc Library** (`kuratlielia/arc-library`) doğrudan Android bağımlılığı değildir; seçilmiş etkileşim ve görsel davranışlar Kotlin/Compose üzerinde **yerel olarak yeniden tasarlanacaktır**. Arc kaynaklı 132 kayıt tek tek incelendi: [tam envanter](docs/research/arc-puanla-full-catalog.md) ve [tablet öncelikli genişletilmiş uyarlama planı](docs/plans/arc-maximal-adoption.md). Geliştirme durumu için [kod denetimi matrisi](docs/verification/arc-implementation-matrix.md) esas alınmalıdır; 99/99 üretim entegrasyonu doğrulanmamıştır.
+- **Compose Design System** (ortak `compose-design-system` deposu) Kotlin + Jetpack Compose ile yazılmış yerel Android kütüphanesidir. Puanla `:design-system` modülünü doğrudan kullanır; uygulama iş kuralları ve Room modelleri kütüphaneye taşınmaz. Depolar varsayılan olarak aynı üst klasörde yan yana olmalıdır. Farklı bir konum için `-PcomposeDesignSystemDir=/mutlak/yol/compose-design-system/design-system` verin. Önceki Arc envanteri ve mevcut eşleştirme için [entegrasyon raporuna](docs/research/compose-design-system-puanla-integration.md) bakın.
 - Öğrenci verileri varsayılan olarak cihazdan çıkmaz; temel puanlama akışı internet olmadan çalışır.
 
 ## Depo kapsamı
@@ -30,6 +30,6 @@
 
 ## Durum
 
-Android Native `:app` ve ayrı `:arc-compose` modülleri geliştirme aşamasındadır. Room, hızlı puanlama, tablet ekranları ve yerel OCR kodları vardır. 2026-10-10 P0 güvenlik düzeltmeleriyle sahte rubrik/öğrenci tohumlama durdurulmuş, yıkıcı Room migration kaldırılmış, öğrencinin kimliğine bağlı puanlama ve işlem bazlı geri alma düzenlenmiş, tam JSON yedekleme/geri yükleme ve gerçek görsel seçimi eklenmiştir. P1 kapsamında CSV alan kaçışı/formül güvenliği, üretim formatlayıcısını çalıştıran birim testler, gerçek dosya kaydetme, gecikmeli gözlem notu kaydı, gerçek tarih aralığıyla son güncelleme filtresi, rubrik yönergesi akordeonu ve sınıf arama/boş durum bileşenleri eklenmiştir.
+Android Native `:app` ve ortak `:design-system` modülü geliştirilmektedir. `:design-system` kaynakları varsayılan olarak kardeş `compose-design-system` deposundan okunur; üretilen build çıktıları Puanla deposunda tutulur. Room, hızlı puanlama, tablet ekranları, yerel OCR, CSV ve JSON yedekleme/geri yükleme kodları vardır. Ortak bileşen entegrasyonu ve doğrulama durumu [entegrasyon raporunda](docs/research/compose-design-system-puanla-integration.md) izlenir.
 
-**Sınırlar:** 99 Arc kaydının tümü üretim ekranlarında doğrulanmamıştır. Onaylı rubrik verisi yokken gerçek notlandırma yapılmaz. Gerçek cihaz üzerinde uçtan uca OCR, geri yükleme ve puanlama testleri hala gereklidir. [Dürüst Arc doğrulama matrisi](docs/verification/arc-implementation-matrix.md).
+**Sınırlar:** Eski Arc kayıt matrisi, ortak kütüphaneye geçiş öncesi bir envanter anlık görüntüsüdür; güncel kaynak ve ekran eşleşmesi yeni entegrasyon raporundadır. Gerçek cihaz üzerinde uçtan uca OCR, geri yükleme, puanlama, TalkBack ve klavye testleri gereklidir.

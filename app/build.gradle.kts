@@ -49,7 +49,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":arc-compose"))
+    implementation(project(":design-system"))
 
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)

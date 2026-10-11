@@ -6,6 +6,61 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OcrPositionedParserTest {
+    @Test fun splitAndUnaccentedColumnLabelsAreReunitedAcrossPerspective() {
+        val words = listOf(
+            OcrPositionedWord("S.NO", 10, 10, 30, 16),
+            OcrPositionedWord("OGRENCI", 100, 13, 60, 16),
+            OcrPositionedWord("NO", 162, 16, 18, 16),
+            OcrPositionedWord("ADI", 240, 19, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 22, 60, 16),
+            OcrPositionedWord("CINSIYETI", 580, 25, 75, 16),
+            OcrPositionedWord("PANSIYON DURUM", 730, 28, 130, 16),
+            OcrPositionedWord("1", 20, 70, 9, 16),
+            OcrPositionedWord("245", 128, 72, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 75, 39, 16),
+            OcrPositionedWord("NUR", 290, 78, 30, 16),
+            OcrPositionedWord("ÇELİK", 396, 81, 49, 16),
+            OcrPositionedWord("Kız", 582, 84, 25, 16),
+            OcrPositionedWord("Yatılı", 732, 87, 35, 16)
+        )
+
+        val student = OcrRosterParser.parsePositionedWords(words).single()
+
+        assertEquals("245", student.studentNumber)
+        assertEquals("AYŞE NUR", student.firstName)
+        assertEquals("ÇELİK", student.lastName)
+        assertFalse(student.isAmbiguous)
+        assertFalse(student.isApproved)
+    }
+
+    @Test fun photographedClassListKeepsSkewedHeaderAndTurkishColumnsTogether() {
+        val words = listOf(
+            OcrPositionedWord("S.No", 10, 10, 30, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Öğrenci", 100, 13, 60, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("No", 162, 16, 18, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Adı", 240, 19, 30, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Soyadı", 395, 22, 60, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Cinsiyeti", 580, 25, 75, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Pansiyon", 730, 28, 75, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("Durum", 820, 31, 50, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("1", 20, 70, 9, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("245", 128, 72, 30, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("AYŞE", 242, 75, 39, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("NUR", 290, 78, 30, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("ÇELİK", 396, 81, 49, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("Kız", 582, 84, 25, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("Yatılı", 732, 87, 35, 16, recognizedLineIndex = 1)
+        )
+
+        val student = OcrRosterParser.parsePositionedWords(words).single()
+
+        assertEquals("245", student.studentNumber)
+        assertEquals("AYŞE NUR", student.firstName)
+        assertEquals("ÇELİK", student.lastName)
+        assertFalse(student.isAmbiguous)
+        assertFalse(student.isApproved)
+    }
+
     @Test fun differentSurnameGenderAndBoardingColumnsNeverMix() {
         val words = listOf(
             OcrPositionedWord("SIRA", 8, 10, 32, 16),

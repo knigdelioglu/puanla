@@ -44,8 +44,6 @@ import com.knigdelioglu.arc.compose.controls.ArcMultiSelect
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
-import com.knigdelioglu.arc.compose.display.ArcAlert
-import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcAvatarGroup
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
@@ -89,11 +87,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = ArcTheme.colors.foreground
                 )
-                Text(
-                    text = "Grup içi hazırlık adımlarını izleyin. Hazırlık kontrolü bireysel puandan ayrı tutulur.",
-                    fontSize = 14.sp,
-                    color = ArcTheme.colors.textSecondary
-                )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -112,13 +105,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 )
             }
         }
-
-        // Strict Separation Rule Notice
-        ArcAlert(
-            title = "MEB Değerlendirme İlkesi: Bireysel Not Bağımsızlığı",
-            message = "Grup hazırlık kontrolü ile bireysel performans notu ayrı yönetilir. Grup hazırlık işaretleri bireysel 100 puanlık toplama kendiliğinden eklenmez.",
-            type = ArcAlertType.Info
-        )
 
         Divider(color = ArcTheme.colors.borderSubtle)
 

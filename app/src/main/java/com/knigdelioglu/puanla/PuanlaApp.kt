@@ -21,11 +21,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Modifier
@@ -40,11 +40,12 @@ import com.knigdelioglu.arc.compose.display.ArcNotificationItem
 import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
 import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
+import com.knigdelioglu.arc.compose.advanced.ArcAdvancedItem
+import com.knigdelioglu.arc.compose.advanced.ArcGlassTabBar
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
-import com.knigdelioglu.arc.compose.navigation.ArcTabs
 import com.knigdelioglu.puanla.ui.components.AppCommandPaletteModal
+import com.knigdelioglu.puanla.ui.components.KeyboardShortcutMatcher
 import com.knigdelioglu.puanla.ui.components.AppTopBar
-import com.knigdelioglu.puanla.ui.screens.CatalogGalleryScreen
 import com.knigdelioglu.puanla.ui.screens.ClassroomsScreen
 import com.knigdelioglu.puanla.ui.screens.GroupWorkScreen
 import com.knigdelioglu.puanla.ui.screens.OcrImportScreen
@@ -56,8 +57,7 @@ import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
 /**
  * Puanla Tablet Native Uygulaması:
- * Seçilmiş Arc Compose bileşenlerini gerçek iş akışlarına bağlayan tablet öncelikli uygulama.
- * Arc bileşen kataloğu, üretim akışlarından ayrı bir tanıtım ekranıdır.
+ * Tablet öncelikli sınıf ve değerlendirme uygulaması.
  */
 @Composable
 fun PuanlaApp(
@@ -65,6 +65,9 @@ fun PuanlaApp(
 ) {
     val darkModePreference by viewModel.darkMode.collectAsState()
     val reduceMotion by viewModel.reduceMotion.collectAsState()
+    val accent by viewModel.accent.collectAsState()
+    val commandPaletteShortcut by viewModel.commandPaletteShortcut.collectAsState()
+    val commandPaletteShortcutIsCustom by viewModel.commandPaletteShortcutIsCustom.collectAsState()
     val isSystemDark = isSystemInDarkTheme()
     val isDark = darkModePreference ?: isSystemDark
 
@@ -73,8 +76,16 @@ fun PuanlaApp(
     val showHistory by viewModel.isNotificationCenterOpen.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
 
-    val destinations = remember { AppDestination.values() }
-    val destinationLabels = remember { destinations.map { it.label } }
+    val destinations = remember { AppDestination.values().filter { it != AppDestination.OCR_IMPORT } }
+    val navigationItems = remember {
+        destinations.map { destination ->
+            ArcAdvancedItem(
+                key = destination.name,
+                label = destination.label,
+                contentDescription = destination.label
+            )
+        }
+    }
 
     val arcToastMessages = remember(toastMessages) {
         toastMessages.map { (text, undo) ->
@@ -87,7 +98,8 @@ fun PuanlaApp(
 
     ArcTheme(
         darkTheme = isDark,
-        reducedMotion = reduceMotion
+        reducedMotion = reduceMotion.reducedMotionOverride,
+        accent = accent
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -95,8 +107,17 @@ fun PuanlaApp(
         ) {
             Box(
                 modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+                    val keyEvent = event.nativeKeyEvent
                     if (event.type == KeyEventType.KeyDown &&
-                        event.key == Key.K && (event.isCtrlPressed || event.isMetaPressed)) {
+                        KeyboardShortcutMatcher.matchesCommandPaletteShortcut(
+                            shortcut = commandPaletteShortcut,
+                            isCustom = commandPaletteShortcutIsCustom,
+                            keyLabel = KeyboardShortcutMatcher.keyLabel(keyEvent.keyCode, keyEvent.unicodeChar),
+                            ctrlPressed = event.isCtrlPressed,
+                            altPressed = event.isAltPressed,
+                            shiftPressed = event.isShiftPressed,
+                            metaPressed = event.isMetaPressed
+                        )) {
                         viewModel.isCommandPaletteOpen.value = true
                         true
                     } else false
@@ -106,11 +127,15 @@ fun PuanlaApp(
                     topBar = {
                         Column {
                             AppTopBar(viewModel = viewModel)
-                            ArcTabs(
-                                tabs = destinationLabels,
-                                selectedTabIndex = destinations.indexOf(currentDestination).coerceAtLeast(0),
-                                onTabSelected = { index ->
-                                    viewModel.currentDestination.value = destinations[index]
+                            ArcGlassTabBar(
+                                tabs = navigationItems,
+                                selectedKey = if (currentDestination == AppDestination.OCR_IMPORT) {
+                                    AppDestination.CLASSROOMS.name
+                                } else currentDestination.name,
+                                onTabSelected = { key ->
+                                    destinations.firstOrNull { it.name == key }?.let {
+                                        viewModel.currentDestination.value = it
+                                    }
                                 },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                             )
@@ -129,7 +154,6 @@ fun PuanlaApp(
                             AppDestination.GROUP_WORK -> GroupWorkScreen(viewModel = viewModel)
                             AppDestination.REPORTS -> ReportsScreen(viewModel = viewModel)
                             AppDestination.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                            AppDestination.CATALOG -> CatalogGalleryScreen()
                         }
                     }
                 }
@@ -163,7 +187,7 @@ fun PuanlaApp(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        "Yerel İşlem Geçmişi",
+                                        "İşlem Geçmişi",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ArcTheme.colors.foreground

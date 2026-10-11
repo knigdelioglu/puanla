@@ -48,7 +48,9 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
-import com.knigdelioglu.arc.compose.controls.ArcSwitch
+import com.knigdelioglu.arc.compose.controls.ArcSelect
+import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcShortcutRecorder
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.datavis.ArcActivityHeatmap
@@ -57,8 +59,10 @@ import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
 import com.knigdelioglu.arc.compose.display.ArcTimeline
 import com.knigdelioglu.arc.compose.display.ArcTimelineEntry
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
+import com.knigdelioglu.arc.compose.foundation.ArcAccent
 import com.knigdelioglu.arc.compose.navigation.ArcScrollArea
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
+import com.knigdelioglu.puanla.ui.preferences.MotionPreference
 import com.knigdelioglu.puanla.domain.report.auditTimelineRecords
 import com.knigdelioglu.puanla.domain.backup.BackupImport
 import com.knigdelioglu.puanla.domain.backup.BackupPreview
@@ -67,10 +71,23 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private fun accentLabel(accent: ArcAccent): String = when (accent) {
+    ArcAccent.Neutral -> "Varsayılan"
+    ArcAccent.Violet -> "Mor"
+    ArcAccent.Blue -> "Mavi"
+    ArcAccent.Green -> "Yeşil"
+    ArcAccent.Amber -> "Kehribar"
+    ArcAccent.Orange -> "Turuncu"
+    ArcAccent.Coral -> "Mercan"
+    ArcAccent.Rose -> "Gül"
+}
+
 @Composable
 fun SettingsScreen(viewModel: PuanlaViewModel) {
     val darkMode by viewModel.darkMode.collectAsState()
     val reduceMotion by viewModel.reduceMotion.collectAsState()
+    val accent by viewModel.accent.collectAsState()
+    val commandPaletteShortcut by viewModel.commandPaletteShortcut.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
     val assessmentActivity by viewModel.assessmentActivity.collectAsState()
     val assessmentActivityLabels by viewModel.assessmentActivityLabels.collectAsState()
@@ -142,15 +159,10 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
         // Header
         Column {
             Text(
-                text = "Ayarlar & Veri Güvenliği",
+                text = "Ayarlar",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = ArcTheme.colors.foreground
-            )
-            Text(
-                text = "Görünüm, çalışan klavye kısayolu ve güvenli yerel yedekleme.",
-                fontSize = 14.sp,
-                color = ArcTheme.colors.textSecondary
             )
         }
 
@@ -164,68 +176,97 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
             color = ArcTheme.colors.foreground
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            ArcCard(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("Tema Tercihi", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
-                        Text(if (darkMode == true) "Karanlık Mod Etkin" else "Aydınlık Mod Etkin", fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
-                    }
-                    ArcThemeSwitch(
-                        isDark = darkMode ?: false,
-                        onToggle = { isDark ->
-                            viewModel.setDarkMode(isDark)
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                ArcCard(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Tema Tercihi", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                            Text(if (darkMode == true) "Karanlık Mod Etkin" else "Aydınlık Mod Etkin", fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
                         }
-                    )
+                        ArcThemeSwitch(
+                            isDark = darkMode ?: ArcTheme.colors.isDark,
+                            onToggle = viewModel::setDarkMode
+                        )
+                    }
+                }
+
+                ArcCard(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Vurgu Paleti", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                        ArcSelect(
+                            selectedItem = accent,
+                            items = ArcAccent.entries.toList(),
+                            onItemSelected = viewModel::setAccent,
+                            placeholder = "Vurgu paleti seçin",
+                            labelProvider = ::accentLabel
+                        )
+                    }
                 }
             }
 
-            ArcCard(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            ArcCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column {
-                        Text("Animasyonları Azalt (Reduce Motion)", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
-                        Text("Tablet pil ömrü ve sakin geçişler", fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
-                    }
-                    ArcSwitch(
-                        checked = reduceMotion,
-                        onCheckedChange = {
-                            viewModel.setReducedMotion(it)
-                        }
+                    Text("Hareket Tercihi", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                    Text(
+                        text = when (reduceMotion) {
+                            MotionPreference.System -> "Android sisteminin animasyon ayarını izler."
+                            MotionPreference.Reduced -> "Uygulama geçişlerini hareket azaltılmış biçimde gösterir."
+                            MotionPreference.Full -> "Uygulama geçişlerinde kütüphane animasyonlarını kullanır."
+                        },
+                        fontSize = 12.sp,
+                        color = ArcTheme.colors.textSecondary
+                    )
+                    val motionOptions = MotionPreference.entries
+                    ArcSegmentedControl(
+                        items = motionOptions.map { it.label },
+                        selectedIndex = motionOptions.indexOf(reduceMotion),
+                        onSelectIndex = { index -> motionOptions.getOrNull(index)?.let(viewModel::setReducedMotion) },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
         }
 
-        // Only supported keyboard actions belong in Settings. The old shortcut
-        // recorder and signature canvas were unsaved demonstrations.
         Text(
             text = "Fiziksel Klavye",
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             color = ArcTheme.colors.foreground
         )
-        ArcAlert(
-            title = "Komut Paleti",
-            message = "Bağlı fiziksel klavyede Ctrl+K veya ⌘K tuşlarıyla komut paletini açabilirsiniz. " +
-                "Öğrenciye hızlı geçiş ve geri alma eylemleri paletten erişilebilir. " +
-                "Diğer tuşlar için henüz özelleştirilebilir bir kısayol kaydı bulunmuyor.",
-            type = ArcAlertType.Info
-        )
+        ArcCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Komut Paletini Aç", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                Text(
+                    "Varsayılan kısayol Ctrl+K veya Meta+K'dir. Kaydedilmiş kısayolu silseniz bile komut paleti üst araç çubuğundan açılabilir.",
+                    fontSize = 12.sp,
+                    color = ArcTheme.colors.textSecondary
+                )
+                ArcShortcutRecorder(
+                    shortcut = commandPaletteShortcut,
+                    onShortcutChange = viewModel::setCommandPaletteShortcut,
+                    label = "Komut paletini açma kısayolu",
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
 
         // Backup and Restore Section
         Text(
-            text = "Çevrimdışı Veri Güvenliği ve Yedekleme (SAF)",
+            text = "Yedekleme ve Geri Yükleme",
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             color = ArcTheme.colors.foreground
@@ -233,12 +274,6 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
         ArcCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(
-                    text = "Tüm sınıf listeleri, rubrik puanları ve grup çalışmaları cihaz içi Room veritabanında saklanır. Harici sunucuya veri aktarılmaz.",
-                    fontSize = 14.sp,
-                    color = ArcTheme.colors.textSecondary
-                )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),

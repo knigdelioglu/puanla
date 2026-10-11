@@ -20,11 +20,20 @@ data class OcrStudentRow(
     val boardingStatus: String? = null,
     val isAmbiguous: Boolean = false,
     val ambiguityReason: String? = null,
-    val isApproved: Boolean = false
+    val isApproved: Boolean = false,
+    val isConfirmedDistinctFromPossibleMatch: Boolean = false
 )
 
 /** ML Kit element boundary data used for geometry-based column isolation and tests. */
-data class OcrPositionedWord(val text: String, val x: Int, val y: Int, val width: Int, val height: Int) {
+data class OcrPositionedWord(
+    val text: String,
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    /** Original ML Kit line; keeps words together when a photographed page is skewed. */
+    val recognizedLineIndex: Int? = null
+) {
     val centerX: Double get() = x + width / 2.0
     val centerY: Double get() = y + height / 2.0
 }
@@ -47,11 +56,20 @@ object OcrRosterParser {
                     .addOnSuccessListener { if (cont.isActive) cont.resume(it) }
                     .addOnFailureListener { if (cont.isActive) cont.resumeWith(Result.failure(it)) }
             }
+            var recognizedLineIndex = 0
             val words = recognized.textBlocks.flatMap { block ->
                 block.lines.flatMap { line ->
+                    val lineIndex = recognizedLineIndex++
                     line.elements.mapNotNull { element ->
                         element.boundingBox?.let { box ->
-                            OcrPositionedWord(element.text, box.left, box.top, box.width(), box.height())
+                            OcrPositionedWord(
+                                element.text,
+                                box.left,
+                                box.top,
+                                box.width(),
+                                box.height(),
+                                recognizedLineIndex = lineIndex
+                            )
                         }
                     }
                 }
@@ -70,35 +88,70 @@ object OcrRosterParser {
      */
     fun parsePositionedWords(words: List<OcrPositionedWord>): List<OcrStudentRow> {
         if (words.isEmpty()) return emptyList()
+
+        // Turkish headings are sometimes returned without diacritics, and a
+        // photographed sheet can make separate column labels land at different
+        // raw Y coordinates. Normalize both before rebuilding table rows.
+        val normalized: (String) -> String = { text ->
+            text.trim().uppercase(Locale("tr", "TR"))
+                .replace('Ç', 'C').replace('Ğ', 'G').replace('İ', 'I')
+                .replace('Ö', 'O').replace('Ş', 'S').replace('Ü', 'U')
+                .replace(Regex("[^A-Z0-9]"), "")
+        }
+        val headerAnchors = words.filter {
+            normalized(it.text) in setOf(
+                "ADI", "AD", "ADISOYADI", "SOYADI", "SOYAD", "NO", "OGRENCI",
+                "OGRENCINO", "NUMARASI", "OKUL", "CINSIYET", "CINSIYETI",
+                "PANSIYON", "PANSIYONDURUM"
+            )
+        }
+        val meanX = headerAnchors.map { it.centerX }.average()
+        val meanY = headerAnchors.map { it.centerY }.average()
+        val varianceX = headerAnchors.sumOf { (it.centerX - meanX) * (it.centerX - meanX) }
+        val slope = if (headerAnchors.size >= 3 && varianceX > 0.0) {
+            (headerAnchors.sumOf { (it.centerX - meanX) * (it.centerY - meanY) } / varianceX)
+                .coerceIn(-0.12, 0.12)
+        } else 0.0
+        fun projectedY(word: OcrPositionedWord) = word.centerY - slope * word.centerX
+
         val lines = mutableListOf<MutableList<OcrPositionedWord>>()
-        for (word in words.sortedWith(compareBy<OcrPositionedWord> { it.centerY }.thenBy { it.x })) {
-            val row = lines.lastOrNull()
-            val height = row?.map { it.height }?.average() ?: word.height.toDouble()
-            if (row != null && kotlin.math.abs(row.map { it.centerY }.average() - word.centerY) <=
-                maxOf(6.0, height * 0.60)) {
+        for (word in words.sortedWith(compareBy<OcrPositionedWord> { projectedY(it) }.thenBy { it.x })) {
+            // ML Kit already groups elements into text lines. Keep that signal so
+            // perspective/skew across a wide printed table cannot split its header
+            // into unrelated rows. The projected Y also reunites a visual row when
+            // ML Kit returns its separate columns as different lines or blocks.
+            val row = word.recognizedLineIndex?.let { lineIndex ->
+                lines.firstOrNull { group -> group.any { it.recognizedLineIndex == lineIndex } }
+            } ?: lines.minByOrNull { group -> kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word)) }
+                ?.takeIf { group ->
+                    val height = group.map { it.height }.average()
+                    kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word)) <=
+                        maxOf(6.0, height * 0.80)
+                }
+            if (row != null) {
                 row.add(word)
             } else {
                 lines.add(mutableListOf(word))
             }
         }
-        val normalized: (String) -> String = { it.trim().uppercase(Locale("tr", "TR"))
-            .replace(Regex("[^A-ZÇĞİÖŞÜ0-9]"), "") }
+        lines.sortBy { row -> row.map { projectedY(it) }.average() }
         val headerIndex = lines.indexOfFirst { row ->
             val tokens = row.map { normalized(it.text) }
             tokens.any { it in setOf("ADI", "AD", "ADISOYADI") } &&
-                tokens.any { it in setOf("NO", "ÖĞRENCİ", "ÖĞRENCİNO", "NUMARASI", "OKUL") }
+                tokens.any { it in setOf("NO", "OGRENCI", "OGRENCINO", "NUMARASI", "OKUL") }
         }
         if (headerIndex < 0) return emptyList()
         val headers = lines[headerIndex].sortedBy { it.x }
-        fun xOf(vararg labels: String): Double? = headers.firstOrNull {
-            normalized(it.text) in labels
+        fun xOf(vararg labels: String): Double? = headers.firstOrNull { word ->
+            val token = normalized(word.text)
+            labels.any { label -> token == label || token.startsWith(label) }
         }?.centerX
-        val numberX = xOf("ÖĞRENCİ", "ÖĞRENCİNO", "OKUL", "NUMARASI")
+        val numberX = xOf("OGRENCI", "OKUL", "NUMARASI")
             ?: headers.filter { normalized(it.text) == "NO" }.lastOrNull()?.centerX
             ?: return emptyList()
-        val nameX = xOf("ADI", "AD", "ADISOYADI") ?: return emptyList()
+        val nameX = xOf("ADI", "ADISOYADI", "AD") ?: return emptyList()
         val surnameX = xOf("SOYADI", "SOYAD")
-        val metadataAnchor = listOfNotNull(xOf("CİNSİYET", "CİNSİYETİ"), xOf("PANSİYON", "YATILI"))
+        val metadataAnchor = listOfNotNull(xOf("CINSIYET"), xOf("PANSIYON", "YATILI"))
             .filter { it > nameX }.minOrNull()
         // Boundaries are halfway BETWEEN header centres, not the start of the
         // following header. This keeps K/E, KR, boarding metadata out of surnames.

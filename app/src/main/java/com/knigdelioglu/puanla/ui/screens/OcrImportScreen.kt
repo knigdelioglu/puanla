@@ -73,6 +73,8 @@ import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcStepper
 import com.knigdelioglu.arc.compose.navigation.ArcCarousel
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
+import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
+import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
@@ -111,16 +113,19 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = ArcTheme.colors.foreground
                 )
-                Text(
-                    text = "Yerel OCR ile fotoğrafı tarar; tüm alanlar öğretmen onayına sunulur.",
-                    fontSize = 14.sp,
-                    color = ArcTheme.colors.textSecondary
-                )
             }
-            if (selectedClassroom != null) {
-                ArcBadge(
-                    text = "Hedef: ${selectedClassroom?.name}",
-                    variant = ArcBadgeVariant.Accent
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (selectedClassroom != null) {
+                    ArcBadge(
+                        text = "Hedef: ${selectedClassroom?.name}",
+                        variant = ArcBadgeVariant.Accent
+                    )
+                }
+                ArcButton(
+                    text = "Sınıflara Dön",
+                    onClick = { viewModel.currentDestination.value = AppDestination.CLASSROOMS },
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Md
                 )
             }
         }
@@ -177,7 +182,7 @@ private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): 
 private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
     val context = LocalContext.current
     val chosenPhoto by viewModel.ocrSelectedImageUri.collectAsState()
-    val selectedFileInfo by produceState(initialValue = "Seçili fotoğraf" to "Yerel görsel", key1 = chosenPhoto) {
+    val selectedFileInfo by produceState(initialValue = "Seçili fotoğraf" to "Görsel dosyası", key1 = chosenPhoto) {
         val uri = chosenPhoto
         if (uri != null) value = withContext(Dispatchers.IO) {
             runCatching {
@@ -191,7 +196,7 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
                             (if (size >= 0L) "${size / 1024L} KB" else "Boyut bilgisi yok")
                     }
                 }
-            }.getOrNull() ?: ("Seçili fotoğraf" to "Yerel görsel")
+            }.getOrNull() ?: ("Seçili fotoğraf" to "Görsel dosyası")
         }
     }
     val scope = rememberCoroutineScope()
@@ -301,6 +306,21 @@ private fun OcrStepVerification(
     viewModel: PuanlaViewModel
 ) {
     var focusReview by remember { mutableStateOf(false) }
+    val currentStudents by viewModel.students.collectAsState()
+    val duplicateHints = remember(candidates, currentStudents) {
+        OcrImportDuplicateDetector.findPotentialDuplicates(
+            candidates,
+            currentStudents.map { OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName) }
+        )
+    }
+    val duplicateValidation = remember(candidates, currentStudents) {
+        OcrImportDuplicateDetector.validateSelectedCandidates(
+            candidates,
+            currentStudents.map { OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName) }
+        )
+    }
+    val selectedNumberConflicts = duplicateValidation.schoolNumberConflicts.size
+    val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -322,7 +342,24 @@ private fun OcrStepVerification(
                 )
             }
 
-            if (candidates.any { it.isApproved }) {
+            if (candidates.none { it.isApproved }) {
+                ArcButton(
+                    text = "Önce Öğrencileri Onaylayın",
+                    onClick = {},
+                    enabled = false,
+                    variant = ArcButtonVariant.Secondary,
+                    size = ArcButtonSize.Md
+                )
+            } else if (selectedNumberConflicts > 0 || selectedUnconfirmedMatches > 0) {
+                ArcButton(
+                    text = if (selectedNumberConflicts > 0) "Okul Numarası Çakışması"
+                    else "Benzer Öğrenciyi Doğrulayın",
+                    onClick = {},
+                    enabled = false,
+                    variant = ArcButtonVariant.Secondary,
+                    size = ArcButtonSize.Md
+                )
+            } else {
                 // An explicit second confirmation before writing an OCR batch to Room.
                 key(candidates.filter { it.isApproved }.map { it.id }) {
                     ArcConfirmMorph(
@@ -332,14 +369,6 @@ private fun OcrStepVerification(
                         onConfirm = { viewModel.confirmOcrImport { } }
                     )
                 }
-            } else {
-                ArcButton(
-                    text = "Önce Öğrencileri Onaylayın",
-                    onClick = {},
-                    enabled = false,
-                    variant = ArcButtonVariant.Secondary,
-                    size = ArcButtonSize.Md
-                )
             }
         }
 
@@ -350,6 +379,13 @@ private fun OcrStepVerification(
             message = "OCR çıktıları yaklaşık tahmindir. Belirsiz işaretli kayıtlar öğretmen onayı olmadan sınıfa eklenmez.",
             type = ArcAlertType.Warning
         )
+        if (duplicateHints.isNotEmpty()) {
+            ArcAlert(
+                title = "Olası Mükerrer Satırlar (${duplicateHints.size})",
+                message = "Bazı ad-soyadlar veya okul numaraları sınıftaki ya da daha önce okunan bir satırdaki öğrenciye benziyor. Sarı uyarıları inceleyin; aynı öğrenciyse satırı aktarımdan çıkarın.",
+                type = ArcAlertType.Warning
+            )
+        }
 
         val importError by viewModel.ocrError.collectAsState()
         if (importError != null) ArcAlert(title = "Aktarım Hatası", message = importError ?: "", type = ArcAlertType.Danger)
@@ -399,16 +435,48 @@ private fun OcrStepVerification(
                                     color = ArcTheme.colors.textSecondary,
                                     maxLines = 3
                                 )
+                                val candidateIndex = candidates.indexOfFirst { it.id == candidate.id }
+                                val duplicateHint = duplicateHints[candidateIndex]
+                                val matchedCandidateSelected = duplicateHint?.matchedCandidateIndex
+                                    ?.let { candidates.getOrNull(it)?.isApproved } ?: true
+                                if (duplicateHint != null) {
+                                    ArcAlert(
+                                        title = if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
+                                            "Okul numarası zaten kullanılıyor"
+                                        else if (duplicateHint.sameStudentNumber) "Okul numarası başka OCR satırında da var"
+                                        else "Olası aynı öğrenci: ${duplicateHint.matchedName}",
+                                        message = if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
+                                            "Bu sınıfta aynı okul numarası bulundu. Numarayı düzeltin veya satırı aktarımdan çıkarın."
+                                        else if (duplicateHint.sameStudentNumber)
+                                            "Aynı numaralı iki satırı birlikte aktaramazsınız. Doğru satırı seçin."
+                                        else "Kaynak fotoğraftan bu satırın aynı kişi mi, farklı bir öğrenci mi olduğunu doğrulayın.",
+                                        type = ArcAlertType.Warning
+                                    )
+                                    if (!duplicateHint.sameStudentNumber) {
+                                        ArcCheckbox(
+                                            checked = candidate.isConfirmedDistinctFromPossibleMatch,
+                                            onCheckedChange = { checked ->
+                                                if (candidateIndex >= 0) viewModel.updateOcrCandidate(
+                                                    candidateIndex,
+                                                    candidate.copy(isConfirmedDistinctFromPossibleMatch = checked)
+                                                )
+                                            },
+                                            label = "Bu farklı bir öğrenci; yine de aktar"
+                                        )
+                                    }
+                                }
                                 ArcButton(
                                     text = if (candidate.isApproved) "Onayı Kaldır" else "Bu Satırı Onayla",
                                     onClick = {
-                                        val index = candidates.indexOfFirst { it.id == candidate.id }
-                                        if (index >= 0) {
+                                        if (candidateIndex >= 0) {
                                             viewModel.updateOcrCandidate(
-                                                index, candidate.copy(isApproved = !candidate.isApproved)
+                                                candidateIndex, candidate.copy(isApproved = !candidate.isApproved)
                                             )
                                         }
                                     },
+                                    enabled = candidate.isApproved || duplicateHint == null ||
+                                        (duplicateHint.sameStudentNumber && !matchedCandidateSelected) ||
+                                        (!duplicateHint.sameStudentNumber && candidate.isConfirmedDistinctFromPossibleMatch),
                                     size = ArcButtonSize.Sm,
                                     variant = if (candidate.isApproved) ArcButtonVariant.Outline else ArcButtonVariant.Primary
                                 )
@@ -434,72 +502,113 @@ private fun OcrStepVerification(
                         if (cand.isAmbiguous) ArcTheme.colors.warning else ArcTheme.colors.borderSubtle
                     )
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ArcCheckbox(
-                            checked = isIncluded,
-                            onCheckedChange = { checked ->
-                                viewModel.updateOcrCandidate(index, cand.copy(isApproved = checked))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ArcCheckbox(
+                                checked = isIncluded,
+                                onCheckedChange = { checked ->
+                                    viewModel.updateOcrCandidate(index, cand.copy(isApproved = checked))
+                                }
+                            )
+
+                            Spacer(Modifier.width(12.dp))
+
+                            // Number
+                            Column(modifier = Modifier.width(90.dp)) {
+                                Text("No", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
+                                ArcInlineEdit(
+                                    value = cand.studentNumber,
+                                    onCommit = { newNo ->
+                                        viewModel.updateOcrCandidate(index, cand.copy(
+                                            studentNumber = newNo.trim(), isApproved = false,
+                                            isConfirmedDistinctFromPossibleMatch = false
+                                        ))
+                                    }
+                                )
                             }
-                        )
 
-                        Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(14.dp))
 
-                        // Number
-                        Column(modifier = Modifier.width(90.dp)) {
-                            Text("No", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
-                            ArcInlineEdit(
-                                value = cand.studentNumber,
-                                onCommit = { newNo ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(studentNumber = newNo.trim(), isApproved = false))
+                            // First Name
+                            Column(modifier = Modifier.weight(1.4f)) {
+                                Text("Adı", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
+                                ArcInlineEdit(
+                                    value = cand.firstName,
+                                    onCommit = { newName ->
+                                        viewModel.updateOcrCandidate(index, cand.copy(
+                                            firstName = newName.trim(), isApproved = false,
+                                            isConfirmedDistinctFromPossibleMatch = false
+                                        ))
+                                    }
+                                )
+                            }
+
+                            Spacer(Modifier.width(14.dp))
+
+                            // Last Name
+                            Column(modifier = Modifier.weight(1.2f)) {
+                                Text("Soyadı", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
+                                ArcInlineEdit(
+                                    value = cand.lastName,
+                                    onCommit = { newSurname ->
+                                        viewModel.updateOcrCandidate(index, cand.copy(
+                                            lastName = newSurname.trim(), isApproved = false,
+                                            isConfirmedDistinctFromPossibleMatch = false
+                                        ))
+                                    }
+                                )
+                            }
+
+                            Spacer(Modifier.width(14.dp))
+
+                            // Filtered meta tags
+                            Column(horizontalAlignment = Alignment.End) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (cand.gender != null) {
+                                        ArcBadge(text = cand.gender, variant = ArcBadgeVariant.Default)
+                                    }
+                                    if (cand.boardingStatus != null) {
+                                        ArcBadge(text = cand.boardingStatus, variant = ArcBadgeVariant.Default)
+                                    }
+                                    if (cand.isAmbiguous) {
+                                        ArcBadge(text = "Belirsiz / Gözden Geçir", variant = ArcBadgeVariant.Warning)
+                                    } else {
+                                        ArcBadge(
+                                            text = if (cand.isApproved) "Öğretmen onayladı" else "Onay bekliyor",
+                                            variant = if (cand.isApproved) ArcBadgeVariant.Success else ArcBadgeVariant.Default
+                                        )
+                                    }
                                 }
-                            )
+                            }
                         }
 
-                        Spacer(Modifier.width(14.dp))
-
-                        // First Name
-                        Column(modifier = Modifier.weight(1.4f)) {
-                            Text("Adı", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
-                            ArcInlineEdit(
-                                value = cand.firstName,
-                                onCommit = { newName ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(firstName = newName.trim(), isApproved = false))
-                                }
+                        duplicateHints[index]?.let { hint ->
+                            ArcAlert(
+                                title = if (hint.sameStudentNumber && hint.matchedCandidateIndex == null)
+                                    "Okul numarası sınıfta zaten var"
+                                else if (hint.sameStudentNumber) "Okul numarası ${hint.matchedName} satırında da var"
+                                else "${hint.matchedName} kaydıyla benzer ad",
+                                message = if (hint.sameStudentNumber && hint.matchedCandidateIndex == null)
+                                    "Okul numarasını düzeltin veya bu satırı aktarımdan çıkarın."
+                                else if (hint.sameStudentNumber)
+                                    "Aynı numaralı iki satırı birlikte aktaramazsınız. Doğru satırı seçin."
+                                else "Bu satır aynı öğrencinin tekrar okunmuş hali olabilir. Kaynak fotoğrafı karşılaştırın.",
+                                type = ArcAlertType.Warning
                             )
-                        }
-
-                        Spacer(Modifier.width(14.dp))
-
-                        // Last Name
-                        Column(modifier = Modifier.weight(1.2f)) {
-                            Text("Soyadı", fontSize = 11.sp, color = ArcTheme.colors.textMuted)
-                            ArcInlineEdit(
-                                value = cand.lastName,
-                                onCommit = { newSurname ->
-                                    viewModel.updateOcrCandidate(index, cand.copy(lastName = newSurname.trim(), isApproved = false))
-                                }
-                            )
-                        }
-
-                        Spacer(Modifier.width(14.dp))
-
-                        // Filtered meta tags
-                        Column(horizontalAlignment = Alignment.End) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (cand.gender != null) {
-                                    ArcBadge(text = cand.gender, variant = ArcBadgeVariant.Default)
-                                }
-                                if (cand.boardingStatus != null) {
-                                    ArcBadge(text = cand.boardingStatus, variant = ArcBadgeVariant.Default)
-                                }
-                                if (cand.isAmbiguous) {
-                                    ArcBadge(text = "Belirsiz / Gözden Geçir", variant = ArcBadgeVariant.Warning)
-                                } else {
-                                    ArcBadge(text = if (cand.isApproved) "Öğretmen onayladı" else "Onay bekliyor", variant = if (cand.isApproved) ArcBadgeVariant.Success else ArcBadgeVariant.Default)
-                                }
+                            if (!hint.sameStudentNumber) {
+                                ArcCheckbox(
+                                    checked = cand.isConfirmedDistinctFromPossibleMatch,
+                                    onCheckedChange = { checked ->
+                                        viewModel.updateOcrCandidate(
+                                            index,
+                                            cand.copy(isConfirmedDistinctFromPossibleMatch = checked)
+                                        )
+                                    },
+                                    label = "Bu farklı bir öğrenci; yine de aktar"
+                                )
                             }
                         }
                     }
@@ -619,7 +728,7 @@ private fun OcrStepCompleted(
                 )
 
                 Text(
-                    text = "$count öğrenci $className sınıfına aktarıldı. Artık puanlama çalışma alanında bu öğrencileri değerlendirebilirsiniz.",
+                    text = "$count öğrenci $className sınıfına aktarıldı.",
                     fontSize = 14.sp,
                     color = ArcTheme.colors.textSecondary,
                     lineHeight = 20.sp
@@ -628,9 +737,9 @@ private fun OcrStepCompleted(
                 Spacer(Modifier.height(8.dp))
 
                 ArcButton(
-                    text = "Değerlendirme Çalışma Alanına Git",
+                    text = "Sınıf Listesine Dön",
                     onClick = {
-                        viewModel.currentDestination.value = AppDestination.WORKSPACE
+                        viewModel.currentDestination.value = AppDestination.CLASSROOMS
                         viewModel.ocrStep.value = 0
                     },
                     variant = ArcButtonVariant.Primary,

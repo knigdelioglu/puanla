@@ -32,8 +32,6 @@ import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcRadioCards
 import com.knigdelioglu.arc.compose.navigation.ArcBottomSheet
 import com.knigdelioglu.arc.compose.display.ArcTooltip
-import com.knigdelioglu.arc.compose.display.ArcBadge
-import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
 import com.knigdelioglu.arc.compose.display.ArcUserMenu
 import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
@@ -49,6 +47,8 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
     val rubrics by viewModel.rubrics.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
+    val commandPaletteShortcut by viewModel.commandPaletteShortcut.collectAsState()
+    val commandPaletteShortcutIsCustom by viewModel.commandPaletteShortcutIsCustom.collectAsState()
     var showRubricCards by remember { mutableStateOf(false) }
     val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
@@ -60,17 +60,13 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
         title = when (currentDestination) {
             AppDestination.WORKSPACE -> selectedRubric?.title ?: "Değerlendirme"
             AppDestination.CLASSROOMS -> "Sınıflar & Öğrenciler"
-            AppDestination.OCR_IMPORT -> "Fotoğraftan Aktarım (OCR)"
+            AppDestination.OCR_IMPORT -> "Fotoğraftan Aktarım"
             AppDestination.GROUP_WORK -> "Grup Çalışmaları"
             AppDestination.REPORTS -> "Raporlar & Analiz"
-            AppDestination.SETTINGS -> "Ayarlar & Güvenlik"
-            AppDestination.CATALOG -> "Arc Bileşen Kataloğu"
+            AppDestination.SETTINGS -> "Ayarlar"
         },
         breadcrumb = {
             ArcBreadcrumb(items = breadcrumbItems)
-        },
-        statusBadge = {
-            ArcBadge(text = "Çevrimdışı Güvenli", variant = ArcBadgeVariant.Success)
         },
         actions = {
             Row(
@@ -108,14 +104,18 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
 
                 // Command Palette Shortcut Button
                 ArcButton(
-                    text = "Ctrl/⌘+K Ara",
+                    text = when {
+                        !commandPaletteShortcutIsCustom -> "Ctrl/⌘+K Ara"
+                        commandPaletteShortcut.isBlank() -> "Komutlar"
+                        else -> "Ara (${commandPaletteShortcut})"
+                    },
                     onClick = { viewModel.isCommandPaletteOpen.value = true },
                     variant = ArcButtonVariant.Secondary,
                     size = ArcButtonSize.Sm
                 )
 
                 // Real local audit events, not simulated notifications.
-                ArcTooltip(tooltipText = "Yerel işlem geçmişini aç") {
+                ArcTooltip(tooltipText = "İşlem geçmişini aç") {
                     ArcActionButton(
                         onClick = { viewModel.isNotificationCenterOpen.value = true },
                         size = ArcButtonSize.Sm
@@ -126,12 +126,12 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
 
                 // Theme switch and local settings shortcut; no fabricated user account.
                 ArcThemeSwitch(
-                    isDark = darkMode ?: false,
+                    isDark = darkMode ?: com.knigdelioglu.arc.compose.foundation.ArcTheme.colors.isDark,
                     onToggle = { viewModel.setDarkMode(it) }
                 )
                 ArcUserMenu(
-                    teacherName = "Öğretmen",
-                    academicYear = selectedClassroom?.academicYear ?: "Yerel uygulama",
+                    displayName = "Öğretmen",
+                    subtitle = selectedClassroom?.academicYear.orEmpty(),
                     onSettingsClick = { viewModel.currentDestination.value = AppDestination.SETTINGS }
                 )
             }

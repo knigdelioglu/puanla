@@ -6,3 +6,10 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false
 }
+
+// The shared library source lives in the sibling compose-design-system repository.
+// Keep generated outputs inside this checkout so an external read-only source tree
+// remains untouched during normal app builds.
+project(":design-system") {
+    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("design-system"))
+}

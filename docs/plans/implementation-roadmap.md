@@ -1,6 +1,6 @@
 # Puanla Android Native geliştirme yol haritası
 
-**10 Ekim 2026 kod durumu:** `:app` ve `:arc-compose` modülleri, Room tabloları, puanlama ekranları, fotoğraf OCR akışı, gerçek CSV dosyasına aktarma ve kapsamlı JSON yedekleme kodu bulunmaktadır. P0/P1 kod düzeltmeleri ve birim testler devam etmektedir. Android emülatör/gerçek cihaz ile eksiksiz ürün doğrulaması yapılmış değildir.
+**11 Ekim 2026 kod durumu:** Puanla `:app`, Room tabloları, puanlama ekranları, fotoğraf OCR akışı, CSV dışa aktarma ve JSON yedekleme kodu içerir. Compose Design System'in kardeş depodaki `:design-system` modülüne geçişi tamamlandı; derleme, birim testleri ve debug APK kurulumu başarılı. API 36 Samsung tablete APK kuruldu ve açılışı doğrulandı. Yatay/dikey tablet, TalkBack, fiziksel klavye, OCR onayı ve yedekten geri yükleme cihaz kabulü sıradadır. Eski `:arc-compose` envanteri geçiş öncesi tarihsel durumdur; güncel bileşen eşleşmesi [entegrasyon raporundadır](../research/compose-design-system-puanla-integration.md).
 
 | Aşama | Çıktı | Bitiş koşulu |
 | --- | --- | --- |

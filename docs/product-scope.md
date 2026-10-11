@@ -7,7 +7,7 @@ Kaynak: Kullanıcının sağladığı **Puanla — Ürün Amacı ve İşlevsel K
 
 ## Gereksinimler
 1. **Sınıflar:** Birden fazla şube; düzey 9–12 bilgisi; ekleme, düzeltme, mükerrer öğrenci kontrolü ve izolasyon.
-2. **Liste aktarımı:** Fotoğraftan satır/sütun temelli OCR; ad (birden çok sözcük olabilir), soyad (kaynakta bağımsız sütun), okul numarası ve komşu cinsiyet/pansiyon/sıra alanları karıştırılmaz. Belirsiz alanlar işaretlenir; öğretmen doğrulayıp onaylar. Manuel alternatif her zaman kullanılabilir.
+2. **Liste aktarımı:** Fotoğraftan satır/sütun temelli OCR; ad (birden çok sözcük olabilir), soyad (kaynakta bağımsız sütun), okul numarası ve komşu cinsiyet/pansiyon/sıra alanları karıştırılmaz. Türkçe karakter veya OCR yazım farklarıyla olası yinelenen adlar uyarı alır; otomatik birleştirilmez ve aktarım için öğretmen kararı gerekir. Belirsiz alanlar işaretlenir; öğretmen doğrulayıp onaylar. Manuel alternatif her zaman kullanılabilir.
 3. **Rubrik:** Her ölçütün azami puanı vardır. 0 puan ile puanlanmamış (null) ayrı durumdur. Hızlı niteliksel ve gerektiğinde aralık içi tam sayı puanlama desteklenir.
 4. **Tamamlama:** Zorunlu ölçütleri eksik değerlendirme kesin not değildir. Puanlar öğrenci, rubrik ve sınıfa göre izole; değişiklikler düzeltilebilir/geri alınabilir.
 5. **İlerleme:** Tamam/kısmi/başlanmamış durumlar; tamamlananlardan toplam ve sınıf ortalaması; ölçüt ayrıntılı CSV.

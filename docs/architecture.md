@@ -1,9 +1,9 @@
 # Android Native mimari çerçevesi
 
-**Kurulu olan:** Android uygulama modülü (`app/`), Compose ile çalışan başlangıç görünümü, saf Kotlin puan kuralı ve birim testleri. Başlangıç görünümü gerçek veriye bağlı değildir; OCR, Room, CSV ve yedekleme henüz uygulanmamıştır.
+**Kurulu olan:** Android uygulama modülü (`app/`), kardeş `compose-design-system` deposundan alınan `:design-system` Compose modülü, Room veri katmanı, yerel OCR, CSV ve yedekleme akışları. Puanlama kuralları ve değerlendirme durumları uygulamanın saf Kotlin domain katmanında tutulur. Bağımlılık yolunun yapılandırması için [entegrasyon raporuna](research/compose-design-system-puanla-integration.md) bakın.
 
 ## Planlanan katmanlar
-- **UI:** Compose + adaptif tablet düzeni; ölçütlere doğrudan erişim, büyük etkileşim alanları, kalem/dokunma ergonomisi ve erişilebilirlik. Arc uyarlamaları sadece görünüm/etkileşim bileşenlerinde.
+- **UI:** Compose + adaptif tablet düzeni; ölçütlere doğrudan erişim, büyük etkileşim alanları, kalem/dokunma ergonomisi ve erişilebilirlik. `:design-system` yalnızca görünüm/etkileşim bileşenlerini sağlar; ürün kurallarına ve veri modellerine bağımlı değildir.
 - **Domain:** Sınıf, öğrenci, rubrik, ölçüt ve değerlendirme sözleşmeleri; null/0 ve toplam kuralları. Android bağımlılığından mümkün olduğunca bağımsız.
 - **Data:** Room ile cihaz içi ilişkisel kayıtlar; veri geçişleri, transaction ve benzersizlik; ilk onaylı rubrikleri JSON'dan yalnızca okuma. Hassas veriler güvenli saklama ve dışa aktarma kurallarına bağlı.
 - **Import:** CameraX / sistem fotoğraf seçici, cihaz içi ML Kit OCR, sütun geometrisi ve kullanıcı doğrulama ekranı. OCR sonucu veri tabanına doğrudan yazılmaz.

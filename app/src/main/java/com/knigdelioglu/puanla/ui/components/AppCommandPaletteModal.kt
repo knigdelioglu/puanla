@@ -43,19 +43,10 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     )
     actions.add(
         ArcCommandAction(
-            id = "nav_ocr",
-            title = "Fotoğraftan Liste Aktarımı (OCR)",
-            category = "Gezinme",
-            shortcut = "3",
-            onExecute = { viewModel.currentDestination.value = AppDestination.OCR_IMPORT }
-        )
-    )
-    actions.add(
-        ArcCommandAction(
             id = "nav_group",
             title = "Grup Çalışmaları & Hazırlık Takibi",
             category = "Gezinme",
-            shortcut = "4",
+            shortcut = "3",
             onExecute = { viewModel.currentDestination.value = AppDestination.GROUP_WORK }
         )
     )
@@ -64,26 +55,17 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_reports",
             title = "Raporlar & Analiz / CSV Dışa Aktar",
             category = "Gezinme",
-            shortcut = "5",
+            shortcut = "4",
             onExecute = { viewModel.currentDestination.value = AppDestination.REPORTS }
         )
     )
     actions.add(
         ArcCommandAction(
             id = "nav_settings",
-            title = "Ayarlar & Veri Güvenliği",
+            title = "Ayarlar",
             category = "Gezinme",
-            shortcut = "6",
+            shortcut = "5",
             onExecute = { viewModel.currentDestination.value = AppDestination.SETTINGS }
-        )
-    )
-    actions.add(
-        ArcCommandAction(
-            id = "nav_catalog",
-            title = "Arc Compose 99 Bileşen Kataloğu",
-            category = "Gezinme",
-            shortcut = "7",
-            onExecute = { viewModel.currentDestination.value = AppDestination.CATALOG }
         )
     )
 

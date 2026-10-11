@@ -65,7 +65,6 @@ import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcDialog
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
-import com.knigdelioglu.arc.compose.display.ArcEmptyStates
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
@@ -138,11 +137,6 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = ArcTheme.colors.foreground
                 )
-                Text(
-                    text = "Şubeleri yönetin, öğrenci ekleyin veya basılı listeden fotoğraf ile aktarın.",
-                    fontSize = 14.sp,
-                    color = ArcTheme.colors.textSecondary
-                )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -156,6 +150,13 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     text = "Öğrenci Ekle",
                     onClick = { isAddStudentDialogOpen = true },
                     variant = ArcButtonVariant.Primary,
+                    size = ArcButtonSize.Md,
+                    enabled = selectedClassroom != null
+                )
+                ArcButton(
+                    text = "Fotoğraftan Aktar",
+                    onClick = { viewModel.currentDestination.value = AppDestination.OCR_IMPORT },
+                    variant = ArcButtonVariant.Outline,
                     size = ArcButtonSize.Md,
                     enabled = selectedClassroom != null
                 )
@@ -272,7 +273,18 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
         if (selectedClassroom == null) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 if (classrooms.isEmpty()) {
-                    ArcEmptyStates.NoClassrooms(onCreate = { isAddClassDialogOpen = true })
+                    ArcEmptyState(
+                        title = "Henüz sınıf yok",
+                        description = "Öğrenci ve rubrikleri yönetmek için önce bir sınıf oluşturun.",
+                        action = {
+                            ArcButton(
+                                text = "Sınıf Oluştur",
+                                onClick = { isAddClassDialogOpen = true },
+                                variant = ArcButtonVariant.Primary,
+                                size = ArcButtonSize.Md
+                            )
+                        }
+                    )
                 } else {
                     ArcEmptyState(
                         title = "Sınıf Seçilmedi",
@@ -307,7 +319,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         ArcEmptyState(
                             title = "Öğrenci Bulunmuyor",
-                            description = "Bu sınıfa henüz öğrenci eklenmemiş. 'Öğrenci Ekle' veya 'Fotoğraftan Aktarım' menüsünü kullanabilirsiniz."
+                            description = "Öğrenci eklemek için üstteki düğmelerden birini kullanın."
                         )
                     }
                 } else {

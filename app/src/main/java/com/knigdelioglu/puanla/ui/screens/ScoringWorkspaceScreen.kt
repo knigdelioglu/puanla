@@ -64,10 +64,8 @@ import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
-import com.knigdelioglu.arc.compose.controls.ArcTextarea
+import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
-import com.knigdelioglu.arc.compose.display.ArcAlert
-import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcAvatar
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
@@ -736,7 +734,13 @@ private fun ScoringControlPane(
                     LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
                     }
-                    ArcTextarea(
+                    Text(
+                        text = "Gözlem ve Kanıt Notu",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.foreground
+                    )
+                    ArcRichTextEditor(
                         value = noteText,
                         onValueChange = {
                             noteText = it
@@ -744,17 +748,11 @@ private fun ScoringControlPane(
                             onNoteChange(it)
                         },
                         placeholder = "Ölçüte özel gözlem, kanıt veya öğretmen değerlendirme notu...",
-                        label = "Gözlem ve Kanıt Notu",
-                        minLines = 3
+                        characterCountLabel = { "$it karakter" },
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                // Safety Rule Banner
-                ArcAlert(
-                    title = "Değerlendirme Güvenlik Kuralı",
-                    message = "Puanlanmadı != 0. Bütün ölçütler değerlendirilmeden 100 üzerinden kesin not üretilmez.",
-                    type = ArcAlertType.Info
-                )
             }
 
             Spacer(Modifier.height(12.dp))

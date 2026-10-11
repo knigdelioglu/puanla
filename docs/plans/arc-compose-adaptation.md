@@ -1,5 +1,7 @@
 > **Güncel kapsamlı analiz:** [Arc'ın 132 registry kaydını Puanla ile karşılaştıran tam envanter](../research/arc-puanla-full-catalog.md) ve [genişletilmiş tablet öncelikli ihtiyaç/uyarlama planı](arc-maximal-adoption.md). Bu belge ilk, daha dar kapsamlı planı tarihsel olarak korur; güncel geliştirme önceliklerinde genişletilmiş plan esas alınır.
 
+> **Durum güncellemesi (11 Ekim 2026):** Bu yerel `:arc-compose` modülü planı Compose Design System ortak deposuna geçiş öncesi bir tarihsel kayıttır. Güncel modül bağlantısı, uygulanacak bileşenler ve doğrulama koşulları için [Puanla entegrasyon raporuna](../research/compose-design-system-puanla-integration.md) bakın.
+
 # Arc → Kotlin / Jetpack Compose uyarlama planı
 
 **Durum:** İncelendi, planlandı — **uyarlama bileşenleri henüz uygulanmadı**.  
