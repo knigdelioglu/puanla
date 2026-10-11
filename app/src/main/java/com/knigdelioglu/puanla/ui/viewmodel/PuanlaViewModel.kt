@@ -650,6 +650,13 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Backup & Restore
     suspend fun createBackup(): String {
+        // Wait for the last score tap and the 500-ms debounced observation note.
+        // Otherwise a perfectly valid backup could silently omit the teacher's
+        // latest edits when Save is tapped immediately after typing.
+        val writes = withContext(Dispatchers.Main.immediate) {
+            (activeScoreJobs.toList() + pendingNoteWrites.values.toList()).distinct()
+        }
+        writes.joinAll()
         return repository.generateFullBackupJson()
     }
 
@@ -671,6 +678,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             if (result.isSuccess) {
                 withContext(Dispatchers.Main.immediate) {
                     undoStack.clear()
+                    scoreLocks.clear()
                     selectedStudent.value = null
                     selectedClassroom.value = null
                     selectedRubric.value = null
