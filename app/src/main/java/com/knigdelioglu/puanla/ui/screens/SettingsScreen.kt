@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
-import com.knigdelioglu.arc.compose.controls.ArcHoldToConfirm
+import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcShortcutRecorder
 import com.knigdelioglu.arc.compose.controls.ArcSignaturePad
 import com.knigdelioglu.arc.compose.controls.ArcSwitch
@@ -61,6 +62,8 @@ import com.knigdelioglu.arc.compose.display.ArcTimeline
 import com.knigdelioglu.arc.compose.display.ArcTimelineEntry
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
+import com.knigdelioglu.puanla.domain.backup.BackupImport
+import com.knigdelioglu.puanla.domain.backup.BackupPreview
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -74,6 +77,10 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var pendingBackup by remember { mutableStateOf<String?>(null) }
+    var pendingPreview by remember { mutableStateOf<BackupPreview?>(null) }
+    var restoring by remember { mutableStateOf(false) }
+    var selectingBackup by remember { mutableStateOf(false) }
     val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
             try {
@@ -89,17 +96,25 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
         }
     }
     val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
+        // Picking a file must NEVER modify the current database.
+        pendingBackup = null
+        pendingPreview = null
+        if (uri != null && !selectingBackup && !restoring) scope.launch {
+            selectingBackup = true
             try {
-                val backup = withContext(Dispatchers.IO) {
+                val content = withContext(Dispatchers.IO) {
                     val stream = requireNotNull(context.contentResolver.openInputStream(uri)) { "Yedek okunamadı." }
-                    stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    stream.use { BackupImport.readLimited(it) }
                 }
-                val outcome = viewModel.restoreBackup(backup)
-                outcome.onSuccess { viewModel.showToast("Yedekten $it öğrenci ve bütün ilişkili kayıtlar geri yüklendi.") }
-                    .onFailure { viewModel.showToast("Geri yükleme reddedildi: ${it.message}") }
+                val preview = withContext(Dispatchers.Default) { BackupImport.inspect(content) }
+                pendingBackup = content
+                pendingPreview = preview
             } catch (e: Exception) {
-                viewModel.showToast("Geri yükleme başarısız: ${e.message}")
+                pendingBackup = null
+                pendingPreview = null
+                viewModel.showToast("Yedek doğrulanamadı: ${e.message}")
+            } finally {
+                selectingBackup = false
             }
         }
     }
@@ -287,12 +302,63 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                         variant = ArcButtonVariant.Primary,
                         size = ArcButtonSize.Md
                     )
-                    ArcHoldToConfirm(
-                        label = "Yedekten Geri Yüklemek İçin Basılı Tutun",
-                        confirmedLabel = "Yedek Dosyası Seç",
-                        onConfirm = { openBackup.launch(arrayOf("application/json", "text/plain")) },
-                        variant = ArcButtonVariant.Danger
+                    ArcButton(
+                        text = if (selectingBackup) "Yedek Doğrulanıyor..." else "Yedek Dosyası Seç",
+                        onClick = { if (!selectingBackup && !restoring) openBackup.launch(arrayOf("application/json", "text/plain")) },
+                        enabled = !selectingBackup && !restoring,
+                        variant = ArcButtonVariant.Outline,
+                        size = ArcButtonSize.Md
                     )
+                }
+
+                val preview = pendingPreview
+                if (preview != null && pendingBackup != null) {
+                    ArcAlert(
+                        title = "Doğrulandı — geri yükleme henüz yapılmadı",
+                        message = "Yedek: ${preview.classrooms} sınıf, ${preview.students} öğrenci, " +
+                            "${preview.rubrics} rubrik, ${preview.assessments} değerlendirme, " +
+                            "${preview.scores} ölçüt puanı ve ${preview.groups} grup. " +
+                            "Bu işlem cihazdaki mevcut TÜM verilerin yerine bu yedeği koyacak. " +
+                            "Devam etmeden önce mevcut verilerin ayrı bir yedeğini alın.",
+                        type = ArcAlertType.Warning
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ArcButton(
+                            text = "Geri Yüklemeyi İptal Et",
+                            onClick = { pendingBackup = null; pendingPreview = null },
+                            variant = ArcButtonVariant.Ghost,
+                            enabled = !restoring
+                        )
+                        if (!restoring) {
+                            key(preview.exportedAt, preview.students, preview.assessments) {
+                                ArcConfirmMorph(
+                                    prompt = "Mevcut veriler değiştirilsin mi?",
+                                    initialLabel = "Bu Yedeği Geri Yükle",
+                                    confirmLabel = "Evet, Üzerine Yaz",
+                                    onConfirm = {
+                                        val selected = pendingBackup
+                                        if (selected != null && !restoring) scope.launch {
+                                            restoring = true
+                                            try {
+                                                val outcome = viewModel.restoreBackup(selected)
+                                                outcome.onSuccess {
+                                                    pendingBackup = null
+                                                    pendingPreview = null
+                                                    viewModel.showToast("$it öğrenci ve ilişkili kayıtları geri yüklendi.")
+                                                }.onFailure {
+                                                    viewModel.showToast("Geri yükleme reddedildi: ${it.message}")
+                                                }
+                                            } finally {
+                                                restoring = false
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        } else {
+                            Text("Geri yükleme sürüyor...", color = ArcTheme.colors.textSecondary)
+                        }
+                    }
                 }
             }
         }
