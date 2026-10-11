@@ -56,6 +56,8 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
+import com.knigdelioglu.arc.compose.controls.ArcCombobox
+import com.knigdelioglu.arc.compose.display.ArcPopover
 import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
@@ -255,10 +257,22 @@ private fun StudentRosterPane(
 
             Spacer(Modifier.height(10.dp))
 
+            ArcCombobox(
+                selectedItem = selectedStudent,
+                items = students,
+                onItemSelected = onSelectStudent,
+                placeholder = "Öğrenciye hızlı geçiş",
+                labelProvider = { "${it.studentNumber} - ${it.fullName}" },
+                searchQueryFilter = { student, query ->
+                    student.fullName.contains(query, ignoreCase = true) ||
+                        student.studentNumber.contains(query)
+                }
+            )
+            Spacer(Modifier.height(8.dp))
             ArcSearchField(
                 query = searchQuery,
                 onQueryChange = onSearchChange,
-                placeholder = "Numara veya isim..."
+                placeholder = "Listeyi filtrele..."
             )
 
             Spacer(Modifier.height(12.dp))
@@ -542,6 +556,7 @@ private fun ScoringControlPane(
                     val points = currentScore?.points
                     val maxPoints = criterion.maxPoints
 
+                    var showCriterionHelp by remember(student.id, criterion.id) { mutableStateOf(false) }
                     ArcCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -561,6 +576,30 @@ private fun ScoringControlPane(
                                 )
                             }
                             Spacer(Modifier.height(6.dp))
+                            Box {
+                                ArcButton(
+                                    text = "Ölçüt hakkında",
+                                    onClick = { showCriterionHelp = !showCriterionHelp },
+                                    variant = ArcButtonVariant.Ghost,
+                                    size = ArcButtonSize.Sm
+                                )
+                                ArcPopover(
+                                    isOpen = showCriterionHelp,
+                                    onDismiss = { showCriterionHelp = false }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.width(260.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(criterion.title, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            criterion.description.ifBlank { "Ölçüt yönergesi verilmemiş." },
+                                            color = colors.textSecondary
+                                        )
+                                        Text("Azami puan: $maxPoints", color = colors.foreground)
+                                    }
+                                }
+                            }
                             val guidance = buildList {
                                 if (criterion.description.isNotBlank()) {
                                     add("Ölçüt yönergesi" to criterion.description)
