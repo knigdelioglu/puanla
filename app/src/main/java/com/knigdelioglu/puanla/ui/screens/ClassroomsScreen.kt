@@ -125,21 +125,17 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         // Top Toolbar: Class cards and actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "Sınıf ve Öğrenci Yönetimi",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "Sınıf ve Öğrenci Yönetimi",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = ArcTheme.colors.foreground
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 ArcButton(
                     text = "Yeni Sınıf Ekle",
                     onClick = { isAddClassDialogOpen = true },

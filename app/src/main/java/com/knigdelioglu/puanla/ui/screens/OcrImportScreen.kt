@@ -101,20 +101,18 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "Fotoğraftan Öğrenci Listesi Aktarımı",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "Fotoğraftan Öğrenci Listesi Aktarımı",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = ArcTheme.colors.foreground
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)
+            ) {
                 if (selectedClassroom != null) {
                     ArcBadge(
                         text = "Hedef: ${selectedClassroom?.name}",
