@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
+import com.knigdelioglu.arc.compose.foundation.ArcMotion
 import kotlinx.coroutines.launch
 
 /**
@@ -136,7 +137,7 @@ fun ArcConfirmMorph(
 ) {
     var isConfirming by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier.animateContentSize()) {
+    Box(modifier = modifier.animateContentSize(animationSpec = ArcMotion.current.fastTween())) {
         if (!isConfirming) {
             ArcButton(
                 onClick = { isConfirming = true },

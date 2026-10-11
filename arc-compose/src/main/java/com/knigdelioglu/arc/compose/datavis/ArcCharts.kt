@@ -33,6 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -394,17 +396,19 @@ fun ArcSlopeChart(
 @Composable
 fun ArcActivityHeatmap(
     daysIntensity: List<Int>, // 0..4
+    dayLabels: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val colors = ArcTheme.colors
     ArcCard(modifier = modifier) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Değerlendirme Yoğunluğu", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+            Text("Son 28 Gün: Ölçüt Puanı Değişiklikleri", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                daysIntensity.take(28).chunked(7).forEach { week ->
+                daysIntensity.take(28).chunked(7).forEachIndexed { weekIndex, week ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        week.forEach { level ->
+                        week.forEachIndexed { dayIndex, level ->
+                            val flattenedIndex = weekIndex * 7 + dayIndex
                             val color = when (level) {
                                 1 -> colors.accent.copy(alpha = 0.25f)
                                 2 -> colors.accent.copy(alpha = 0.50f)
@@ -417,11 +421,21 @@ fun ArcActivityHeatmap(
                                     .size(12.dp)
                                     .clip(RoundedCornerShape(2.dp))
                                     .background(color)
+                                    .semantics {
+                                        contentDescription = dayLabels.getOrNull(flattenedIndex)
+                                            ?: "Değerlendirme etkinliği düzeyi $level"
+                                    }
                             )
                         }
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Açık renkten koyuya: 1, 2–3, 4–7, 8+ değişiklik/gün",
+                fontSize = 11.sp,
+                color = colors.textSecondary
+            )
         }
     }
 }

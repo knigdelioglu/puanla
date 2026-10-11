@@ -390,13 +390,14 @@ fun ArcExpandingButtonGroup(
     onSelectIndex: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val motion = ArcMotion.current
     ArcButtonGroup(modifier = modifier, shape = ArcTheme.shapes.pill) {
         items.forEachIndexed { index, (label, icon) ->
             val selected = index == selectedIndex
             Surface(
                 modifier = Modifier
                     .clickable { onSelectIndex(index) }
-                    .animateContentSize(),
+                    .animateContentSize(animationSpec = motion.fastTween()),
                 shape = ArcTheme.shapes.pill,
                 color = if (selected) ArcTheme.colors.accent else Color.Transparent,
                 contentColor = if (selected) ArcTheme.colors.accentForeground else ArcTheme.colors.foreground
@@ -406,7 +407,11 @@ fun ArcExpandingButtonGroup(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     icon()
-                    AnimatedVisibility(visible = selected) {
+                    AnimatedVisibility(
+                        visible = selected,
+                        enter = if (motion.reducedMotion) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(),
+                        exit = if (motion.reducedMotion) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut()
+                    ) {
                         Row {
                             Spacer(Modifier.width(6.dp))
                             Text(

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -30,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +46,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
 import com.knigdelioglu.arc.compose.controls.ArcCalendar
+import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcSplitButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcDropdownMenu
@@ -57,7 +60,6 @@ import com.knigdelioglu.arc.compose.datavis.ArcDonutChart
 import com.knigdelioglu.arc.compose.datavis.ArcDonutSegment
 import com.knigdelioglu.arc.compose.datavis.ArcGauge
 import com.knigdelioglu.arc.compose.datavis.ArcMetricCard
-import com.knigdelioglu.arc.compose.datavis.ArcSparkline
 import com.knigdelioglu.arc.compose.datavis.ArcStatItem
 import com.knigdelioglu.arc.compose.datavis.ArcStatsBand
 import com.knigdelioglu.arc.compose.datavis.ArcUsageMeter
@@ -66,11 +68,18 @@ import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCopyButton
+import com.knigdelioglu.arc.compose.display.ArcComparisonTable
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
+import com.knigdelioglu.puanla.domain.report.studentComparisonRows
+import com.knigdelioglu.puanla.data.local.fullName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun ReportsScreen(viewModel: PuanlaViewModel) {
@@ -88,6 +97,12 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var csvGenerating by remember { mutableStateOf(false) }
     var showDateFilter by remember { mutableStateOf(false) }
     var calendarTarget by remember { mutableStateOf<String?>(null) }
+    var comparisonOpen by remember { mutableStateOf(false) }
+    var firstComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
+    var secondComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
+    var comparisonRows by remember { mutableStateOf<List<List<String>>>(emptyList()) }
+    var comparisonLoading by remember { mutableStateOf(false) }
+    var comparisonError by remember { mutableStateOf(false) }
     var filterStart by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
     var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
     val filterActive = filterStart.isNotEmpty() || filterEnd.isNotEmpty()
@@ -147,6 +162,34 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val count85to100 = validScores.count { it >= 85 }
 
     val colors = ArcTheme.colors
+    val firstComparisonStudent = students.firstOrNull { it.id == firstComparisonStudentId }
+    val secondComparisonStudent = students.firstOrNull { it.id == secondComparisonStudentId }
+
+    LaunchedEffect(comparisonOpen, firstComparisonStudentId, secondComparisonStudentId, selectedRubric?.id) {
+        val rubric = selectedRubric
+        val firstId = firstComparisonStudentId
+        val secondId = secondComparisonStudentId
+        if (comparisonOpen && rubric != null && firstId != null && secondId != null && firstId != secondId) {
+            comparisonLoading = true
+            comparisonError = false
+            comparisonRows = try {
+                val criteria = viewModel.repository.getCriteriaForRubric(rubric.id)
+                val firstScores = viewModel.repository.getCriterionScoresForStudent(firstId, rubric.id)
+                val secondScores = viewModel.repository.getCriterionScoresForStudent(secondId, rubric.id)
+                studentComparisonRows(criteria, firstScores, secondScores)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                comparisonError = true
+                emptyList()
+            } finally {
+                comparisonLoading = false
+            }
+        } else {
+            comparisonError = false
+            comparisonRows = emptyList()
+        }
+    }
 
     val barData = listOf(
         ArcBarData("0 - 49", count0to49.toFloat(), colors.danger),
@@ -266,6 +309,18 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 )
             }
         }
+        if (effectiveStudents.size >= 2) {
+            ArcButton(
+                text = "İki öğrenciyi ölçüt bazında karşılaştır",
+                onClick = {
+                    firstComparisonStudentId = effectiveStudents.getOrNull(0)?.id
+                    secondComparisonStudentId = effectiveStudents.getOrNull(1)?.id
+                    comparisonOpen = true
+                },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
+            )
+        }
         if (showDateFilter) {
             ArcDateRangePicker(
                 startDate = filterStart,
@@ -293,9 +348,16 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             if (calendarTarget != null) {
                 // ArcCalendar chooses a real ISO date. This filters assessments
                 // by their last-update date, never fabricates historical grades.
+                val currentCalendarDate = runCatching {
+                    LocalDate.parse(if (calendarTarget == "start") filterStart else filterEnd)
+                }.getOrNull()
+                val calendarMonth = currentCalendarDate?.format(
+                    DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("tr-TR"))
+                ).orEmpty()
                 ArcCalendar(
-                    selectedDay = null,
+                    selectedDay = currentCalendarDate?.dayOfMonth,
                     onSelectDay = {},
+                    monthName = calendarMonth,
                     onSelectDate = { isoDate ->
                         if (calendarTarget == "start") filterStart = isoDate else filterEnd = isoDate
                         calendarTarget = null
@@ -386,47 +448,73 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             )
         }
 
-        // Sparkline progression across students
-        if (validScores.size >= 2) {
-            Surface(
-                shape = ArcTheme.shapes.panel,
-                color = colors.surface,
-                border = BorderStroke(1.dp, colors.borderSubtle),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text(
-                            text = "Liste Sırasına Göre Puan Eğilimi",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.foreground
-                        )
-                        Text(
-                            text = "Öğrencilerin sınıf listesindeki başarı dalgalanması.",
-                            fontSize = 13.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-                    ArcSparkline(
-                        points = validScores,
-                        lineColor = colors.accent,
-                        modifier = Modifier.width(160.dp).height(44.dp)
-                    )
-                }
-            }
-        }
-
         // CSV BOM Info Banner
         ArcAlert(
             title = "Microsoft Excel ve Türkçe Karakter Uyumu",
             message = "Dışa aktarılan CSV dosyaları UTF-8 BOM (\uFEFF) ile kodlanır. Excel, Numbers ve Google E-Tablolar'da İ, Ş, Ğ, Ç gibi Türkçe harfler bozulmadan açılır.",
             type = ArcAlertType.Info
         )
+    }
+
+    if (comparisonOpen) {
+        Dialog(onDismissRequest = { comparisonOpen = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth(0.95f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp).fillMaxHeight(0.9f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Aynı rubrikte öğrenci karşılaştırması", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                    Text("Puanlar yalnız seçili sınıf ve rubriğin gerçek kayıtlarından okunur.", fontSize = 13.sp, color = colors.textSecondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ArcSelect(
+                            selectedItem = firstComparisonStudent,
+                            items = effectiveStudents,
+                            onItemSelected = {
+                                firstComparisonStudentId = it.id
+                                if (secondComparisonStudentId == it.id) {
+                                    secondComparisonStudentId = effectiveStudents.firstOrNull { student -> student.id != it.id }?.id
+                                }
+                            },
+                            labelProvider = { it.fullName },
+                            placeholder = "İlk öğrenci",
+                            modifier = Modifier.weight(1f)
+                        )
+                        ArcSelect(
+                            selectedItem = secondComparisonStudent,
+                            items = effectiveStudents.filter { it.id != firstComparisonStudentId },
+                            onItemSelected = { secondComparisonStudentId = it.id },
+                            labelProvider = { it.fullName },
+                            placeholder = "İkinci öğrenci",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (comparisonLoading) {
+                        Text("Ölçüt puanları okunuyor…", color = colors.textSecondary)
+                    } else if (firstComparisonStudentId == secondComparisonStudentId) {
+                        Text("Karşılaştırmak için iki farklı öğrenci seçin.", color = colors.textSecondary)
+                    } else if (comparisonError) {
+                        Text("Ölçüt puanları yüklenemedi. Seçimi değiştirip yeniden deneyin.", color = colors.danger)
+                    } else if (comparisonRows.isEmpty()) {
+                        Text("Bu rubrikte gösterilecek ölçüt veya puan kaydı yok.", color = colors.textSecondary)
+                    } else {
+                        Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                            ArcComparisonTable(
+                                headers = listOf("Ölçüt", firstComparisonStudent?.fullName ?: "Öğrenci 1", secondComparisonStudent?.fullName ?: "Öğrenci 2"),
+                                rows = comparisonRows
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        ArcButton(text = "Kapat", onClick = { comparisonOpen = false }, variant = ArcButtonVariant.Ghost)
+                    }
+                }
+            }
+        }
     }
 
     // CSV Export Preview Dialog
