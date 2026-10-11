@@ -219,6 +219,11 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     suspend fun getAssessmentForStudent(studentId: String, rubricId: String): AssessmentEntity? =
         assessmentDao.getAssessmentForStudent(studentId, rubricId)
 
+    suspend fun getCriterionScoresForStudent(studentId: String, rubricId: String): Map<String, Int?> {
+        val assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId) ?: return emptyMap()
+        return assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
+    }
+
     fun getAssessmentForStudentFlow(studentId: String, rubricId: String): Flow<AssessmentEntity?> =
         assessmentDao.getAssessmentForStudentFlow(studentId, rubricId)
 
@@ -328,6 +333,9 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     // Audit logs
     fun getRecentLogsFlow(limit: Int = 30): Flow<List<AuditLogEntity>> =
         auditLogDao.getRecentLogsFlow(limit)
+
+    fun getAssessmentActivityFlow(sinceInclusive: Long): Flow<List<AuditLogEntity>> =
+        auditLogDao.getAssessmentActivityFlow(sinceInclusive)
 
     /**
      * Reads one consistent database snapshot and delegates the actual serialization

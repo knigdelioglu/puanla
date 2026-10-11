@@ -51,6 +51,7 @@ import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
+import com.knigdelioglu.arc.compose.datavis.ArcActivityHeatmap
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
 import com.knigdelioglu.arc.compose.display.ArcTimeline
@@ -58,6 +59,7 @@ import com.knigdelioglu.arc.compose.display.ArcTimelineEntry
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcScrollArea
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
+import com.knigdelioglu.puanla.domain.report.auditTimelineRecords
 import com.knigdelioglu.puanla.domain.backup.BackupImport
 import com.knigdelioglu.puanla.domain.backup.BackupPreview
 import kotlinx.coroutines.launch
@@ -70,6 +72,8 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     val darkMode by viewModel.darkMode.collectAsState()
     val reduceMotion by viewModel.reduceMotion.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
+    val assessmentActivity by viewModel.assessmentActivity.collectAsState()
+    val assessmentActivityLabels by viewModel.assessmentActivityLabels.collectAsState()
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -118,25 +122,15 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     }
     val scrollState = rememberScrollState()
 
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val dateFormat = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
 
     val timelineEntries = remember(recentLogs) {
-        if (recentLogs.isEmpty()) {
-            listOf(
-                ArcTimelineEntry(
-                    title = "Sistem Başlatıldı",
-                    subtitle = "Yerel Room veritabanı hazırlandı. Onaylı rubrikler yalnızca gerçek veri kaynağından yüklenir.",
-                    time = "Şimdi"
-                )
+        auditTimelineRecords(recentLogs).map { log ->
+            ArcTimelineEntry(
+                title = log.action,
+                subtitle = log.details,
+                time = dateFormat.format(Date(log.timestamp))
             )
-        } else {
-            recentLogs.take(8).map { log ->
-                ArcTimelineEntry(
-                    title = log.action,
-                    subtitle = log.details,
-                    time = dateFormat.format(Date(log.timestamp))
-                )
-            }
         }
     }
 
@@ -332,8 +326,20 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
         ArcCard(modifier = Modifier.fillMaxWidth()) {
             Box(modifier = Modifier.padding(18.dp)) {
-                ArcTimeline(entries = timelineEntries)
+                if (timelineEntries.isEmpty()) {
+                    Text("Henüz bir işlem kaydı yok.", color = ArcTheme.colors.textSecondary)
+                } else {
+                    ArcTimeline(entries = timelineEntries)
+                }
             }
+        }
+
+        if (assessmentActivity.any { it > 0 }) {
+            ArcActivityHeatmap(
+                daysIntensity = assessmentActivity,
+                dayLabels = assessmentActivityLabels,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         // Example FAQ, fake rubric JSON and static changelog stay in the

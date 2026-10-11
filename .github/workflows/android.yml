@@ -23,5 +23,14 @@ jobs:
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
-      - name: Unit tests and debug build
-        run: ./gradlew test :app:assembleDebug --no-daemon
+      - name: Unit tests and debug and release builds
+        run: ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Arc Compose interaction tests on Android tablet emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon

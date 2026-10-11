@@ -146,6 +146,9 @@ interface AuditLogDao {
 
     @Query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentLogs(limit: Int = 50): List<AuditLogEntity>
+
+    @Query("SELECT * FROM audit_logs WHERE action = 'CRITERION_SCORE_CHANGED' AND timestamp >= :sinceInclusive ORDER BY timestamp ASC")
+    fun getAssessmentActivityFlow(sinceInclusive: Long): Flow<List<AuditLogEntity>>
 }
 
 @Dao

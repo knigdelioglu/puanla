@@ -22,6 +22,7 @@ import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
+import com.knigdelioglu.puanla.domain.report.assessmentActivityByDay
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -36,11 +37,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 enum class AppDestination(val label: String, val iconName: String) {
     WORKSPACE("Değerlendirme", "Grading"),
@@ -114,6 +120,21 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Audit logs
     val recentLogs: StateFlow<List<AuditLogEntity>> = repository.getRecentLogsFlow(50)
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val activityZone = ZoneId.systemDefault()
+    private val activityToday = LocalDate.now(activityZone)
+    private val activityStart = activityToday.minusDays(27).atStartOfDay(activityZone).toInstant().toEpochMilli()
+    val assessmentActivity: StateFlow<List<Int>> = repository.getAssessmentActivityFlow(activityStart)
+        .map { assessmentActivityByDay(it, activityToday, activityZone) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, List(28) { 0 })
+    private val activityDateFormat = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("tr-TR"))
+    val assessmentActivityLabels: StateFlow<List<String>> = assessmentActivity
+        .map { levels ->
+            levels.mapIndexed { index, level ->
+                "${activityToday.minusDays(27L - index).format(activityDateFormat)}: puan değişikliği etkinliği, seviye $level/4"
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // Toast stack & Undo

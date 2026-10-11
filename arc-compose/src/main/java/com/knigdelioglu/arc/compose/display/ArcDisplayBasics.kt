@@ -1,6 +1,10 @@
 package com.knigdelioglu.arc.compose.display
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -59,6 +63,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
+import com.knigdelioglu.arc.compose.foundation.ArcMotion
 
 /**
  * Arc Card: clean elevated card surface.
@@ -97,9 +102,10 @@ fun ArcExpandableCard(
 ) {
     var expanded by remember { mutableStateOf(initiallyExpanded) }
     val colors = ArcTheme.colors
+    val motion = ArcMotion.current
 
     ArcCard(
-        modifier = modifier.animateContentSize()
+        modifier = modifier.animateContentSize(animationSpec = motion.fastTween())
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -128,7 +134,11 @@ fun ArcExpandableCard(
                     tint = colors.textMuted
                 )
             }
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = if (motion.reducedMotion) EnterTransition.None else fadeIn(),
+                exit = if (motion.reducedMotion) ExitTransition.None else fadeOut()
+            ) {
                 Column {
                     Spacer(Modifier.height(12.dp))
                     content()
@@ -343,16 +353,21 @@ fun ArcSkeleton(
     if (ArcTheme.motion.reducedMotion) {
         Box(modifier = modifier.clip(shape).background(ArcTheme.colors.surfaceMuted))
     } else {
-        val transition = rememberInfiniteTransition(label = "skeleton")
-        val alpha by transition.animateFloat(
-            initialValue = 0.3f,
-            targetValue = 0.8f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(800),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "skeletonAlpha"
-        )
+        val alpha = if (ArcMotion.current.reducedMotion) {
+            0.55f
+        } else {
+            val transition = rememberInfiniteTransition(label = "skeleton")
+            val animatedAlpha by transition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 0.8f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(800),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "skeletonAlpha"
+            )
+            animatedAlpha
+        }
         Box(
             modifier = modifier
                 .clip(shape)
@@ -443,6 +458,7 @@ fun ArcAccordion(
     modifier: Modifier = Modifier
 ) {
     var expandedIndex by remember { mutableStateOf<Int?>(null) }
+    val motion = ArcMotion.current
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.forEachIndexed { index, (header, body) ->
             val isExpanded = expandedIndex == index
@@ -462,7 +478,11 @@ fun ArcAccordion(
                             tint = ArcTheme.colors.textMuted
                         )
                     }
-                    AnimatedVisibility(visible = isExpanded) {
+                    AnimatedVisibility(
+                        visible = isExpanded,
+                        enter = if (motion.reducedMotion) EnterTransition.None else fadeIn(),
+                        exit = if (motion.reducedMotion) ExitTransition.None else fadeOut()
+                    ) {
                         Column {
                             Spacer(Modifier.height(8.dp))
                             Text(body, fontSize = 13.sp, color = ArcTheme.colors.textSecondary, lineHeight = 19.sp)

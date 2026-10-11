@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
+import com.knigdelioglu.arc.compose.foundation.ArcMotion
 
 /**
  * Arc Input: single-line text input with clean borders and active accent state.
@@ -271,7 +272,10 @@ fun ArcExpandingSearch(
 ) {
     var expanded by remember { mutableStateOf(query.isNotEmpty()) }
 
-    Row(modifier = modifier.animateContentSize(), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier.animateContentSize(animationSpec = ArcMotion.current.fastTween()),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         if (!expanded && query.isEmpty()) {
             ArcActionButton(
                 onClick = { expanded = true },
