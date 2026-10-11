@@ -307,7 +307,9 @@ fun ArcExpandingSearch(
 }
 
 /**
- * Arc Number Field: accessible integer scoring stepper with buttons and direct keyboard input.
+ * Scoring stepper with numeric keyboard editing.
+ * Typing remains local until IME Done / focus loss; never save each digit.
+ * Null is unscored (displayed as a dash), distinct from the grade 0.
  */
 @Composable
 fun ArcNumberField(
@@ -319,7 +321,17 @@ fun ArcNumberField(
     step: Int = 1,
     label: String? = null
 ) {
-    val currentValue = value ?: min
+    val current = value ?: min
+    var draft by remember { mutableStateOf(value?.toString() ?: "") }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(value) {
+        if (!focused) draft = value?.toString() ?: ""
+    }
+    val commit: () -> Unit = {
+        val parsed = ArcNumberInputRules.parse(draft, min, max)
+        if (parsed != null && parsed != value) onValueChange(parsed)
+        draft = parsed?.toString() ?: value?.toString().orEmpty()
+    }
 
     Surface(
         modifier = modifier,
@@ -333,51 +345,62 @@ fun ArcNumberField(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ArcActionButton(
-                onClick = {
-                    val next = (currentValue - step).coerceAtLeast(min)
-                    onValueChange(next)
-                },
+                onClick = { onValueChange((current - step.coerceAtLeast(1)).coerceAtLeast(min)) },
                 size = ArcButtonSize.Sm,
-                enabled = currentValue > min,
+                enabled = value != null && current > min,
                 variant = ArcButtonVariant.Secondary
             ) {
                 Icon(Icons.Default.Remove, contentDescription = "Puan Azalt", modifier = Modifier.size(16.dp))
             }
 
             Box(
-                modifier = Modifier
-                    .defaultMinSize(minWidth = 56.dp)
-                    .padding(horizontal = 8.dp),
+                modifier = Modifier.defaultMinSize(minWidth = 62.dp).padding(horizontal = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = value?.toString() ?: "—",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (value != null) ArcTheme.colors.foreground else ArcTheme.colors.textMuted,
-                    textAlign = TextAlign.Center
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { candidate ->
+                        if (candidate.length <= 6 && candidate.all(Char::isDigit)) draft = candidate
+                    },
+                    modifier = Modifier
+                        .width(62.dp)
+                        .onFocusChanged { state ->
+                            val wasFocused = focused
+                            focused = state.isFocused
+                            if (wasFocused && !state.isFocused) commit()
+                        },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { commit() }),
+                    textStyle = TextStyle(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        color = ArcTheme.colors.foreground
+                    ),
+                    cursorBrush = SolidColor(ArcTheme.colors.accent),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.Center) {
+                            if (draft.isEmpty()) {
+                                Text("—", fontSize = 18.sp, color = ArcTheme.colors.textMuted)
+                            }
+                            inner()
+                        }
+                    }
                 )
             }
 
             ArcActionButton(
-                onClick = {
-                    val next = (currentValue + step).coerceAtMost(max)
-                    onValueChange(next)
-                },
+                onClick = { onValueChange((current + step.coerceAtLeast(1)).coerceAtMost(max)) },
                 size = ArcButtonSize.Sm,
-                enabled = currentValue < max,
+                enabled = value == null || current < max,
                 variant = ArcButtonVariant.Secondary
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Puan Artır", modifier = Modifier.size(16.dp))
             }
 
             if (label != null) {
-                Text(
-                    text = label,
-                    fontSize = 13.sp,
-                    color = ArcTheme.colors.textSecondary,
-                    modifier = Modifier.padding(end = 6.dp)
-                )
+                Text(label, fontSize = 13.sp, color = ArcTheme.colors.textSecondary, modifier = Modifier.padding(end = 6.dp))
             }
         }
     }

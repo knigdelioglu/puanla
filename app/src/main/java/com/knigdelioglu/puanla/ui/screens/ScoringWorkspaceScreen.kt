@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
@@ -627,13 +628,15 @@ private fun ScoringControlPane(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                ArcNumberField(
-                                    value = points ?: 0,
-                                    onValueChange = { onScore(it, currentScore?.evidenceNote) },
-                                    min = 0,
-                                    max = maxPoints,
-                                    label = "Hassas Tam Sayı"
-                                )
+                                key(student.id, criterion.id) {
+                                    ArcNumberField(
+                                        value = points,
+                                        onValueChange = { onScore(it, currentScore?.evidenceNote) },
+                                        min = 0,
+                                        max = maxPoints,
+                                        label = "Hassas Tam Sayı"
+                                    )
+                                }
                                 ArcButton(
                                     text = "Puanı Kaldır",
                                     onClick = onClearScore,
