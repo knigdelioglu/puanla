@@ -25,6 +25,11 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
       - name: Unit tests and debug and release builds
         run: ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Arc Compose interaction tests on Android tablet emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -32,5 +37,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 900
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest --no-daemon
