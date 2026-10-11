@@ -17,48 +17,48 @@
 | 1 | `arc-foundation` | P0 | `ArcTheme`, `ArcColors`, `ArcShapes`, `ArcSpacing` | Tüm uygulama kabuğu, açık/koyu mod ve yüzey hiyerarşisi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 2 | `arc-motion-tokens` | P0 | `ArcMotionTokens`, `ArcMotion` (Yay, Snappy, Smooth) | ArcElasticSlider animasyonları ve ArcTheme üzerinden azaltılmış hareket | **Dolaylı üretim kullanımı var; bütün animasyonlar denetlenmedi** |
 | 3 | `button` | P0 | `ArcButton` (Primary, Secondary, Outline, Ghost, Danger) | Çalışma alanı, sınıf ekleme, kaydetme, onay butonları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 4 | `action-button` | P0 | `ArcActionButton` (Kompakt ikon ve eylem butonu) | Önceki/sonraki öğrenci gezinmesi, sayı artırma/azaltma | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 5 | `split-button` | P0 | `ArcSplitButton` (Bölünmüş ana eylem ve açılır menü) | Puanları CSV olarak dışa aktar / Farklı formatta aktar | **Yalnız galeri çağrısı (işlev teyitsiz)** |
-| 6 | `button-group` | P0 | `ArcButtonGroup` (Bitişik buton kümesi) | Önceki/sonraki öğrenci ve hızlı yönlendirme butonları | **Yalnız galeri çağrısı (işlev teyitsiz)** |
+| 4 | `action-button` | P0 | `ArcActionButton` (Kompakt ikon ve eylem butonu) | Üst bar işlem geçmişi ArcActionButton ve ArcNumberField +/- eylemleri | **Üretim API çağrısı var; cihazda erişilebilirlik doğrulanmalı**|
+| 5 | `split-button` | P0 | `ArcSplitButton` (Bölünmüş ana eylem ve açılır menü) | Raporlarda CSV önizlemesi ve ayrı CSV panoya kopyalama eylemi | **ArcSplitButton üretim ekranında gerçek CSV işlemlerine bağlı**|
+| 6 | `button-group` | P0 | `ArcButtonGroup` (Bitişik buton kümesi) | Raporlardaki tarih filtresini aç/sıfırla eylemleri | **ArcButtonGroup üretim ekranında filtre durumuna bağlı**|
 | 7 | `floating-button-group` | P0 | `ArcFloatingButtonGroup` (Yüzen alt eylem çubuğu) | Puanlama ekranında Önceki / Geri Al / Sonraki | **Normal ekranda gerçek ViewModel eylemlerine bağlı; cihaz testi gerekli** |
-| 8 | `dropdown-menu` | P0 | `ArcDropdownMenu`, `ArcDropdownMenuItem` | Üst bar şube ve rubrik seçicileri, satır menüleri | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 9 | `drawer` | P0 | `ArcDrawer` (Yan çekmece paneli) | Tablet yan ayrıntı paneli, sınıf/öğrenci detayları | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 8 | `dropdown-menu` | P0 | `ArcDropdownMenu`, `ArcDropdownMenuItem` | Raporlar CSV alternatifleri açılır menüsü | **ArcDropdownMenu panoya kopyalama işlemini açıyor**|
+| 9 | `drawer` | P0 | `ArcDrawer` (Yan çekmece paneli) | Öğrenci tablosundan açılan ayrıntı/düzenleme paneli | **ArcDrawer gerçek öğrenci kimliği ve alan kaydıyla bağlı**|
 | 10 | `input` | P0 | `ArcInput` (Tek satırlı metin ve sayı girişi) | Öğrenci numarası, ad/soyad, sınıf adı girişleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 11 | `select` | P0 | `ArcSelect` (Açılır seçim kutusu) | Sınıf şubesi (9, 10, 11, 12) ve rubrik filtreleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 12 | `combobox` | P0 | `ArcCombobox` (Aramalı seçim kutusu) | Hızlı öğrenci arama ve doğrudan seçme alanı | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 12 | `combobox` | P0 | `ArcCombobox` (Aramalı seçim kutusu) | Puanlama ekranında numara/isimle doğrudan öğrenci seçimi | **ArcCombobox öğrenci seçimi ViewModel'e bağlı**|
 | 13 | `checkbox` | P0 | `ArcCheckbox` (Özelleştirilmiş onay kutusu) | Grup çalışması 7 hazırlık maddesi ve OCR satır seçimi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 14 | `switch` | P0 | `ArcSwitch` (Fiziksel yaylı toggle anahtarı) | Koyu tema, titreşim, otomatik sonraki öğrenciye geçiş ayarları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 15 | `multi-select` | P0 | `ArcMultiSelect` (Çoklu öğrenci/seçim kutusu) | Grup üyesi seçimindeki öğrenci ID kümesi | **Normal ekranda grup oluşturma callback'ine bağlı; cihaz testi gerekli** |
 | 16 | `number-field` | P0 | `ArcNumberField` (Erişilebilir ± butonlu puan kontrolü) | Ölçüt puanını doğrudan tam sayı olarak verme (+/- butonlar) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 17 | `search-field` | P0 | `ArcSearchField` (Arama alanı) | Öğrenci listesinde ad ve numara ile gerçek zamanlı arama | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 18 | `file-dropzone` | P0 | `ArcFileDropzone` (Dosya sürükle-bırak / tıklama alanı) | OCR fotoğraf seçicisi + Android URI sürükle/bırak (yedek SAF arayüzü ayrıdır) | **Doğrudan bağlı; gerçek çapraz uygulama drop cihaz testi gerekli** |
-| 19 | `radio-group` | P0 | `ArcRadioGroup` (Tekli seçim grubu) | Cinsiyet seçimi, rubrik türü ve dışa aktarım seçenekleri | **Yalnız galeri çağrısı (işlev teyitsiz)** |
+| 19 | `radio-group` | P0 | `ArcRadioGroup` (Tekli seçim grubu) | Sınıf öğrenci durum filtresi (Tümü / Tamamlanan / Kısmi / Puanlanmadı) | **ArcRadioGroup gerçek liste filtresine bağlı**|
 | 20 | `segmented-control` | P0 | `ArcSegmentedControl` (Kayan hap arka planlı kontrol) | Ölçüt niteliksel düzeyleri (Yetersiz, Geliştirilmeli, İyi, Çok İyi) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 21 | `dialog` | P0 | `ArcDialog` (Modal onay ve işlem penceresi) | Sınıf silme, yedekten geri yükleme ve öğrenci ekleme pencereleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 22 | `popover` | P0 | `ArcPopover` (Noktasal bağlamsal pencere) | Ölçüt yönergesi ve rubrik ipuçlarının açılır gösterimi | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 22 | `popover` | P0 | `ArcPopover` (Noktasal bağlamsal pencere) | Sınıf durum filtresi ve ölçüt yönergesinin bağlamsal açıklaması | **ArcPopover gerçek durum ve ölçüt açıklamalarını gösteriyor**|
 | 23 | `tooltip` | P0 | `ArcTooltip` (İpucu baloncuğu) | Üst bardaki yerel işlem geçmişi eylemi | **Material3 gerçek tooltip ile normal ekran bağlantısı var; cihaz testi gerekli** |
 | 24 | `tabs` | P0 | `ArcTabs` (Sekmeli gezinme çubuğu) | Ana ekranlar (Değerlendirme, Sınıflar, OCR, Gruplar, Raporlar) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 25 | `expandable-card` | P0 | `ArcExpandableCard` (Genişleyebilir kart) | Uzun ölçüt tanımları ve MEB rubrik yönerge ayrıntıları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 26 | `alert` | P0 | `ArcAlert` (Info, Success, Warning, Danger uyarıları) | OCR belirsizlik uyarıları, veri koruma bilgilendirmesi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 27 | `progress` | P0 | `ArcProgress` (Çizgisel ilerleme çubuğu) | Rubrik tamamlanma yüzdesi, OCR işleme ilerlemesi | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 28 | `skeleton` | P0 | `ArcSkeleton` (Yükleme iskeleti) | Yerel veritabanı okuma sırasında titremesiz yer tutucu | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 28 | `skeleton` | P0 | `ArcSkeleton` (Yükleme iskeleti) | OCR sırasında yükleme yer tutucu satırları | **ArcSkeleton yalnız çalışan OCR yüklemesinde gösteriliyor**|
 | 29 | `badge` | P0 | `ArcBadge` (Durum rozeti) | Tamamlandı, Kısmi, Başlanmadı ve Doğrulama Gerekiyor rozetleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 30 | `card` | P0 | `ArcCard` (Temel yüzey kartı) | Sınıf kartları, ölçüt kutuları, öğrenci özet kartları | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 31 | `metric-card` | P0 | `ArcMetricCard` (İstatistik ve KPI kartı) | Tamamlanan Öğrenci Sayısı, Sınıf Ortalaması, Kalan Öğrenci | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 32 | `empty-state` | P0 | `ArcEmptyState` (Boş durum yönlendirmesi) | Henüz sınıf eklenmediğinde, öğrenci listesi boşken gösterim | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 33 | `filter-toolbar` | P0 | `ArcFilterToolbar` (Filtre araç çubuğu) | Puanlama durumu (Tümü/Tam/Kısmi/Boş) ve şube filtreleme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 33 | `filter-toolbar` | P0 | `ArcFilterToolbar` (Filtre araç çubuğu) | Sınıflar ekranında sınıf düzeyi, değerlendirme durumu ve öğrenci araması | **ArcFilterToolbar gerçek filtrelenmiş öğrenci listesine bağlı**|
 | 34 | `sortable-data-table` | P0 | `ArcSortableDataTable` (Sıralanabilir veri tablosu) | Öğrenci listesi, OCR doğrulama tablosu, sonuçlar tablosu | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 35 | `swipe-actions` | P0 | `ArcSwipeActions` (Kaydırarak eylem yapma) | Öğrenci satırını sağa/sola kaydırarak puanla veya düzenle | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 36 | `slider` | P0 | `ArcSlider` (Standart kaydırıcı) | Ayarlar ekranı ve genel eşik aralıkları | **Yalnız galeri çağrısı (işlev teyitsiz)** |
+| 35 | `swipe-actions` | P0 | `ArcSwipeActions` (Kaydırarak eylem yapma) | Öğrenci numarası alanında kaydırarak düzenle/sil eylemleri | **ArcSwipeActions düzenleme çekmecesine; silme onayına bağlı**|
+| 36 | `slider` | P0 | `ArcSlider` (Standart kaydırıcı) | OCR kaynak görsel karşılaştırmasında önizleme büyütme (1–2,5x) | **ArcSlider gerçek fotoğraf ölçeğine bağlı; veri kaydetmiyor**|
 | 37 | `elastic-slider` | P0 | `ArcElasticSlider` (Fiziksel elastik yaylı kaydırıcı) | Parmağın üstünde balon gösteren 0..max ölçüt puanlama kontrolü | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 38 | `inline-edit` | P0 | `ArcInlineEdit` (Yerinde doğrudan düzenleme) | Öğrenci adı, soyadı, numarası üzerinde doğrudan düzeltme | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 39 | `chip-group` | P0 | `ArcChipGroup` (Seçilebilir etiketler grubu) | 9, 10, 11, 12. sınıf filtre çipleri ve OCR filtreleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 40 | `bottom-sheet` | P0 | `ArcBottomSheet` (Alt sayfa modalı) | Dikey tablet veya kompakt modda puanlama ve filtre sayfası | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 40 | `bottom-sheet` | P0 | `ArcBottomSheet` (Alt sayfa modalı) | Üst bardan açılan rubrik seçim sayfası | **ArcBottomSheet gerçek rubrik seçim menüsü sunuyor**|
 | 41 | `resizable-panels` | P0 | `ArcResizablePanels` (Ayarlanabilir bölmeli paneller) | Tablette 3 panelli çalışma alanı (Öğrenciler ↔ Ölçütler ↔ Puan Kontrolü) | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 42 | `toast-stack` | P0 | `ArcToastStack` (Geri al destekli bildirim yığını) | "Puan kaydedildi [Geri Al]", "Yedek oluşturuldu" bildirimleri | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 | 43 | `stepper` | P0 | `ArcStepper` (Adım göstergesi) | OCR İçe Aktarma: 1. Fotoğraf Seç → 2. Tara → 3. Doğrula → 4. Kaydet | **Normal ekran API çağrısı var (işlev teyitsiz)** |
-| 44 | `radio-cards` | P0 | `ArcRadioCards` (Seçilebilir büyük kartlar) | Değerlendirilecek rubrik kartı seçimi | **Normal ekran çağrısı yok (entegrasyon eksik)** |
-| 45 | `file-upload` | P0 | `ArcFileUpload` (Fotoğraf seçici ve durum göstergesi) | Android Photo Picker ile sınıf listesi görseli yükleme | **Normal ekran çağrısı yok (entegrasyon eksik)** |
+| 44 | `radio-cards` | P0 | `ArcRadioCards` (Seçilebilir büyük kartlar) | Sınıf düzeyine uygun rubrikleri seçmek için büyük kartlar | **ArcRadioCards gerçek rubrik seçimini ViewModel'e bağlıyor**|
+| 45 | `file-upload` | P0 | `ArcFileUpload` (Fotoğraf seçici ve durum göstergesi) | OCR fotoğraf seçiminden sonra dosya adı/boyutu ve kaldırma eylemi | **ArcFileUpload gerçek ContentResolver dosya bilgisi ve kaldırma ile bağlı**|
 | 46 | `page-header` | P0 | `ArcPageHeader` (Çalışma alanı sayfa başlığı) | Şube, rubrik, seçili öğrenci ve hızlı aksiyonlar başlığı | **Normal ekran API çağrısı var (işlev teyitsiz)** |
 
 ---
@@ -195,3 +195,13 @@
 - Önceden boş `Box` sarmalayıcısı olan `ArcTooltip`, Material3 `TooltipBox` ile gerçek hover / uzun basma / odak ipucuna dönüştürüldü ve üst barda işlem geçmişi eylemine bağlandı.
 - Uygulama kaynağındaki “99 bileşen içerir” yorumu kaldırıldı; katalogdaki demosu olan bileşen gerçek ürün entegrasyonu sayılamaz.
 - **Sınır:** Bu değişiklikler yerel Android `:arc-compose` uyarlamasındadır; harici `kuratlielia/arc-library` deposuna hiçbir kod yazılmadı. Başka uygulamadan URI sürükleme, TalkBack ve uzun basma için gerçek tablet/enstrümantasyon testi hâlâ gereklidir.
+
+## 11 Ekim 2026 — P0 matrisindeki kalan bileşenlerin üretim bağlantıları
+
+- **Sınıf yönetimi:** `ArcFilterToolbar` sınıf ve değerlendirme durumunu filtreler. Durum seçenekleri `ArcPopover` içinde `ArcRadioGroup` ile seçilir. `ArcSwipeActions` öğrenci numarası hücresinde düzenleme veya onaylı silmeye yönlendirir. `ArcDrawer` gerçek seçili öğrencinin ad/soyad güncellemesini ve puanlama geçişini yapar.
+- **Puanlama:** `ArcCombobox` öğrenci adına/numarasına göre hızlı seçim yapar. Ölçütün kendi yönergesine erişen ek `ArcPopover` bulunur.
+- **Rubrik:** Üst bardaki `ArcBottomSheet` içinde sınıf düzeyiyle filtrelenmiş `ArcRadioCards` seçimi gerçek `selectRubric` eylemine bağlıdır. Onaylı rubrik kaynağı olmadan hayalî veri gösterilmez.
+- **Rapor:** `ArcSplitButton` ana CSV önizleme eylemi ile `ArcDropdownMenu` içindeki gerçek CSV panoya kopyalama eylemini ayırır; `ArcButtonGroup` tarih filtreleme eylemlerini gruplar. `ArcActionButton` zaten üst bardaki işlem geçmişine bağlıydı.
+- **OCR:** `ArcFileUpload` önceki seçili görselin gerçek dosya bilgisini gösterir ve kaldırır. `ArcSkeleton` OCR taraması sırasında gösterilir. `ArcSlider`, fotoğraf/OCR karşılaştırmasında görüntü yakınlaştırmasını gerçekten değiştirir.
+- **Sonuç:** P0 matrisindeki **46 kaydın tamamı en az bir normal üretim akışında doğrudan veya Arc alt bileşeni üzerinden kullanılmaktadır**; bu beyan kaynak kodu bağlantısını belirtir, *gerçek tablette uçtan uca doğrulama* değildir. Kalan P1/P2 katalog girdileri ürün kapsamından bağımsız değerlendirilir.
+- **Gerçek cihazda test edilmeyenler:** kaydırma jestleri, drawer dışına dokunarak kapatma, modal sheet geri düğmesi, küçük ekranlarda menü taşması, dosya sürükle-bırak URI izinleri, uzun rubrik başlıkları, fiziksel klavye/TalkBack ve OCR/CSV SAF dosya izinleri.
