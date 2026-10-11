@@ -72,6 +72,7 @@ import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
+import com.knigdelioglu.puanla.domain.roster.RosterStatusFilter
 
 @Composable
 fun ClassroomsScreen(viewModel: PuanlaViewModel) {
@@ -109,12 +110,11 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 student.fullName.contains(searchQuery, ignoreCase = true) ||
                 student.studentNumber.contains(searchQuery)
             val asm = assessmentMap[student.id]
-            val matchesStatus = when (assessmentStatus) {
-                "Tamamlanan" -> asm?.isCompleted == true
-                "Kısmi" -> asm?.isCompleted != true && (asm?.scoredCount ?: 0) > 0
-                "Puanlanmadı" -> asm?.isCompleted != true && (asm?.scoredCount ?: 0) == 0
-                else -> true
-            }
+            val matchesStatus = RosterStatusFilter.matches(
+                status = assessmentStatus,
+                isCompleted = asm?.isCompleted == true,
+                scoredCount = asm?.scoredCount ?: 0
+            )
             matchesText && matchesStatus
         }
     }
