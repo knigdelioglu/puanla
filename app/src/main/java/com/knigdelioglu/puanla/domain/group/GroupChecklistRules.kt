@@ -22,6 +22,6 @@ object GroupChecklistRules {
                 JsonObject(obj + ("checked" to JsonPrimitive(!checked)))
             }
         }
-        return Json.encodeToString(JsonArray(modified))
+        return JsonArray(modified).toString()
     }
 }
