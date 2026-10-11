@@ -43,6 +43,12 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
+import com.knigdelioglu.arc.compose.controls.ArcSplitButton
+import com.knigdelioglu.arc.compose.controls.ArcButtonGroup
+import com.knigdelioglu.arc.compose.controls.ArcDropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
 import com.knigdelioglu.arc.compose.datavis.ArcBarData
@@ -74,6 +80,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var csvActionsOpen by remember { mutableStateOf(false) }
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
     var csvGenerating by remember { mutableStateOf(false) }
@@ -180,9 +188,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 )
             }
 
-            ArcButton(
-                text = "Tüm Sınıf CSV Dışa Aktar",
-                onClick = {
+            Box {
+                ArcSplitButton(
+                    onPrimaryClick = {
                     if (!csvGenerating) scope.launch {
                         csvGenerating = true
                         try {
@@ -197,10 +205,37 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         }
                     }
                 },
-                variant = ArcButtonVariant.Primary,
-                size = ArcButtonSize.Md,
-                enabled = selectedClassroom != null && selectedRubric != null && !csvGenerating
-            )
+                    onMenuClick = { csvActionsOpen = true },
+                    enabled = selectedClassroom != null && selectedRubric != null && !csvGenerating,
+                    variant = ArcButtonVariant.Primary,
+                    size = ArcButtonSize.Md,
+                    primaryContent = { Text("CSV Dışa Aktar") }
+                )
+                ArcDropdownMenu(
+                    expanded = csvActionsOpen,
+                    onDismissRequest = { csvActionsOpen = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("CSV'yi panoya kopyala") },
+                        onClick = {
+                            csvActionsOpen = false
+                            if (!csvGenerating) scope.launch {
+                                csvGenerating = true
+                                try {
+                                    val csv = viewModel.generateCsv()
+                                    require(csv.isNotBlank()) { "Dışa aktarılacak veri yok." }
+                                    clipboard.setText(AnnotatedString(csv))
+                                    viewModel.showToast("Güncel sınıf CSV verisi panoya kopyalandı.")
+                                } catch (e: Exception) {
+                                    viewModel.showToast("CSV kopyalanamadı: ${e.message}")
+                                } finally {
+                                    csvGenerating = false
+                                }
+                            }
+                        }
+                    )
+                }
+            }
         }
 
         if (selectedClassroom == null || selectedRubric == null) {
@@ -213,11 +248,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             return@Column
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        ArcButtonGroup(modifier = Modifier.fillMaxWidth()) {
             ArcButton(
                 text = if (showDateFilter) "Tarih Filtresini Gizle" else "Son Değişiklik Tarihine Göre Filtrele",
                 onClick = { showDateFilter = !showDateFilter },
