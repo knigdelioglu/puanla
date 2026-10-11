@@ -21,6 +21,7 @@ import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
+import com.knigdelioglu.puanla.domain.undo.UndoHistory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -97,7 +98,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Toast stack & Undo
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
-    private val undoStack = mutableListOf<UndoAction>()
+    private val undoStack = UndoHistory<UndoAction>()
     private val pendingNoteWrites = mutableMapOf<String, Job>()
     private val scoreLocks = mutableMapOf<String, Mutex>()
     private val activeScoreJobs = mutableSetOf<Job>()
@@ -290,7 +291,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                         evidenceNote = stored?.evidenceNote ?: note
                     )
                     refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
-                    undoStack.add(UndoAction("${student.fullName} - $criterionTitle") {
+                    val undoId = UUID.randomUUID().toString()
+                    undoStack.push(undoId, UndoAction("${student.fullName} - $criterionTitle") {
                         lock.withLock {
                             // Undo only the intended edit, never a later score or note.
                             val latestAssessment = repository.getAssessmentForStudent(student.id, rubric.id)
@@ -312,7 +314,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     })
                     showToast("${student.fullName}: $criterionTitle — ${points ?: "Puan kaldırıldı"}") {
-                        viewModelScope.launch { undoLastAction() }
+                        viewModelScope.launch { undoAction(undoId) }
                     }
                 }
             } catch (cancel: CancellationException) {
@@ -383,18 +385,31 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun undoLastAction() {
-        if (undoStack.isNotEmpty()) {
-            val action = undoStack.removeAt(undoStack.lastIndex)
-            try {
-                if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
-                else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
-            } catch (cancel: CancellationException) {
-                undoStack.add(action)
-                throw cancel
-            } catch (e: Exception) {
-                undoStack.add(action)
-                showToast("Geri alma başarısız: ${e.message}")
-            }
+        val latestId = undoStack.latestId() ?: return
+        undoAction(latestId)
+    }
+
+    private suspend fun undoAction(id: String) {
+        // A new write can still be in flight when the user presses Undo.
+        // Never accidentally undo a different or not-yet-saved action.
+        if (activeScoreJobs.any { it.isActive }) {
+            showToast("Puan kaydı sürüyor; tamamlandıktan sonra geri alabilirsiniz.")
+            return
+        }
+        val action = undoStack.takeIfLatest(id)
+        if (action == null) {
+            showToast("Bu geri alma işlemi güncel değil; daha yeni bir puanlama yapıldı.")
+            return
+        }
+        try {
+            if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
+            else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
+        } catch (cancel: CancellationException) {
+            undoStack.restore(id, action)
+            throw cancel
+        } catch (e: Exception) {
+            undoStack.restore(id, action)
+            showToast("Geri alma başarısız: ${e.message}")
         }
     }
 
