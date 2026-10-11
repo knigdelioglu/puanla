@@ -74,6 +74,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     val context = LocalContext.current
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingPreview by remember { mutableStateOf<BackupPreview?>(null) }
+    var backupSelectionSerial by remember { mutableStateOf(0) }
     var restoring by remember { mutableStateOf(false) }
     var selectingBackup by remember { mutableStateOf(false) }
     val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -102,6 +103,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     stream.use { BackupImport.readLimited(it) }
                 }
                 val preview = withContext(Dispatchers.Default) { BackupImport.inspect(content) }
+                backupSelectionSerial += 1
                 pendingBackup = content
                 pendingPreview = preview
             } catch (e: Exception) {
@@ -284,7 +286,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                             enabled = !restoring
                         )
                         if (!restoring) {
-                            key(preview.exportedAt, preview.students, preview.assessments) {
+                            key(backupSelectionSerial) {
                                 ArcConfirmMorph(
                                     prompt = "Mevcut veriler değiştirilsin mi?",
                                     initialLabel = "Bu Yedeği Geri Yükle",
