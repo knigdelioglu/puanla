@@ -23,6 +23,10 @@ import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
@@ -102,6 +106,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     private val pendingNoteWrites = mutableMapOf<String, Job>()
     private val scoreLocks = mutableMapOf<String, Mutex>()
     private val activeScoreJobs = mutableSetOf<Job>()
+    private val restoreMutex = Mutex()
+    private val isRestoring = MutableStateFlow(false)
     private fun scoreMutex(studentId: String, rubricId: String, criterionId: String): Mutex =
         scoreLocks.getOrPut("$studentId/$rubricId/$criterionId") { Mutex() }
     private var studentFlowJob: Job? = null
@@ -267,6 +273,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setScore(criterionId: String, points: Int?, note: String? = null) {
+        if (isRestoring.value) {
+            showToast("Yedek geri yüklenirken puan kaydedilemez.")
+            return
+        }
         val student = selectedStudent.value ?: return
         val rubric = selectedRubric.value ?: return
         val classroom = selectedClassroom.value ?: return
@@ -334,6 +344,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
      * It reads the latest score before updating the note, avoiding stale grades.
      */
     fun setEvidenceNote(criterionId: String, note: String) {
+        if (isRestoring.value) {
+            showToast("Yedek geri yüklenirken gözlem notu kaydedilemez.")
+            return
+        }
         val student = selectedStudent.value ?: return
         val rubric = selectedRubric.value ?: return
         val classroom = selectedClassroom.value ?: return
@@ -630,24 +644,41 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         return repository.generateFullBackupJson()
     }
 
-    suspend fun restoreBackup(json: String): Result<Int> {
-        // Writes from the old dataset must not land after the new snapshot.
-        activeScoreJobs.toList().forEach { it.cancel() }
-        pendingNoteWrites.values.forEach { it.cancel() }
-        pendingNoteWrites.clear()
-        activeScoreJobs.clear()
-        val result = repository.restoreBackupFromJson(json)
-        if (result.isSuccess) {
-            undoStack.clear()
-            selectedStudent.value = null
-            selectedClassroom.value = null
-            selectedRubric.value = null
-            students.value = emptyList()
-            criteria.value = emptyList()
-            currentScores.value = emptyMap()
-            currentAssessment.value = null
-            // The Room flows repopulate the selections after the successful transaction.
+    suspend fun restoreBackup(json: String): Result<Int> = restoreMutex.withLock {
+        // The Settings SAF callback can run this on Dispatchers.IO. Snapshot and
+        // cancel the UI-owned job collections on main, then WAIT for them to finish
+        // before replacing Room tables. cancel() alone is not a completion barrier.
+        val jobs = withContext(Dispatchers.Main.immediate) {
+            isRestoring.value = true
+            (activeScoreJobs.toList() + pendingNoteWrites.values.toList()).distinct().also { running ->
+                running.forEach { it.cancel() }
+                activeScoreJobs.clear()
+                pendingNoteWrites.clear()
+            }
         }
-        return result
+        try {
+            jobs.joinAll()
+            val result = repository.restoreBackupFromJson(json)
+            if (result.isSuccess) {
+                withContext(Dispatchers.Main.immediate) {
+                    undoStack.clear()
+                    selectedStudent.value = null
+                    selectedClassroom.value = null
+                    selectedRubric.value = null
+                    students.value = emptyList()
+                    criteria.value = emptyList()
+                    currentScores.value = emptyMap()
+                    currentAssessment.value = null
+                    // Room flows repopulate selections after the atomic restore.
+                }
+            }
+            result
+        } finally {
+            // Must reset the guard even if the restore caller gets cancelled.
+            withContext(NonCancellable + Dispatchers.Main.immediate) {
+                isRestoring.value = false
+            }
+        }
     }
+
 }
