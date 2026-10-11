@@ -43,6 +43,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
+import com.knigdelioglu.arc.compose.controls.ArcCalendar
 import com.knigdelioglu.arc.compose.controls.ArcSplitButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcDropdownMenu
@@ -86,6 +87,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var generatedCsvContent by remember { mutableStateOf("") }
     var csvGenerating by remember { mutableStateOf(false) }
     var showDateFilter by remember { mutableStateOf(false) }
+    var calendarTarget by remember { mutableStateOf<String?>(null) }
     var filterStart by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
     var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
     val filterActive = filterStart.isNotEmpty() || filterEnd.isNotEmpty()
@@ -274,6 +276,33 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth()
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ArcButton(
+                    text = "Başlangıç için aylık takvim",
+                    onClick = { calendarTarget = if (calendarTarget == "start") null else "start" },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm
+                )
+                ArcButton(
+                    text = "Bitiş için aylık takvim",
+                    onClick = { calendarTarget = if (calendarTarget == "end") null else "end" },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm
+                )
+            }
+            if (calendarTarget != null) {
+                // ArcCalendar chooses a real ISO date. This filters assessments
+                // by their last-update date, never fabricates historical grades.
+                ArcCalendar(
+                    selectedDay = null,
+                    onSelectDay = {},
+                    onSelectDate = { isoDate ->
+                        if (calendarTarget == "start") filterStart = isoDate else filterEnd = isoDate
+                        calendarTarget = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
         if (filterActive) {
             ArcAlert(

@@ -71,6 +71,7 @@ import com.knigdelioglu.arc.compose.display.ArcSkeleton
 import com.knigdelioglu.arc.compose.display.ArcImageCompare
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcStepper
+import com.knigdelioglu.arc.compose.navigation.ArcCarousel
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -299,6 +300,7 @@ private fun OcrStepVerification(
     candidates: List<OcrStudentRow>,
     viewModel: PuanlaViewModel
 ) {
+    var focusReview by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -366,6 +368,56 @@ private fun OcrStepVerification(
                 OcrSourceComparison(photoUri, candidates)
                 Spacer(Modifier.height(10.dp))
             }
+        }
+
+        if (candidates.size > 1) {
+            ArcButton(
+                text = if (focusReview) "Tek tek incelemeyi gizle" else "Öğrencileri tek tek incele",
+                onClick = { focusReview = !focusReview },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
+            )
+            if (focusReview) {
+                key(candidates.map { it.id }) {
+                    ArcCarousel(
+                        items = candidates,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { candidate ->
+                        ArcCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "${candidate.studentNumber} — ${candidate.firstName} ${candidate.lastName}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = ArcTheme.colors.foreground
+                                )
+                                Text(
+                                    text = candidate.ambiguityReason?.takeIf { it.isNotBlank() }
+                                        ?: "Kaynak fotoğrafla karşılaştırıp onaylayın.",
+                                    color = ArcTheme.colors.textSecondary,
+                                    maxLines = 3
+                                )
+                                ArcButton(
+                                    text = if (candidate.isApproved) "Onayı Kaldır" else "Bu Satırı Onayla",
+                                    onClick = {
+                                        val index = candidates.indexOfFirst { it.id == candidate.id }
+                                        if (index >= 0) {
+                                            viewModel.updateOcrCandidate(
+                                                index, candidate.copy(isApproved = !candidate.isApproved)
+                                            )
+                                        }
+                                    },
+                                    size = ArcButtonSize.Sm,
+                                    variant = if (candidate.isApproved) ArcButtonVariant.Outline else ArcButtonVariant.Primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
         }
 
         LazyColumn(
