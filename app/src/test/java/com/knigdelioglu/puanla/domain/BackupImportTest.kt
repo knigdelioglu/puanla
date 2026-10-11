@@ -44,7 +44,7 @@ class BackupImportTest {
     }
 
     @Test fun invalidReferencesNeverProduceApprovalPreview() {
-        val damaged = json().replace("\\"classroomId\\":\\"c\\"", "\\"classroomId\\":\\"absent\\"")
+        val damaged = json().replace("\"classroomId\":\"c\"", "\"classroomId\":\"absent\"")
         assertThrows(IllegalArgumentException::class.java) { BackupImport.inspect(damaged) }
     }
 }
