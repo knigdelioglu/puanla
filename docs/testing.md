@@ -41,3 +41,11 @@ Başarılı birim test ve APK derlemesi, gerçek cihaz fonksiyonlarının çalı
 - Grup kontrol listesi için `GroupChecklistRulesTest`: birden fazla hızlı işaretleme, son kaydedilen JSON üzerinden, tek Room işleminde uygulanır; bozuk durum ve geçersiz dizin reddedilir.
 - `ArcNumberInputRulesTest`: klavyeden girilen tamsayı yalnız onay anında ve ölçütün puan aralığı içinde kabul edilir. Boş metin ve 0 puan birbirine karıştırılmaz. `ArcNumberField` artık gerçek sayısal klavye alanıdır.
 - **Açık cihaz testleri:** tablet fiziksel klavye/IME Done ve odak kaybında tek kayıt, hızlı +- dokunmaları, aynı anda OCR/grup değişikliği ve yedekleme, Room transaction geri alımı, Android SAF üzerinden gerçek dosya seçme. CI'da Android enstrümantasyon/emülatör testleri çalıştırılmıyor.
+
+## 11 Ekim 2026 — Arc P0 entegrasyon kabul testleri
+
+- `ArcImageDropPolicyTest`: image/jpeg, image/png, text/uri-list ve application/octet-stream kabul; düz metin ve PDF reddi. Gerçek Android URI okuma izni CI birim testlerinin kapsama alanı dışındadır.
+- Fiziksel tablet testi: iki farklı uygulama arasında fotoğraf sürükleyip bırakma, URI izniyle görüntü okuma, hatalı PDF bırakınca güvenli reddetme, fotoğraf seçici ile karşılaştırma.
+- Puanlama ekranı: sabit ArcFloatingButtonGroup ile önceki/sonraki, gerçek geri alma, yatay/dikey görünümde taşma olup olmadığı.
+- Grup oluşturma: ArcMultiSelect ile çoklu seçim, seçimi kaldırma ve onayda doğru öğrenci kimliklerinin saklanması.
+- Tercihler: koyu mod ve reduced-motion değiştir, uygulamayı tamamen kapatıp aç, kayıtlı ayarı doğrula. ArcTooltip hover / klavye odak / uzun basma ile gösterilmeli.

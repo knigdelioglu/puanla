@@ -56,7 +56,8 @@ import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
 /**
  * Puanla Tablet Native Uygulaması:
- * Arc Library'nin 99 bileşenini içeren, tablet öncelikli Jetpack Compose çalışma alanı.
+ * Seçilmiş Arc Compose bileşenlerini gerçek iş akışlarına bağlayan tablet öncelikli uygulama.
+ * Arc bileşen kataloğu, üretim akışlarından ayrı bir tanıtım ekranıdır.
  */
 @Composable
 fun PuanlaApp(

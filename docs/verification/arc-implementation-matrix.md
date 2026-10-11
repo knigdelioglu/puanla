@@ -184,3 +184,14 @@
 - `MutationCoordinatorTest` bekleme, iptal, yeni işleme izin vermeme ve hata sonrası serbest bırakma davranışını test eder. Gerçek veri tabanı ve tablet arayüzü için enstrümantasyon testi hâlâ açık.
 - Grup kontrol listesi durumu artık UI'deki eski grup kopyası üzerinden yazılmaz; ilgili kayıt Room transaction'ında yeniden okunup `GroupChecklistRules` ile güncellenir.
 - `ArcNumberField` mobil ve fiziksel klavyede tam sayı girişini sağlar. Giriş, tuşa her basışta değil IME onayı veya odak kaybında kaydedilir. Puanlanmamış alan 0 yerine boş çizgiyle gösterilir; 0 puan bilinçli şekilde girilebilir.
+
+## 11 Ekim 2026 — P0 Arc işlevsel entegrasyon düzeltmeleri
+
+- Puanlama ekranındaki önceki/geri al/sonraki sabit eylemleri gerçek `ArcFloatingButtonGroup` içine taşındı. Geri Al, ViewModel'in kimlik denetimli gerçek `undoLastAction` akışını çağırır; kaydırılan ölçüt içeriğinin dışında durur.
+- Grup oluştururken üyeler artık `ArcMultiSelect` ile seçiliyor. Önceki satır + iç içe checkbox tıklamaları kaldırıldı; seçilen öğrenci kimlikleri `onConfirm` işlemine aktarılır.
+- `ArcElasticSlider` içindeki başparmak büyüklüğü ve gölge animasyonları `ArcMotion.current.fastTween()` ile sistemdeki azaltılmış hareket tercihini gözetir. Bütün Arc animasyonları için kapsamlı reduced-motion denetimi hâlâ gereklidir.
+- Tema ve azaltılmış hareket ayarları artık `arc_ui` SharedPreferences üzerinden uygulama yeniden açıldığında korunur. Eski kullanıcılarda tercih yoksa tema sistem tercihine döner.
+- `ArcFileDropzone` seçicinin yanında Android Compose `dragAndDropTarget` ile URI kabul edebilir. OCR ekranı bunu gerçek bitmap decode akışına bağlar, `Activity.requestDragAndDropPermissions` iznini decode tamamlanana kadar tutar, bırakılan dosyanın görsel olduğunu doğrular; belge internet ortamına yüklenmez. `ArcImageDropPolicyTest` MIME kabul/red kurallarını sınar. Çoklu görselden ilk URI işlenir.
+- Önceden boş `Box` sarmalayıcısı olan `ArcTooltip`, Material3 `TooltipBox` ile gerçek hover / uzun basma / odak ipucuna dönüştürüldü ve üst barda işlem geçmişi eylemine bağlandı.
+- Uygulama kaynağındaki “99 bileşen içerir” yorumu kaldırıldı; katalogdaki demosu olan bileşen gerçek ürün entegrasyonu sayılamaz.
+- **Sınır:** Bu değişiklikler yerel Android `:arc-compose` uyarlamasındadır; harici `kuratlielia/arc-library` deposuna hiçbir kod yazılmadı. Başka uygulamadan URI sürükleme, TalkBack ve uzun basma için gerçek tablet/enstrümantasyon testi hâlâ gereklidir.
