@@ -156,7 +156,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     private val activityStart = activityToday.minusDays(27).atStartOfDay(activityZone).toInstant().toEpochMilli()
     val assessmentActivity: StateFlow<List<Int>> = repository.getAssessmentActivityFlow(activityStart)
         .map { assessmentActivityByDay(it, activityToday, activityZone) }
-        .stateIn(viewModelScope, SharingStarted.Lazily, List(28) { 0 })
+        // Stop expensive audit-log queries when the analytics screen is no longer observed.
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), List(28) { 0 })
     private val activityDateFormat = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("tr-TR"))
     val assessmentActivityLabels: StateFlow<List<String>> = assessmentActivity
         .map { levels ->
@@ -164,13 +165,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 "${activityToday.minusDays(27L - index).format(activityDateFormat)}: puan değişikliği etkinliği, seviye $level/4"
             }
         }
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // Toast stack & Undo
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     private val undoStack = UndoHistory<UndoAction>()
     private val pendingNoteWrites = mutableMapOf<String, Job>()
-    private val scoreLocks = mutableMapOf<String, Mutex>()
+    // A fixed set of locks avoids retaining a mutex for every pupil/criterion ever graded.
+    // Hash collisions only serialize unrelated writes; same-key writes remain ordered.
+    private val scoreLocks = Array(128) { Mutex() }
     private val mutations = MutationCoordinator()
     private fun launchMutation(
         onBlocked: () -> Unit = { showToast("Yedekleme veya geri yükleme sırasında veri değiştirilemez.") },
@@ -180,8 +183,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         if (job == null) onBlocked()
         return job
     }
-    private fun scoreMutex(studentId: String, rubricId: String, criterionId: String): Mutex =
-        scoreLocks.getOrPut("$studentId/$rubricId/$criterionId") { Mutex() }
+    private fun scoreMutex(studentId: String, rubricId: String, criterionId: String): Mutex {
+        val key = "$studentId/$rubricId/$criterionId"
+        return scoreLocks[(key.hashCode() and Int.MAX_VALUE) % scoreLocks.size]
+    }
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
     private var groupFlowJob: Job? = null
