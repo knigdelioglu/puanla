@@ -48,15 +48,10 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
-import com.knigdelioglu.arc.compose.controls.ArcShortcutRecorder
-import com.knigdelioglu.arc.compose.controls.ArcSignaturePad
 import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.display.ArcCard
-import com.knigdelioglu.arc.compose.display.ArcChangelogFeed
-import com.knigdelioglu.arc.compose.display.ArcFaqSection
-import com.knigdelioglu.arc.compose.display.ArcJsonViewer
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
 import com.knigdelioglu.arc.compose.display.ArcTimeline
 import com.knigdelioglu.arc.compose.display.ArcTimelineEntry
@@ -120,9 +115,6 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     }
     val scrollState = rememberScrollState()
 
-    var shortcutKey by remember { mutableStateOf("Cmd+K") }
-    var hasTeacherSignature by remember { mutableStateOf(false) }
-
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     val timelineEntries = remember(recentLogs) {
@@ -145,17 +137,6 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
         }
     }
 
-    val sampleRubricJson = """
-    {
-      "id": "example_not_a_real_rubric",
-      "title": "Temsili Test Rubriği",
-      "grade": 11,
-      "criteria_count": 5,
-      "max_points": 100,
-      "offline_enforced": true
-    }
-    """.trimIndent()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -172,7 +153,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                 color = ArcTheme.colors.foreground
             )
             Text(
-                text = "Karanlık mod, animasyon tercihleri, donanım kısayolları ve SAF yedekleme.",
+                text = "Görünüm, çalışan klavye kısayolu ve güvenli yerel yedekleme.",
                 fontSize = 14.sp,
                 color = ArcTheme.colors.textSecondary
             )
@@ -231,49 +212,21 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
             }
         }
 
-        // Hardware, Stylus & Keyboard Section
+        // Only supported keyboard actions belong in Settings. The old shortcut
+        // recorder and signature canvas were unsaved demonstrations.
         Text(
-            text = "Donanım, Kalem ve Klavye Etkileşimi",
+            text = "Fiziksel Klavye",
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             color = ArcTheme.colors.foreground
         )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ArcShortcutRecorder(
-                    shortcut = shortcutKey,
-                    onShortcutChange = { shortcutKey = it },
-                    label = "Hızlı Komut Paleti Kısayolu"
-                )
-
-                ArcAlert(
-                    title = "Fiziksel Klavye Desteği",
-                    message = "Tablet klavyesinde 1, 2, 3, 4 tuşları doğrudan rubrik niteliklerini seçer. Boşluk tuşu sonraki öğrenciye geçer.",
-                    type = ArcAlertType.Info
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Öğretmen Tutanak İmzası (Android Stylus / Kalem):",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ArcTheme.colors.foreground
-                )
-                ArcSignaturePad(
-                    onSignatureChanged = { hasTeacherSignature = it }
-                )
-                Text(
-                    text = if (hasTeacherSignature) "İmza yalnızca bu ekranda çizildi; kaydedilmedi ve resmi dışa aktarıma eklenmez." else "Kalem etkileşim denemesi; henüz resmi imza veya dışa aktarma özelliği değildir.",
-                    fontSize = 12.sp,
-                    color = if (hasTeacherSignature) ArcTheme.colors.success else ArcTheme.colors.textMuted
-                )
-            }
-        }
+        ArcAlert(
+            title = "Komut Paleti",
+            message = "Bağlı fiziksel klavyede Ctrl+K veya ⌘K tuşlarıyla komut paletini açabilirsiniz. " +
+                "Öğrenciye hızlı geçiş ve geri alma eylemleri paletten erişilebilir. " +
+                "Diğer tuşlar için henüz özelleştirilebilir bir kısayol kaydı bulunmuyor.",
+            type = ArcAlertType.Info
+        )
 
         // Backup and Restore Section
         Text(
@@ -348,6 +301,10 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                                                 }.onFailure {
                                                     viewModel.showToast("Geri yükleme reddedildi: ${it.message}")
                                                 }
+                                            } catch (cancel: kotlinx.coroutines.CancellationException) {
+                                                throw cancel
+                                            } catch (e: Exception) {
+                                                viewModel.showToast("Geri yükleme başarısız: ${e.message}")
                                             } finally {
                                                 restoring = false
                                             }
@@ -377,35 +334,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
             }
         }
 
-        // FAQ and JSON Schema
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Column(modifier = Modifier.weight(1.2f)) {
-                Text(
-                    text = "Sıkça Sorulan Sorular",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
-                )
-                Spacer(Modifier.height(8.dp))
-                ArcFaqSection()
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Temsili JSON Örneği (gerçek rubrik değil)",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
-                )
-                Spacer(Modifier.height(8.dp))
-                ArcJsonViewer(jsonText = sampleRubricJson)
-            }
-        }
-
-        // Changelog Feed
-        ArcChangelogFeed()
+        // Example FAQ, fake rubric JSON and static changelog stay in the
+        // component gallery; Settings only shows working user-facing controls.
     }
 }
