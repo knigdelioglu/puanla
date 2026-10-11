@@ -22,6 +22,7 @@ import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
+import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -451,41 +452,57 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         toastMessages.value = emptyList()
     }
 
-    // Classroom operations
+    // Classroom operations: all writes are registered BEFORE launch, so a
+    // concurrently requested backup or restore cannot miss them.
     fun addClassroom(grade: Int, section: String, onResult: (Boolean, String) -> Unit) {
-        viewModelScope.launch {
-            val name = "$grade-${section.uppercase()}"
-            val exists = classrooms.value.any { it.grade == grade && it.section.equals(section, ignoreCase = true) }
-            if (exists) {
-                onResult(false, "$name sınıfı zaten mevcut.")
-                return@launch
+        launchMutation(onBlocked = { onResult(false, "Yedekleme/geri yükleme sırasında sınıf eklenemez.") }) {
+            try {
+                val name = "$grade-${section.uppercase()}"
+                if (classrooms.value.any { it.grade == grade && it.section.equals(section, ignoreCase = true) }) {
+                    onResult(false, "$name sınıfı zaten mevcut.")
+                } else {
+                    val created = repository.createClassroom(grade, section)
+                    selectedClassroom.value = created
+                    onResult(true, "$name sınıfı başarıyla oluşturuldu.")
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Sınıf oluşturulamadı.")
             }
-            val newClass = repository.createClassroom(grade, section)
-            selectedClassroom.value = newClass
-            onResult(true, "$name sınıfı başarıyla oluşturuldu.")
         }
     }
 
     fun addStudent(number: String, firstName: String, lastName: String, onResult: (Boolean, String) -> Unit) {
-        val classroom = selectedClassroom.value ?: return
-        viewModelScope.launch {
-            val result = repository.addStudent(
-                classroomId = classroom.id,
-                studentNumber = number,
-                firstName = firstName,
-                lastName = lastName
-            )
-            result.onSuccess { student ->
-                selectedStudent.value = student
-                onResult(true, "${student.fullName} sınıfa eklendi.")
-            }.onFailure { err ->
-                onResult(false, err.message ?: "Öğrenci eklenemedi.")
+        val classroom = selectedClassroom.value
+        if (classroom == null) {
+            onResult(false, "Önce bir sınıf seçin.")
+            return
+        }
+        launchMutation(onBlocked = { onResult(false, "Yedekleme/geri yükleme sırasında öğrenci eklenemez.") }) {
+            try {
+                val result = repository.addStudent(
+                    classroomId = classroom.id,
+                    studentNumber = number,
+                    firstName = firstName,
+                    lastName = lastName
+                )
+                result.onSuccess { student ->
+                    if (selectedClassroom.value?.id == classroom.id) selectedStudent.value = student
+                    onResult(true, "${student.fullName} sınıfa eklendi.")
+                }.onFailure { err ->
+                    onResult(false, err.message ?: "Öğrenci eklenemedi.")
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Öğrenci eklenemedi.")
             }
         }
     }
 
     fun updateStudent(student: StudentEntity) {
-        viewModelScope.launch {
+        launchMutation {
             try {
                 repository.updateStudent(student)
                 showToast("${student.fullName} güncellendi.")
@@ -497,9 +514,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Update the one field the teacher edited, not a stale whole-row copy. */
     fun updateStudentName(studentId: String, firstName: String? = null, lastName: String? = null) {
-        viewModelScope.launch {
+        launchMutation {
             try {
                 repository.updateStudentName(studentId, firstName, lastName)
             } catch (cancel: CancellationException) {
@@ -511,9 +527,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deleteStudent(student: StudentEntity) {
-        viewModelScope.launch {
-            repository.deleteStudent(student)
-            showToast("${student.fullName} silindi.")
+        launchMutation {
+            try {
+                repository.deleteStudent(student)
+                showToast("${student.fullName} silindi.")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Öğrenci silinemedi: ${e.message}")
+            }
         }
     }
 
@@ -560,7 +582,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun confirmOcrImport(onComplete: (Int) -> Unit) {
         val classroom = selectedClassroom.value ?: return
-        viewModelScope.launch {
+        launchMutation(onBlocked = {
+            ocrError.value = "Yedekleme/geri yükleme sırasında öğrenci aktarılamaz."
+            showToast(ocrError.value ?: "Aktarım ertelendi.")
+        }) {
             try {
                 val selected = ocrCandidates.value.filter { it.isApproved }
                 require(selected.isNotEmpty()) { "Onaylanmış öğrenci yok." }
@@ -573,8 +598,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                         id = UUID.randomUUID().toString(),
                         classroomId = classroom.id,
                         studentNumber = it.studentNumber.trim(),
-                        firstName = it.firstName.trim(),
-                        lastName = it.lastName.trim(),
+                        firstName = StudentNameRules.firstName(it.firstName),
+                        lastName = StudentNameRules.lastName(it.lastName),
                         gender = it.gender,
                         boardingStatus = it.boardingStatus
                     )
@@ -611,7 +636,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     fun addGroupTask(title: String, memberIds: List<String>) {
         val c = selectedClassroom.value ?: return
         val r = selectedRubric.value ?: return
-        viewModelScope.launch {
+        launchMutation {
             val defaultChecklist = JSONArray().apply {
                 put(JSONObject().put("title", "1. Konu ve Amaç Belirleme").put("checked", false))
                 put(JSONObject().put("title", "2. Görev Dağılımı ve Roller").put("checked", false))
@@ -637,7 +662,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
-        viewModelScope.launch {
+        launchMutation {
             val array = JSONArray(task.checklistJson)
             if (itemIndex in 0 until array.length()) {
                 val obj = array.getJSONObject(itemIndex)
