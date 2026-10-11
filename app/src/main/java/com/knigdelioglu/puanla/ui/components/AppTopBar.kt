@@ -2,6 +2,16 @@ package com.knigdelioglu.puanla.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -19,6 +29,8 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcSelect
+import com.knigdelioglu.arc.compose.controls.ArcRadioCards
+import com.knigdelioglu.arc.compose.navigation.ArcBottomSheet
 import com.knigdelioglu.arc.compose.display.ArcTooltip
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
@@ -36,6 +48,8 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
     val rubrics by viewModel.rubrics.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
+    var showRubricCards by remember { mutableStateOf(false) }
+    val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
     val breadcrumbItems = mutableListOf("Puanla")
     selectedClassroom?.let { breadcrumbItems.add(it.name) }
@@ -75,11 +89,20 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                 // Rubric Selector
                 ArcSelect(
                     selectedItem = selectedRubric,
-                    items = rubrics.filter { it.grade == selectedClassroom?.grade },
+                    items = matchingRubrics,
                     onItemSelected = { viewModel.selectRubric(it) },
                     labelProvider = { it.title },
                     placeholder = "Rubrik Seç",
                     modifier = Modifier.width(180.dp)
+                )
+
+                // Tablet/compact fallback for long rubric titles: real Arc radio-card picker.
+                ArcButton(
+                    text = "Rubrikler",
+                    onClick = { showRubricCards = true },
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Sm,
+                    enabled = selectedClassroom != null && matchingRubrics.isNotEmpty()
                 )
 
                 // Command Palette Shortcut Button
@@ -108,4 +131,25 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
             }
         }
     )
+    ArcBottomSheet(
+        isOpen = showRubricCards,
+        onDismissRequest = { showRubricCards = false }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())
+        ) {
+            Text("Rubrik Seçimi", color = com.knigdelioglu.arc.compose.foundation.ArcTheme.colors.foreground)
+            ArcRadioCards(
+                options = matchingRubrics,
+                selectedOption = selectedRubric,
+                onOptionSelected = {
+                    viewModel.selectRubric(it)
+                    showRubricCards = false
+                },
+                titleProvider = { it.title },
+                descriptionProvider = { "${it.grade}. sınıf rubriği" },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
 }
