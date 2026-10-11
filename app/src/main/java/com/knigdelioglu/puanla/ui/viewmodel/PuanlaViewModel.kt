@@ -22,10 +22,10 @@ import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
+import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -105,9 +105,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     private val undoStack = UndoHistory<UndoAction>()
     private val pendingNoteWrites = mutableMapOf<String, Job>()
     private val scoreLocks = mutableMapOf<String, Mutex>()
-    private val activeScoreJobs = mutableSetOf<Job>()
-    private val restoreMutex = Mutex()
-    private val isRestoring = MutableStateFlow(false)
+    private val mutations = MutationCoordinator()
+    private fun launchMutation(
+        onBlocked: () -> Unit = { showToast("Yedekleme veya geri yükleme sırasında veri değiştirilemez.") },
+        action: suspend CoroutineScope.() -> Unit
+    ): Job? {
+        val job = mutations.launchWrite(viewModelScope, action)
+        if (job == null) onBlocked()
+        return job
+    }
     private fun scoreMutex(studentId: String, rubricId: String, criterionId: String): Mutex =
         scoreLocks.getOrPut("$studentId/$rubricId/$criterionId") { Mutex() }
     private var studentFlowJob: Job? = null
@@ -273,8 +279,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setScore(criterionId: String, points: Int?, note: String? = null) {
-        if (isRestoring.value) {
-            showToast("Yedek geri yüklenirken puan kaydedilemez.")
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında puan kaydedilemez.")
             return
         }
         val student = selectedStudent.value ?: return
@@ -284,7 +290,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         // Take the lock before launch so rapid taps for one criterion are applied
         // sequentially, even across asynchronous Room transactions.
         val lock = scoreMutex(student.id, rubric.id, criterionId)
-        val job = viewModelScope.launch {
+        launchMutation {
             try {
                 lock.withLock {
                     // Preserve the persisted observation note when changing/clearing a
@@ -331,11 +337,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 throw cancel
             } catch (e: Exception) {
                 showToast("Puan kaydedilemedi: ${e.message}")
-            } finally {
-                activeScoreJobs.remove(currentCoroutineContext()[Job])
             }
         }
-        activeScoreJobs.add(job)
     }
 
     /**
@@ -344,8 +347,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
      * It reads the latest score before updating the note, avoiding stale grades.
      */
     fun setEvidenceNote(criterionId: String, note: String) {
-        if (isRestoring.value) {
-            showToast("Yedek geri yüklenirken gözlem notu kaydedilemez.")
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemez.")
             return
         }
         val student = selectedStudent.value ?: return
@@ -353,7 +356,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val classroom = selectedClassroom.value ?: return
         val key = "${student.id}/${rubric.id}/$criterionId"
         pendingNoteWrites.remove(key)?.cancel()
-        pendingNoteWrites[key] = viewModelScope.launch {
+        val writeJob = launchMutation {
             try {
                 delay(500)
                 scoreMutex(student.id, rubric.id, criterionId).withLock {
@@ -378,6 +381,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 if (pendingNoteWrites[key] == currentCoroutineContext()[Job]) pendingNoteWrites.remove(key)
             }
         }
+        if (writeJob != null) pendingNoteWrites[key] = writeJob
     }
 
     fun nextStudent() {
@@ -405,12 +409,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     private suspend fun undoAction(id: String) {
         val undoJob = currentCoroutineContext()[Job]
-        if (isRestoring.value) {
-            showToast("Geri yükleme sırasında puan geri alınamaz.")
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında puan geri alınamaz.")
             return
         }
         // A write can still be in flight when Undo is pressed.
-        if (activeScoreJobs.any { it.isActive }) {
+        if (mutations.hasPendingWrites()) {
             showToast("Puan kaydı sürüyor; tamamlandıktan sonra geri alabilirsiniz.")
             return
         }
@@ -419,9 +423,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             showToast("Bu geri alma işlemi güncel değil; daha yeni bir puanlama yapıldı.")
             return
         }
-        // An undo is itself a database mutation. Track it so a concurrent backup
-        // restore can cancel AND await it before replacing the score tables.
-        if (undoJob != null) activeScoreJobs.add(undoJob)
+        // Undo itself is a tracked mutation; restore cannot race it.
+        if (undoJob == null || !mutations.track(undoJob)) {
+            undoStack.restore(id, action)
+            showToast("Yedekleme veya geri yükleme sırasında geri alma yapılamaz.")
+            return
+        }
         try {
             if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
             else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
@@ -432,7 +439,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             undoStack.restore(id, action)
             showToast("Geri alma başarısız: ${e.message}")
         } finally {
-            if (undoJob != null) activeScoreJobs.remove(undoJob)
+            mutations.untrack(undoJob)
         }
     }
 
@@ -648,54 +655,30 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         return repository.generateCsvExport(c.id, r.id)
     }
 
-    // Backup & Restore
-    suspend fun createBackup(): String {
-        // Wait for the last score tap and the 500-ms debounced observation note.
-        // Otherwise a perfectly valid backup could silently omit the teacher's
-        // latest edits when Save is tapped immediately after typing.
-        val writes = withContext(Dispatchers.Main.immediate) {
-            (activeScoreJobs.toList() + pendingNoteWrites.values.toList()).distinct()
-        }
-        writes.joinAll()
-        return repository.generateFullBackupJson()
+    // Backup and restore are mutually exclusive with every tracked write,
+    // not just criterion scores. Snapshots wait for pending work; restore
+    // cancels and joins it before performing the one-transaction replacement.
+    suspend fun createBackup(): String = mutations.snapshot {
+        repository.generateFullBackupJson()
     }
 
-    suspend fun restoreBackup(json: String): Result<Int> = restoreMutex.withLock {
-        // The Settings SAF callback can run this on Dispatchers.IO. Snapshot and
-        // cancel the UI-owned job collections on main, then WAIT for them to finish
-        // before replacing Room tables. cancel() alone is not a completion barrier.
-        val jobs = withContext(Dispatchers.Main.immediate) {
-            isRestoring.value = true
-            (activeScoreJobs.toList() + pendingNoteWrites.values.toList()).distinct().also { running ->
-                running.forEach { it.cancel() }
-                activeScoreJobs.clear()
+    suspend fun restoreBackup(json: String): Result<Int> = mutations.restore {
+        val result = repository.restoreBackupFromJson(json)
+        if (result.isSuccess) {
+            withContext(Dispatchers.Main.immediate) {
                 pendingNoteWrites.clear()
+                undoStack.clear()
+                scoreLocks.clear()
+                selectedStudent.value = null
+                selectedClassroom.value = null
+                selectedRubric.value = null
+                students.value = emptyList()
+                criteria.value = emptyList()
+                currentScores.value = emptyMap()
+                currentAssessment.value = null
+                // Room flows repopulate selections once the transaction completes.
             }
         }
-        try {
-            jobs.joinAll()
-            val result = repository.restoreBackupFromJson(json)
-            if (result.isSuccess) {
-                withContext(Dispatchers.Main.immediate) {
-                    undoStack.clear()
-                    scoreLocks.clear()
-                    selectedStudent.value = null
-                    selectedClassroom.value = null
-                    selectedRubric.value = null
-                    students.value = emptyList()
-                    criteria.value = emptyList()
-                    currentScores.value = emptyMap()
-                    currentAssessment.value = null
-                    // Room flows repopulate selections after the atomic restore.
-                }
-            }
-            result
-        } finally {
-            // Must reset the guard even if the restore caller gets cancelled.
-            withContext(NonCancellable + Dispatchers.Main.immediate) {
-                isRestoring.value = false
-            }
-        }
+        result
     }
-
 }
