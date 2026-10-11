@@ -25,6 +25,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,7 +48,8 @@ enum class AppDestination(val label: String, val iconName: String) {
 
 data class UndoAction(
     val title: String,
-    val undoBlock: suspend () -> Unit
+    // False means a later edit superseded the original score. Never undo it blindly.
+    val undoBlock: suspend () -> Boolean
 )
 
 class PuanlaViewModel(application: Application) : AndroidViewModel(application) {
@@ -96,6 +99,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     private val undoStack = mutableListOf<UndoAction>()
     private val pendingNoteWrites = mutableMapOf<String, Job>()
+    private val scoreLocks = mutableMapOf<String, Mutex>()
+    private val activeScoreJobs = mutableSetOf<Job>()
+    private fun scoreMutex(studentId: String, rubricId: String, criterionId: String): Mutex =
+        scoreLocks.getOrPut("$studentId/$rubricId/$criterionId") { Mutex() }
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
     private var groupFlowJob: Job? = null
@@ -259,34 +266,64 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setScore(criterionId: String, points: Int?, note: String? = null) {
-        val s = selectedStudent.value ?: return
-        val r = selectedRubric.value ?: return
-        val c = selectedClassroom.value ?: return
+        val student = selectedStudent.value ?: return
+        val rubric = selectedRubric.value ?: return
+        val classroom = selectedClassroom.value ?: return
         val criterionTitle = criteria.value.find { it.id == criterionId }?.title ?: "Ölçüt"
-        viewModelScope.launch {
+        // Take the lock before launch so rapid taps for one criterion are applied
+        // sequentially, even across asynchronous Room transactions.
+        val lock = scoreMutex(student.id, rubric.id, criterionId)
+        val job = viewModelScope.launch {
             try {
-                val previous = repository.saveCriterionScore(
-                    classroomId = c.id, studentId = s.id, rubricId = r.id,
-                    criterionId = criterionId, scorePoints = points, evidenceNote = note
-                )
-                refreshSelectionIfMatches(c.id, s.id, r.id)
-                undoStack.add(UndoAction("${s.fullName} - $criterionTitle") {
-                    repository.saveCriterionScore(
-                        classroomId = c.id, studentId = s.id, rubricId = r.id,
-                        criterionId = criterionId, scorePoints = previous?.points,
-                        evidenceNote = previous?.evidenceNote
+                lock.withLock {
+                    // Preserve the persisted observation note when changing/clearing a
+                    // score. Note edits are a separate operation.
+                    val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                    val stored = assessment?.let { a ->
+                        repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
+                    }
+                    val oldPoints = stored?.points
+                    if (oldPoints == points && stored != null) return@withLock
+                    val original = repository.saveCriterionScore(
+                        classroomId = classroom.id, studentId = student.id, rubricId = rubric.id,
+                        criterionId = criterionId, scorePoints = points,
+                        evidenceNote = stored?.evidenceNote ?: note
                     )
-                    refreshSelectionIfMatches(c.id, s.id, r.id)
-                })
-                showToast("${s.fullName}: $criterionTitle — ${points ?: "Puan kaldırıldı"}") {
-                    viewModelScope.launch { undoLastAction() }
+                    refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                    undoStack.add(UndoAction("${student.fullName} - $criterionTitle") {
+                        lock.withLock {
+                            // Undo only the intended edit, never a later score or note.
+                            val latestAssessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                            val latest = latestAssessment?.let { a ->
+                                repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
+                            }
+                            if (latest?.points != points) {
+                                false
+                            } else {
+                                repository.saveCriterionScore(
+                                    classroomId = classroom.id, studentId = student.id,
+                                    rubricId = rubric.id, criterionId = criterionId,
+                                    scorePoints = original?.points,
+                                    evidenceNote = latest?.evidenceNote
+                                )
+                                refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                                true
+                            }
+                        }
+                    })
+                    showToast("${student.fullName}: $criterionTitle — ${points ?: "Puan kaldırıldı"}") {
+                        viewModelScope.launch { undoLastAction() }
+                    }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (e: Exception) {
                 showToast("Puan kaydedilemedi: ${e.message}")
+            } finally {
+                activeScoreJobs.remove(currentCoroutineContext()[Job])
             }
         }
+        activeScoreJobs.add(job)
     }
 
     /**
@@ -303,17 +340,19 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         pendingNoteWrites[key] = viewModelScope.launch {
             try {
                 delay(500)
-                val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
-                val previous = assessment?.let {
-                    repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == criterionId }
-                }
-                if ((previous?.evidenceNote ?: "") != note) {
-                    repository.saveCriterionScore(
-                        classroomId = classroom.id, studentId = student.id,
-                        rubricId = rubric.id, criterionId = criterionId,
-                        scorePoints = previous?.points, evidenceNote = note
-                    )
-                    refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                scoreMutex(student.id, rubric.id, criterionId).withLock {
+                    val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                    val previous = assessment?.let {
+                        repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == criterionId }
+                    }
+                    if ((previous?.evidenceNote ?: "") != note) {
+                        repository.saveCriterionScore(
+                            classroomId = classroom.id, studentId = student.id,
+                            rubricId = rubric.id, criterionId = criterionId,
+                            scorePoints = previous?.points, evidenceNote = note
+                        )
+                        refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                    }
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -345,9 +384,17 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun undoLastAction() {
         if (undoStack.isNotEmpty()) {
-            val action = undoStack.removeAt(undoStack.size - 1)
-            action.undoBlock()
-            showToast("Geri alındı: ${action.title}")
+            val action = undoStack.removeAt(undoStack.lastIndex)
+            try {
+                if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
+                else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
+            } catch (cancel: CancellationException) {
+                undoStack.add(action)
+                throw cancel
+            } catch (e: Exception) {
+                undoStack.add(action)
+                showToast("Geri alma başarısız: ${e.message}")
+            }
         }
     }
 
@@ -550,10 +597,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun restoreBackup(json: String): Result<Int> {
+        // Writes from the old dataset must not land after the new snapshot.
+        activeScoreJobs.toList().forEach { it.cancel() }
         pendingNoteWrites.values.forEach { it.cancel() }
         pendingNoteWrites.clear()
+        activeScoreJobs.clear()
         val result = repository.restoreBackupFromJson(json)
         if (result.isSuccess) {
+            undoStack.clear()
             selectedStudent.value = null
             selectedClassroom.value = null
             selectedRubric.value = null
