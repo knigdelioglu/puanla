@@ -123,9 +123,7 @@ fun ArcFileDropzone(
     }
     val receiving = if (onFileDropped == null) Modifier else Modifier.dragAndDropTarget(
         shouldStartDragAndDrop = { event ->
-            event.mimeTypes().any { type ->
-                type.startsWith("image/") || type == "text/uri-list" || type == "application/octet-stream"
-            }
+            ArcImageDropPolicy.accepts(event.mimeTypes())
         },
         target = target
     )
