@@ -100,7 +100,7 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                 // Theme Switch
                 ArcThemeSwitch(
                     isDark = darkMode ?: false,
-                    onToggle = { viewModel.darkMode.value = it }
+                    onToggle = { viewModel.setDarkMode(it) }
                 )
             }
         }

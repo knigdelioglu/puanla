@@ -62,13 +62,28 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     private val db = PuanlaDatabase.getInstance(application)
     val repository = PuanlaRepository(db)
+    private val arcPrefs = application.getSharedPreferences("arc_ui", android.content.Context.MODE_PRIVATE)
 
     // Navigation & Global UI State
     val currentDestination = MutableStateFlow(AppDestination.WORKSPACE)
     val isCommandPaletteOpen = MutableStateFlow(false)
     val isNotificationCenterOpen = MutableStateFlow(false)
-    val darkMode = MutableStateFlow<Boolean?>(null) // null = system, true = dark, false = light
-    val reduceMotion = MutableStateFlow(false)
+    val darkMode = MutableStateFlow<Boolean?>(
+        if (arcPrefs.contains("dark_mode")) arcPrefs.getBoolean("dark_mode", false) else null
+    ) // null = system
+    val reduceMotion = MutableStateFlow(arcPrefs.getBoolean("reduce_motion", false))
+
+    fun setDarkMode(enabled: Boolean?) {
+        darkMode.value = enabled
+        arcPrefs.edit().apply {
+            if (enabled == null) remove("dark_mode") else putBoolean("dark_mode", enabled)
+        }.apply()
+    }
+
+    fun setReducedMotion(enabled: Boolean) {
+        reduceMotion.value = enabled
+        arcPrefs.edit().putBoolean("reduce_motion", enabled).apply()
+    }
 
     // Active Selection State
     val classrooms: StateFlow<List<ClassroomEntity>> = repository.getAllClassroomsFlow()

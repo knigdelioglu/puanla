@@ -188,7 +188,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     ArcThemeSwitch(
                         isDark = darkMode ?: false,
                         onToggle = { isDark ->
-                            viewModel.darkMode.value = isDark
+                            viewModel.setDarkMode(isDark)
                         }
                     )
                 }
@@ -207,7 +207,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     ArcSwitch(
                         checked = reduceMotion,
                         onCheckedChange = {
-                            viewModel.reduceMotion.value = it
+                            viewModel.setReducedMotion(it)
                         }
                     )
                 }
