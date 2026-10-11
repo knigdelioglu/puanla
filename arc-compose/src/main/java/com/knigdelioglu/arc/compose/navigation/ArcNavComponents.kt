@@ -6,6 +6,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -396,10 +400,19 @@ fun ArcCommandPalette(
 @Composable
 fun ArcScrollArea(
     modifier: Modifier = Modifier,
+    state: ScrollState = rememberScrollState(),
     content: @Composable () -> Unit
 ) {
+    // A real scroll area; callers supply a stable scroll state when useful.
     Box(modifier = modifier) {
-        content()
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(state)) { content() }
+        if (state.canScrollForward) {
+            Box(
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .fillMaxWidth().height(2.dp)
+                    .background(ArcTheme.colors.borderStrong)
+            )
+        }
     }
 }
 
@@ -521,30 +534,27 @@ fun <T> ArcCarousel(
     itemContent: @Composable (T) -> Unit
 ) {
     var currentIndex by remember { mutableIntStateOf(0) }
+    val safeIndex = currentIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (items.isNotEmpty()) {
-                itemContent(items[currentIndex])
-            }
+            items.getOrNull(safeIndex)?.let { itemContent(it) }
         }
-        Spacer(Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            IconButton(
-                onClick = { currentIndex = (currentIndex - 1).coerceAtLeast(0) },
-                enabled = currentIndex > 0
+        if (items.size > 1) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(Icons.Default.ChevronLeft, contentDescription = "Önceki")
-            }
-            Text("${currentIndex + 1} / ${items.size}", fontSize = 13.sp, color = ArcTheme.colors.textSecondary)
-            IconButton(
-                onClick = { currentIndex = (currentIndex + 1).coerceAtMost(items.lastIndex) },
-                enabled = currentIndex < items.lastIndex
-            ) {
-                Icon(Icons.Default.ChevronRight, contentDescription = "Sonraki")
+                IconButton(
+                    onClick = { currentIndex = (safeIndex - 1).coerceAtLeast(0) },
+                    enabled = safeIndex > 0
+                ) { Icon(Icons.Default.ChevronLeft, contentDescription = "Önceki") }
+                Text("${safeIndex + 1} / ${items.size}", fontSize = 13.sp, color = ArcTheme.colors.textSecondary)
+                IconButton(
+                    onClick = { currentIndex = (safeIndex + 1).coerceAtMost(items.lastIndex) },
+                    enabled = safeIndex < items.lastIndex
+                ) { Icon(Icons.Default.ChevronRight, contentDescription = "Sonraki") }
             }
         }
     }

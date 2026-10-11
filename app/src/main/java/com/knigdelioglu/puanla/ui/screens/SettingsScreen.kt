@@ -56,6 +56,7 @@ import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
 import com.knigdelioglu.arc.compose.display.ArcTimeline
 import com.knigdelioglu.arc.compose.display.ArcTimelineEntry
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
+import com.knigdelioglu.arc.compose.navigation.ArcScrollArea
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import com.knigdelioglu.puanla.domain.backup.BackupImport
 import com.knigdelioglu.puanla.domain.backup.BackupPreview
@@ -139,13 +140,11 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(22.dp)
-    ) {
+    ArcScrollArea(modifier = Modifier.fillMaxSize(), state = scrollState) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
+        ) {
         // Header
         Column {
             Text(
@@ -339,5 +338,6 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
         // Example FAQ, fake rubric JSON and static changelog stay in the
         // component gallery; Settings only shows working user-facing controls.
+        }
     }
 }
