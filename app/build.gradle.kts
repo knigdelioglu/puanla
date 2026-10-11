@@ -40,6 +40,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../data")
+        }
+    }
 }
 
 dependencies {

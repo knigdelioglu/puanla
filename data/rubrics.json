@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "sourceFile": "35-ogrenci-rubrik-puanlama.xlsx",
+  "rubrics": [
+    {
+      "id": "rubric_11_iletisim_engelleri",
+      "title": "İletişim Engelleri — Grup Draması Değerlendirme",
+      "description": "Görev sınıfta, öğretmen rehberliğinde oluşturulan gruplarla yürütülür. Hazırlık kontrolü süreç içindir ve puana dâhil değildir; nihai drama performansı 100 puan üzerinden değerlendirilir.",
+      "grade": 11,
+      "targetTask": "İletişim Engelleri",
+      "criteria": [
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_01",
+          "title": "Konu, amaç ve iletişim engeliyle uyum",
+          "description": "Seçilen durum sözlü iletişim engeliyle doğrudan ilişkilidir; canlandırmanın amacı ve kapsamı anlaşılırdır.",
+          "maxPoints": 10,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_02",
+          "title": "İçeriğin doğruluğu ve çözümün gösterilmesi",
+          "description": "İletişim engeli, nedeni ve etkisi doğru yansıtılır; uygun çözüm yolu canlandırmada görünür hâle getirilir.",
+          "maxPoints": 20,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_03",
+          "title": "Planlama ve hazırlık",
+          "description": "Araştırma, hedef kitle, süre, yöntem/strateji, araç, mekân ve teknik koşullar planlanır; taslak geri bildirimle geliştirilir.",
+          "maxPoints": 15,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_04",
+          "title": "Canlandırma becerisi ve dramatik akış",
+          "description": "Roller tutarlı, sahne akışı anlaşılır ve canlandırma başlangıç-gelişme-sonuç bütünlüğünde yürütülür.",
+          "maxPoints": 20,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_05",
+          "title": "Sözü, Türkçeyi ve beden dilini etkili kullanma",
+          "description": "Söz varlığı, diksiyon, telaffuz, vurgu-tonlama, jest-mimik ve beden dili iletiyi destekler.",
+          "maxPoints": 20,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_06",
+          "title": "Grupla uyum ve izleyiciyle iletişim",
+          "description": "Rol paylaşımı ve iş birliği sürdürülür; grup üyeleri birbirini tamamlar ve izleyiciyle etkileşim kurulur.",
+          "maxPoints": 10,
+          "orderIndex": 5
+        },
+        {
+          "id": "rubric_11_iletisim_engelleri_criterion_07",
+          "title": "Özgünlük",
+          "description": "Grup, iletişim engelini hazır bir örneği taklit etmek yerine kendine özgü durum, yorum ve çözümle işler.",
+          "maxPoints": 5,
+          "orderIndex": 6
+        }
+      ],
+      "groupPreparationChecklist": {
+        "description": "Görev sınıfta, öğretmen rehberliğinde oluşturulan gruplarla yürütülür. Hazırlık kontrolü süreç içindir ve puana dâhil değildir; nihai drama performansı 100 puan üzerinden değerlendirilir.",
+        "items": [
+          "Konu ve amaç",
+          "Gözlem / inceleme / araştırma",
+          "Yöntem ve strateji",
+          "Süre ve hedef kitle",
+          "Araçlar / canlandırma biçimi",
+          "Mekân / teknik / görüntü / ses",
+          "İletişim engellerini giderme"
+        ]
+      }
+    },
+    {
+      "id": "rubric_11_e_posta",
+      "title": "E-posta — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "E-posta",
+      "criteria": [
+        {
+          "id": "rubric_11_e_posta_criterion_01",
+          "title": "Türkçenin doğru kullanımı",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_e_posta_criterion_02",
+          "title": "Dil ve üslup",
+          "description": "",
+          "maxPoints": 18,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_e_posta_criterion_03",
+          "title": "Özgünlük",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_e_posta_criterion_04",
+          "title": "Gerekli durumlarda öznel ve nesnel ifadelere yer verme",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_e_posta_criterion_05",
+          "title": "Başlık ve hitap kullanımı",
+          "description": "",
+          "maxPoints": 18,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_e_posta_criterion_06",
+          "title": "Yazım ve noktalama",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 5
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_turk_dunyasi_konusma",
+      "title": "Türk Dünyası Konuşma — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Türk Dünyası Konuşma",
+      "criteria": [
+        {
+          "id": "rubric_11_turk_dunyasi_konusma_criterion_01",
+          "title": "Konuya hâkimiyet",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_turk_dunyasi_konusma_criterion_02",
+          "title": "Söz varlığını etkili ve güzel kullanma",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_turk_dunyasi_konusma_criterion_03",
+          "title": "Beden dili ve sesle anlam oluşturma",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_turk_dunyasi_konusma_criterion_04",
+          "title": "Zamanı ve mekânı konuşmaya uygun şekilde yönetme",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_turk_dunyasi_konusma_criterion_05",
+          "title": "Seyircinin ilgisini çekme",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 4
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_muze_izlenim_yazisi",
+      "title": "Müze İzlenim Yazısı — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Müze İzlenim Yazısı",
+      "criteria": [
+        {
+          "id": "rubric_11_muze_izlenim_yazisi_criterion_01",
+          "title": "Dil ve üslup",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_muze_izlenim_yazisi_criterion_02",
+          "title": "Özgünlük",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_muze_izlenim_yazisi_criterion_03",
+          "title": "Öznel ve nesnel ifadelere yer verme",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_muze_izlenim_yazisi_criterion_04",
+          "title": "Görsellerden yararlanma",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_muze_izlenim_yazisi_criterion_05",
+          "title": "Yazım ve noktalama",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 4
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_kemal_tahir_mulakat",
+      "title": "Kemal Tahir Mülakat — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Kemal Tahir Mülakat",
+      "criteria": [
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_01",
+          "title": "Düşünceyi geliştirme yollarından yararlanma",
+          "description": "",
+          "maxPoints": 12,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_02",
+          "title": "Anlatım ilkelerine (akıcılık, duruluk vb.) uygunluk",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_03",
+          "title": "Beden dilinin kullanımı",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_04",
+          "title": "Ses ve diksiyon",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_05",
+          "title": "Zaman yönetimi",
+          "description": "",
+          "maxPoints": 12,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_06",
+          "title": "Mekânı etkili kullanma",
+          "description": "",
+          "maxPoints": 12,
+          "orderIndex": 5
+        },
+        {
+          "id": "rubric_11_kemal_tahir_mulakat_criterion_07",
+          "title": "Türkçenin doğru kullanımı",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 6
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_diyalog_donusturme",
+      "title": "Diyalog Dönüştürme — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Diyalog Dönüştürme",
+      "criteria": [
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_01",
+          "title": "Dil ve Üslup",
+          "description": "",
+          "maxPoints": 18,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_02",
+          "title": "Başlık Kullanımı",
+          "description": "",
+          "maxPoints": 18,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_03",
+          "title": "Özgünlük",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_04",
+          "title": "Konunun Uygunluğu",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_05",
+          "title": "Yazım ve Noktalama",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_diyalog_donusturme_criterion_06",
+          "title": "Öznel ve Nesnel İfadelere Yer Verme",
+          "description": "",
+          "maxPoints": 16,
+          "orderIndex": 5
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_tiyatro_canlandirma",
+      "title": "Tiyatro Canlandırma — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Tiyatro Canlandırma",
+      "criteria": [
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_01",
+          "title": "İçeriğe uygunluk",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_02",
+          "title": "Grupla uyum içinde çalışma",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_03",
+          "title": "Özgünlük",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_04",
+          "title": "Canlandırma becerisi",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_05",
+          "title": "Türkçenin doğru kullanımı",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_tiyatro_canlandirma_criterion_06",
+          "title": "Sözü ve beden dilini etkili kullanma",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 5
+        }
+      ]
+    },
+    {
+      "id": "rubric_11_afis",
+      "title": "Afiş — Puanlama",
+      "description": "",
+      "grade": 11,
+      "targetTask": "Afiş",
+      "criteria": [
+        {
+          "id": "rubric_11_afis_criterion_01",
+          "title": "Konuya uygunluk",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 0
+        },
+        {
+          "id": "rubric_11_afis_criterion_02",
+          "title": "Yaratıcılık",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 1
+        },
+        {
+          "id": "rubric_11_afis_criterion_03",
+          "title": "Özgünlük",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 2
+        },
+        {
+          "id": "rubric_11_afis_criterion_04",
+          "title": "Görsel/İşitsel ögelerin seçimi",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 3
+        },
+        {
+          "id": "rubric_11_afis_criterion_05",
+          "title": "Türkçenin doğru kullanımı",
+          "description": "",
+          "maxPoints": 15,
+          "orderIndex": 4
+        },
+        {
+          "id": "rubric_11_afis_criterion_06",
+          "title": "Etkileyicilik",
+          "description": "",
+          "maxPoints": 20,
+          "orderIndex": 5
+        }
+      ]
+    }
+  ]
+}

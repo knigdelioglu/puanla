@@ -203,10 +203,15 @@ private fun GroupTaskCard(
 
     val completedCount = checklist.count { it.second }
     val progressFraction = if (checklist.isNotEmpty()) completedCount.toFloat() / checklist.size else 0f
+    val subtitle = if (checklist.isEmpty()) {
+        "${members.size} Üye"
+    } else {
+        "${members.size} Üye • %${(progressFraction * 100).toInt()} Hazırlık Tamamlandı"
+    }
 
     ArcExpandableCard(
         title = task.title,
-        subtitle = "${members.size} Üye • %${(progressFraction * 100).toInt()} Hazırlık Tamamlandı",
+        subtitle = subtitle,
         badge = {
             ArcAvatarGroup(membersInitials = memberInitials, avatarSize = 28.dp)
         },
@@ -235,57 +240,58 @@ private fun GroupTaskCard(
                 }
             }
 
-            // Progress bar
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Hazırlık Kontrol Listesi ($completedCount / ${checklist.size})",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ArcTheme.colors.foreground
-                    )
-                    Text(
-                        text = "%${(progressFraction * 100).toInt()}",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ArcTheme.colors.accent
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                ArcProgress(progress = progressFraction)
-            }
-
-            Divider(color = ArcTheme.colors.borderSubtle.copy(alpha = 0.5f))
-
-            // 7 Preparation Checklist items
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                checklist.forEachIndexed { idx, (itemTitle, isChecked) ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onToggleChecklist(idx) },
-                        shape = ArcTheme.shapes.control,
-                        color = if (isChecked) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surface,
-                        border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle)
+            if (checklist.isNotEmpty()) {
+                // Progress bar
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Text(
+                            text = "Hazırlık Kontrol Listesi ($completedCount / ${checklist.size})",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArcTheme.colors.foreground
+                        )
+                        Text(
+                            text = "%${(progressFraction * 100).toInt()}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ArcTheme.colors.accent
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    ArcProgress(progress = progressFraction)
+                }
+
+                Divider(color = ArcTheme.colors.borderSubtle.copy(alpha = 0.5f))
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    checklist.forEachIndexed { idx, (itemTitle, isChecked) ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleChecklist(idx) },
+                            shape = ArcTheme.shapes.control,
+                            color = if (isChecked) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surface,
+                            border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle)
                         ) {
-                            ArcCheckbox(
-                                checked = isChecked,
-                                onCheckedChange = { onToggleChecklist(idx) }
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = itemTitle,
-                                fontSize = 14.sp,
-                                color = if (isChecked) ArcTheme.colors.textSecondary else ArcTheme.colors.foreground,
-                                fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ArcCheckbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { onToggleChecklist(idx) }
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = itemTitle,
+                                    fontSize = 14.sp,
+                                    color = if (isChecked) ArcTheme.colors.textSecondary else ArcTheme.colors.foreground,
+                                    fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }

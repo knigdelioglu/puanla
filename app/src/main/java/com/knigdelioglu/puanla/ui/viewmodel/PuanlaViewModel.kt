@@ -67,7 +67,10 @@ data class UndoAction(
 class PuanlaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = PuanlaDatabase.getInstance(application)
-    val repository = PuanlaRepository(db)
+    val repository = PuanlaRepository(db) {
+        getApplication<Application>().assets.open("rubrics.json")
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
     private val arcPrefs = application.getSharedPreferences("arc_ui", android.content.Context.MODE_PRIVATE)
 
     // Navigation & Global UI State
@@ -674,13 +677,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val r = selectedRubric.value ?: return
         launchMutation {
             val defaultChecklist = JSONArray().apply {
-                put(JSONObject().put("title", "1. Konu ve Amaç Belirleme").put("checked", false))
-                put(JSONObject().put("title", "2. Görev Dağılımı ve Roller").put("checked", false))
-                put(JSONObject().put("title", "3. Kaynak ve Malzeme Hazırlığı").put("checked", false))
-                put(JSONObject().put("title", "4. Araştırma ve İçerik Taslağı").put("checked", false))
-                put(JSONObject().put("title", "5. Grup İçi Prova ve Eşgüdüm").put("checked", false))
-                put(JSONObject().put("title", "6. Zaman Planı ve Takvim Uyumu").put("checked", false))
-                put(JSONObject().put("title", "7. Final Sunum / Teslim Hazırlığı").put("checked", false))
+                repository.getGroupPreparationChecklist(r.id).forEach { item ->
+                    put(JSONObject().put("title", item).put("checked", false))
+                }
             }.toString()
 
             val memberIdsJson = JSONArray(memberIds).toString()
