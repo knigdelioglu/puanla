@@ -435,7 +435,7 @@ fun ArcUserMenu(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ArcAvatar(initials = teacherName, size = 26.dp)
+            ArcAvatar(initials = teacherName.trim().take(2).uppercase(java.util.Locale.forLanguageTag("tr-TR")), size = 26.dp)
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(teacherName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)

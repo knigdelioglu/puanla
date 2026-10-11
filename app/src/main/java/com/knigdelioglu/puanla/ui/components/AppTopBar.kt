@@ -35,6 +35,7 @@ import com.knigdelioglu.arc.compose.display.ArcTooltip
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
+import com.knigdelioglu.arc.compose.display.ArcUserMenu
 import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
 import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
@@ -123,10 +124,15 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                     }
                 }
 
-                // Theme Switch
+                // Theme switch and local settings shortcut; no fabricated user account.
                 ArcThemeSwitch(
                     isDark = darkMode ?: false,
                     onToggle = { viewModel.setDarkMode(it) }
+                )
+                ArcUserMenu(
+                    teacherName = "Öğretmen",
+                    academicYear = selectedClassroom?.academicYear ?: "Yerel uygulama",
+                    onSettingsClick = { viewModel.currentDestination.value = AppDestination.SETTINGS }
                 )
             }
         }

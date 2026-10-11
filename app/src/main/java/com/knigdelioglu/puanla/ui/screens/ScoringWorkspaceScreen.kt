@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.controls.ArcButton
+import com.knigdelioglu.arc.compose.controls.ArcExpandingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
@@ -73,6 +75,8 @@ import com.knigdelioglu.arc.compose.display.ArcAccordion
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.display.ArcExpandableCard
+import com.knigdelioglu.arc.compose.display.ArcTreeNode
+import com.knigdelioglu.arc.compose.display.ArcTreeView
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
 import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
@@ -344,6 +348,18 @@ private fun CriteriaExplorerPane(
     levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
     onSelectCriterion: (CriterionEntity) -> Unit
 ) {
+    var showCriterionTree by remember { mutableStateOf(false) }
+    val criterionTree = remember(criteria) {
+        listOf(
+            ArcTreeNode(
+                id = "rubric-criteria-root",
+                title = "Mevcut rubriğin ölçütleri",
+                children = criteria.map {
+                    ArcTreeNode(id = it.id, title = "${it.orderIndex + 1}. ${it.title}")
+                }
+            )
+        )
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = ArcTheme.colors.surface
@@ -371,7 +387,26 @@ private fun CriteriaExplorerPane(
             }
 
             Spacer(Modifier.height(10.dp))
-
+            ArcButton(
+                text = if (showCriterionTree) "Ölçüt ağacını gizle" else "Ölçüt ağacından seç",
+                onClick = { showCriterionTree = !showCriterionTree },
+                variant = ArcButtonVariant.Ghost,
+                size = ArcButtonSize.Sm
+            )
+            if (showCriterionTree) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 175.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ArcTreeView(
+                        nodes = criterionTree,
+                        onNodeClick = { node ->
+                            criteria.firstOrNull { it.id == node.id }?.let(onSelectCriterion)
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -776,8 +811,12 @@ private fun CompactScoringLayout(
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ArcSegmentedControl(
-            items = listOf("Öğrenci Listesi", "Ölçütler", "Puanlama"),
+        ArcExpandingButtonGroup(
+            items = listOf(
+                "Öğrenciler" to { Icon(Icons.Default.FormatListNumbered, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                "Ölçütler" to { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                "Puanlama" to { Icon(Icons.Default.Grading, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            ),
             selectedIndex = selectedTab,
             onSelectIndex = { selectedTab = it },
             modifier = Modifier.padding(12.dp)
