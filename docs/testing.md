@@ -33,3 +33,11 @@ Başarılı birim test ve APK derlemesi, gerçek cihaz fonksiyonlarının çalı
 - Puan ve gözlem notu yazımları, tam JSON yedeği üretilmeden önce tamamlanır. Geri yüklemede bekleyen puan, not ve geri alma işlemleri iptal edilip `joinAll` ile sonlanmaları beklenir.
 - Farklı yedek dosyası seçildiğinde önceki ikinci onay otomatik sıfırlanır.
 - **Cihazda hâlâ doğrulanması gerekenler:** hızlı art arda ölçüt puanlama + eski toast geri alma, ad/soyad eşzamanlı düzenleme, en son gözlem notunu girip hemen yedek alma, Android SAF üzerinden gerçek dosya seçme ve geri yükleme, sınıf ve grup işlemleri sırasında restore.
+
+## 11 Ekim 2026 — P1 ortak yazma sınırı, grup ve sayısal puan girişi
+
+- `MutationCoordinatorTest` gerçek üretim koordinatörünü çağırır: yedek sırasında bekleyen mutasyonlar tamamlanana kadar beklenir ve yeni yazım reddedilir; restore sırasında önceki yazımlar iptal edilip sonlanmaları beklenir; istisna sonrası yazma kilidi açılır.
+- `PuanlaViewModel` puan, gözlem notu, geri alma, sınıf ve öğrenci ekleme/düzenleme/silme, onaylı OCR aktarımı, grup oluşturma ve kontrol listesi güncelleme yazımlarını aynı koordinatöre kaydeder. Bu kapsam yalnız ViewModel'den geçen yazımları kapsar.
+- Grup kontrol listesi için `GroupChecklistRulesTest`: birden fazla hızlı işaretleme, son kaydedilen JSON üzerinden, tek Room işleminde uygulanır; bozuk durum ve geçersiz dizin reddedilir.
+- `ArcNumberInputRulesTest`: klavyeden girilen tamsayı yalnız onay anında ve ölçütün puan aralığı içinde kabul edilir. Boş metin ve 0 puan birbirine karıştırılmaz. `ArcNumberField` artık gerçek sayısal klavye alanıdır.
+- **Açık cihaz testleri:** tablet fiziksel klavye/IME Done ve odak kaybında tek kayıt, hızlı +- dokunmaları, aynı anda OCR/grup değişikliği ve yedekleme, Room transaction geri alımı, Android SAF üzerinden gerçek dosya seçme. CI'da Android enstrümantasyon/emülatör testleri çalıştırılmıyor.

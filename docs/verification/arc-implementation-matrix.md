@@ -177,3 +177,10 @@
 - Öğrenci ad ve soyad düzenlemeleri tek satırın tüm eski kopyasını kaydetmek yerine yalnız seçili alanı Room transaction'ı içinde günceller. Boş ad/soyad ve bozuk metinler yedeği geçersiz hâle getiremeden reddedilir (`StudentNameRulesTest`).
 - Tekil öğrenci eklemede numara doğrulama ve benzersizlik kontrolü tek transaction'dadır; doğrulama hatalarında coroutine düşmek yerine uygulama hata sonucu döndürür.
 - Tam yedek almadan önce tamamlanmamış puan ve gözlem notları beklenir. Restore öncesi iptal edilen puan / not / geri alma yazımları sonlanana dek beklenir. Bunlar henüz enstrümantasyon testi ile uçtan uca kanıtlanmış değildir.
+
+## 11 Ekim 2026 — Ortak yazma koordinatörü ve doğrudan puan girişi
+
+- Yedek almak yalnız puan ve not yazımlarını değil ViewModel'in bütün öğrenci, sınıf, onaylı OCR ve grup mutasyonlarını da tamamlanana kadar bekler. Restore bu yazımları iptal edip sonlanmalarını bekledikten sonra atomik yedeği uygular. Yeni yazım, veri transferi süresince reddedilir.
+- `MutationCoordinatorTest` bekleme, iptal, yeni işleme izin vermeme ve hata sonrası serbest bırakma davranışını test eder. Gerçek veri tabanı ve tablet arayüzü için enstrümantasyon testi hâlâ açık.
+- Grup kontrol listesi durumu artık UI'deki eski grup kopyası üzerinden yazılmaz; ilgili kayıt Room transaction'ında yeniden okunup `GroupChecklistRules` ile güncellenir.
+- `ArcNumberField` mobil ve fiziksel klavyede tam sayı girişini sağlar. Giriş, tuşa her basışta değil IME onayı veya odak kaybında kaydedilir. Puanlanmamış alan 0 yerine boş çizgiyle gösterilir; 0 puan bilinçli şekilde girilebilir.
