@@ -79,7 +79,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
             try {
-                val backup = viewModel.createBackup()
+                val backup = withContext(Dispatchers.IO) { viewModel.createBackup() }
                 withContext(Dispatchers.IO) {
                     val stream = requireNotNull(context.contentResolver.openOutputStream(uri)) { "Yedek dosyası açılamadı." }
                     stream.bufferedWriter(Charsets.UTF_8).use { it.write(backup) }
@@ -268,7 +268,8 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                 if (preview != null && pendingBackup != null) {
                     ArcAlert(
                         title = "Doğrulandı — geri yükleme henüz yapılmadı",
-                        message = "Yedek: ${preview.classrooms} sınıf, ${preview.students} öğrenci, " +
+                        message = "Yedek tarihi: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR")).format(Date(preview.exportedAt))}. " +
+                            "${preview.classrooms} sınıf, ${preview.students} öğrenci, " +
                             "${preview.rubrics} rubrik, ${preview.assessments} değerlendirme, " +
                             "${preview.scores} ölçüt puanı ve ${preview.groups} grup. " +
                             "Bu işlem cihazdaki mevcut TÜM verilerin yerine bu yedeği koyacak. " +
@@ -293,7 +294,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                                         if (selected != null && !restoring) scope.launch {
                                             restoring = true
                                             try {
-                                                val outcome = viewModel.restoreBackup(selected)
+                                                val outcome = withContext(Dispatchers.IO) { viewModel.restoreBackup(selected) }
                                                 outcome.onSuccess {
                                                     pendingBackup = null
                                                     pendingPreview = null
