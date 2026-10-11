@@ -1,10 +1,15 @@
 package com.knigdelioglu.arc.compose.display
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.net.Uri
 import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +41,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +52,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -59,8 +72,16 @@ import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import kotlin.math.roundToInt
 
 /**
- * Arc File Dropzone: local image or backup file selector container.
+ * Arc File Dropzone: Android SAF picker + optional cross-app image URI drops.
+ * For external drops the read grant stays alive until the suspending callback
+ * finishes decoding the image; the component never uploads student data.
  */
+private tailrec fun Context.arcActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.arcActivity()
+    else -> null
+}
+
 @Composable
 fun ArcFileDropzone(
     onSelectFile: () -> Unit,
@@ -69,16 +90,53 @@ fun ArcFileDropzone(
     description: String = "Net ve aydınlık bir basılı liste fotoğrafı yükleyin. Veriler cihaz içinde işlenir.",
     icon: @Composable () -> Unit = {
         Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = ArcTheme.colors.accent, modifier = Modifier.size(36.dp))
-    }
+    },
+    onFileDropped: (suspend (Uri) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val activity = remember(context) { context.arcActivity() }
+    val coroutineScope = rememberCoroutineScope()
+    val latestDrop = rememberUpdatedState(onFileDropped)
+    var dragHover by remember { mutableStateOf(false) }
+    val target = remember(activity, coroutineScope) {
+        object : DragAndDropTarget {
+            override fun onEntered(event: DragAndDropEvent) { dragHover = true }
+            override fun onExited(event: DragAndDropEvent) { dragHover = false }
+            override fun onEnded(event: DragAndDropEvent) { dragHover = false }
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                dragHover = false
+                val handler = latestDrop.value ?: return false
+                val androidEvent = event.toAndroidDragEvent()
+                val uri = androidEvent.clipData?.let { clip ->
+                    (0 until clip.itemCount).firstNotNullOfOrNull { clip.getItemAt(it).uri }
+                } ?: return false
+                // Android grants for cross-application URIs may be transient.
+                // Keep them until the app has finished reading, not only until drop.
+                val grant = runCatching { activity?.requestDragAndDropPermissions(androidEvent) }.getOrNull()
+                coroutineScope.launch {
+                    try { handler(uri) } finally { grant?.release() }
+                }
+                return true
+            }
+        }
+    }
+    val receiving = if (onFileDropped == null) Modifier else Modifier.dragAndDropTarget(
+        shouldStartDragAndDrop = { event ->
+            event.mimeTypes().any { type ->
+                type.startsWith("image/") || type == "text/uri-list" || type == "application/octet-stream"
+            }
+        },
+        target = target
+    )
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .then(receiving)
             .clip(ArcTheme.shapes.panel)
             .clickable { onSelectFile() },
         shape = ArcTheme.shapes.panel,
-        color = ArcTheme.colors.surfaceRaised,
-        border = BorderStroke(1.5.dp, ArcTheme.colors.borderStrong)
+        color = if (dragHover) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surfaceRaised,
+        border = BorderStroke(1.5.dp, if (dragHover) ArcTheme.colors.accent else ArcTheme.colors.borderStrong)
     ) {
         Column(
             modifier = Modifier.padding(32.dp),

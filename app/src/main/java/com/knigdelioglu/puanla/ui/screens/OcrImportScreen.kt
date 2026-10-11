@@ -150,6 +150,23 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
     }
 }
 
+/**
+ * The SAF picker and Android cross-app drop use the same bounded bitmap decode.
+ * The caller must hold any temporary URI read permission until this completes.
+ */
+private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): android.graphics.Bitmap =
+    withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Görsel okunamadı." }
+        var sample = 1
+        while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 2400) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            ?: error("Görsel çözümlenemedi.")
+    }
+
 @Composable
 private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
     val context = LocalContext.current
@@ -162,18 +179,7 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
             // ViewModel moves to the scanning step once it owns the decoded bitmap.
             scope.launch {
                 try {
-                    val bitmap = withContext(Dispatchers.IO) {
-                        val resolver = context.contentResolver
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Görsel okunamadı." }
-                        var sample = 1
-                        while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 2400) sample *= 2
-                        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-                        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-                            ?: error("Görsel çözümlenemedi.")
-                    }
-                    viewModel.startOcrFromBitmap(bitmap)
+                    viewModel.startOcrFromBitmap(decodeOcrImage(context, uri))
                 } catch (e: Exception) {
                     viewModel.reportOcrImageError("Görsel açılamadı: ${e.message}")
                 }
@@ -189,7 +195,19 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
         ArcFileDropzone(
             onSelectFile = { imagePicker.launch("image/*") },
             title = "Basılı Sınıf Listesi Fotoğrafı Seç",
-            description = "Galeriden gerçek bir sınıf listesi fotoğrafı seçin. Fotoğraf cihazda işlenir."
+            description = "Galeriden seçin veya başka uygulamadan görsel sürükleyip bırakın. Fotoğraf cihazda işlenir.",
+            onFileDropped = { uri ->
+                viewModel.ocrSelectedImageUri.value = uri
+                try {
+                    val contentType = context.contentResolver.getType(uri)
+                    require(contentType?.startsWith("image/") == true) { "Yalnızca görsel dosyası kabul edilir." }
+                    viewModel.startOcrFromBitmap(decodeOcrImage(context, uri))
+                } catch (cancel: kotlinx.coroutines.CancellationException) {
+                    throw cancel
+                } catch (e: Exception) {
+                    viewModel.reportOcrImageError("Bırakılan görsel okunamadı: ${e.message}")
+                }
+            }
         )
         ArcAlert(
             title = "Öğretmen Onayı Zorunlu",
