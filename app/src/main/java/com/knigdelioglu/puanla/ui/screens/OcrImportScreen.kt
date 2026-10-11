@@ -2,6 +2,8 @@ package com.knigdelioglu.puanla.ui.screens
 
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.ImageBitmap
@@ -55,6 +57,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcCheckbox
 import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
+import com.knigdelioglu.arc.compose.controls.ArcSlider
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
@@ -63,6 +66,8 @@ import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.display.ArcFileDropzone
+import com.knigdelioglu.arc.compose.display.ArcFileUpload
+import com.knigdelioglu.arc.compose.display.ArcSkeleton
 import com.knigdelioglu.arc.compose.display.ArcImageCompare
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcStepper
@@ -170,6 +175,24 @@ private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): 
 @Composable
 private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
     val context = LocalContext.current
+    val chosenPhoto by viewModel.ocrSelectedImageUri.collectAsState()
+    val selectedFileInfo by produceState(initialValue = "Seçili fotoğraf" to "Yerel görsel", key1 = chosenPhoto) {
+        val uri = chosenPhoto
+        if (uri != null) value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (!cursor.moveToFirst()) null else {
+                        val name = if (nameIndex >= 0) cursor.getString(nameIndex) else null
+                        val size = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else -1L
+                        (name ?: "Seçili fotoğraf") to
+                            (if (size >= 0L) "${size / 1024L} KB" else "Boyut bilgisi yok")
+                    }
+                }
+            }.getOrNull() ?: ("Seçili fotoğraf" to "Yerel görsel")
+        }
+    }
     val scope = rememberCoroutineScope()
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -209,6 +232,19 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
                 }
             }
         )
+        if (chosenPhoto != null) {
+            ArcFileUpload(
+                fileName = selectedFileInfo.first,
+                fileSizeString = selectedFileInfo.second,
+                onClear = {
+                    viewModel.ocrSelectedImageUri.value = null
+                    viewModel.ocrCandidates.value = emptyList()
+                    viewModel.ocrError.value = null
+                    viewModel.ocrStep.value = 0
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         ArcAlert(
             title = "Öğretmen Onayı Zorunlu",
             message = "OCR satırları önce taslak olarak gösterilir. Soyad ve numarayı doğrulamadan hiçbir satır sınıfa aktarılmaz.",
@@ -235,6 +271,12 @@ private fun OcrStepScanning(isScanning: Boolean, error: String?) {
                 color = ArcTheme.colors.accent,
                 modifier = Modifier.size(54.dp)
             )
+            Spacer(Modifier.height(14.dp))
+            if (isScanning) {
+                ArcSkeleton(modifier = Modifier.fillMaxWidth(0.66f).height(14.dp))
+                Spacer(Modifier.height(8.dp))
+                ArcSkeleton(modifier = Modifier.fillMaxWidth(0.50f).height(14.dp))
+            }
             Spacer(Modifier.height(20.dp))
             Text(
                 text = "Metin Satırları Taranıyor...",
@@ -418,6 +460,7 @@ private fun OcrStepVerification(
 @Composable
 private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
     val context = LocalContext.current
+    var zoom by remember(uri) { mutableStateOf(1f) }
     val preview by produceState<ImageBitmap?>(initialValue = null, key1 = uri) {
         value = if (uri == null) null else withContext(Dispatchers.IO) {
             try {
@@ -444,13 +487,20 @@ private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
         )
         return
     }
+    Text("Fotoğraf yakınlaştırma: ${(zoom * 100).toInt()}%", color = ArcTheme.colors.textSecondary)
+    ArcSlider(
+        value = zoom,
+        onValueChange = { zoom = it },
+        valueRange = 1f..2.5f,
+        modifier = Modifier.fillMaxWidth()
+    )
     ArcImageCompare(
         beforeContent = {
             Image(
                 bitmap = bitmap,
                 contentDescription = "Öğrenci listesinin orijinal fotoğrafı",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = zoom, scaleY = zoom)
             )
         },
         afterContent = {
