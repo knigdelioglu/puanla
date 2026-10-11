@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import com.knigdelioglu.puanla.domain.student.StudentNameRules
 
 class PuanlaRepository(private val db: PuanlaDatabase) {
 
@@ -104,8 +105,8 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
             id = UUID.randomUUID().toString(),
             classroomId = classroomId,
             studentNumber = trimmedNum,
-            firstName = firstName.trim(),
-            lastName = lastName.trim().uppercase(),
+            firstName = StudentNameRules.firstName(firstName),
+            lastName = StudentNameRules.lastName(lastName),
             gender = gender?.trim(),
             boardingStatus = boardingStatus?.trim()
         )
@@ -145,11 +146,38 @@ class PuanlaRepository(private val db: PuanlaDatabase) {
     }
 
     suspend fun updateStudent(student: StudentEntity) = db.withTransaction {
-        studentDao.updateStudent(student)
-        auditLogDao.insertLog(AuditLogEntity(
-            id = UUID.randomUUID().toString(), action = "STUDENT_UPDATED",
-            details = "Öğrenci no ${student.studentNumber} (${student.classroomId})"
-        ))
+        val stored = requireNotNull(studentDao.getStudentById(student.id)) { "Öğrenci bulunamadı." }
+        require(stored.classroomId == student.classroomId && stored.studentNumber == student.studentNumber) {
+            "Sınıf veya okul numarası isim düzeltmesiyle değiştirilemez."
+        }
+        val updated = stored.copy(
+            firstName = StudentNameRules.firstName(student.firstName),
+            lastName = StudentNameRules.lastName(student.lastName)
+        )
+        if (updated != stored) {
+            studentDao.updateStudent(updated)
+            auditLogDao.insertLog(AuditLogEntity(
+                id = UUID.randomUUID().toString(), action = "STUDENT_UPDATED",
+                details = "Öğrenci no ${stored.studentNumber} (${stored.classroomId})"
+            ))
+        }
+    }
+
+    /** Only one name field changes; overlapping inline edits cannot lose updates. */
+    suspend fun updateStudentName(studentId: String, firstName: String? = null, lastName: String? = null) = db.withTransaction {
+        require((firstName == null) != (lastName == null)) { "Yalnız bir isim alanı güncellenebilir." }
+        val stored = requireNotNull(studentDao.getStudentById(studentId)) { "Öğrenci bulunamadı." }
+        val updated = stored.copy(
+            firstName = firstName?.let(StudentNameRules::firstName) ?: stored.firstName,
+            lastName = lastName?.let(StudentNameRules::lastName) ?: stored.lastName
+        )
+        if (updated != stored) {
+            studentDao.updateStudent(updated)
+            auditLogDao.insertLog(AuditLogEntity(
+                id = UUID.randomUUID().toString(), action = "STUDENT_UPDATED",
+                details = "Öğrenci no ${stored.studentNumber} (${stored.classroomId})"
+            ))
+        }
     }
 
     suspend fun deleteStudent(student: StudentEntity) = db.withTransaction {

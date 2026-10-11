@@ -297,7 +297,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             ArcInlineEdit(
                                 value = student.firstName,
                                 onCommit = { newName ->
-                                    viewModel.updateStudent(student.copy(firstName = newName.trim()))
+                                    viewModel.updateStudentName(student.id, firstName = newName)
                                 }
                             )
                         },
@@ -309,7 +309,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             ArcInlineEdit(
                                 value = student.lastName,
                                 onCommit = { newSurname ->
-                                    viewModel.updateStudent(student.copy(lastName = newSurname.trim()))
+                                    viewModel.updateStudentName(student.id, lastName = newSurname)
                                 }
                             )
                         },

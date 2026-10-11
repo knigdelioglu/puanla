@@ -456,8 +456,27 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateStudent(student: StudentEntity) {
         viewModelScope.launch {
-            repository.updateStudent(student)
-            showToast("${student.fullName} güncellendi.")
+            try {
+                repository.updateStudent(student)
+                showToast("${student.fullName} güncellendi.")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Öğrenci güncellenemedi: ${e.message}")
+            }
+        }
+    }
+
+    /** Update the one field the teacher edited, not a stale whole-row copy. */
+    fun updateStudentName(studentId: String, firstName: String? = null, lastName: String? = null) {
+        viewModelScope.launch {
+            try {
+                repository.updateStudentName(studentId, firstName, lastName)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                showToast("Öğrenci adı/soyadı kaydedilemedi: ${e.message}")
+            }
         }
     }
 
