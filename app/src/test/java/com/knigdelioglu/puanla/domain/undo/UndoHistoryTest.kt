@@ -26,6 +26,20 @@ class UndoHistoryTest {
         assertNull(history.takeIfLatest("a"))
     }
 
+    @Test fun historyIsBoundedWithoutBreakingRecentUndo() {
+        val history = UndoHistory<Int>(maxEntries = 3)
+        (1..20).forEach { history.push("score-$it", it) }
+        assertEquals("score-20", history.latestId())
+        assertEquals(20, history.takeIfLatest("score-20"))
+        assertEquals(19, history.takeIfLatest("score-19"))
+        assertEquals(18, history.takeIfLatest("score-18"))
+        assertNull(history.takeIfLatest("score-17"))
+    }
+
+    @Test fun invalidHistoryLimitIsRejected() {
+        assertThrows(IllegalArgumentException::class.java) { UndoHistory<String>(maxEntries = 0) }
+    }
+
     @Test fun duplicateIdentifiersAreRejected() {
         val history = UndoHistory<String>()
         history.push("x", "one")

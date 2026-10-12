@@ -1,15 +1,27 @@
 name: Android CI
+
 on:
   push:
     branches: [main]
   pull_request:
+
 jobs:
   android:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # gh release create runs only for successful main pushes
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout shared Compose Design System
+        uses: actions/checkout@v4
+        with:
+          repository: knigdelioglu/compose-design-system
+          ref: main
+          path: compose-design-system
+          # This is a private repository. Set COMPOSE_DESIGN_SYSTEM_TOKEN to a
+          # fine-grained read-only token with Contents access to that repository.
+          token: ${{ secrets.COMPOSE_DESIGN_SYSTEM_TOKEN || github.token }}
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,13 +36,18 @@ jobs:
           test -n "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
       - name: Unit tests and debug and release builds
-        run: ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon
+        run: ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: puanla-tablet-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Arc Compose interaction tests on Android tablet emulator
+      - name: Tablet UI instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -40,4 +57,14 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           emulator-boot-timeout: 900
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"
+      - name: Publish tested tablet APK to GitHub Releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v0.1.1-tablet.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" "app/build/outputs/apk/debug/app-debug.apk#Puanla-${TAG}-debug.apk" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Puanla 0.1.1 Tablet Test Sürümü" \
+            --notes "Tablet performansı ve uzun oturum bellek kullanımı iyileştirmeleri. Test için imzalanmış debug APK; kalıcı sürüm imzası değildir. Mevcut uygulamayı kaldırmadan önce verileri yedekleyin."
