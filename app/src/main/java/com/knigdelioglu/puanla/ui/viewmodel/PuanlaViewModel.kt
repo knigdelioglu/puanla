@@ -702,6 +702,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName)
                 }
                 val duplicateValidation = OcrImportDuplicateDetector.validateSelectedCandidates(candidates, currentRoster)
+                require(duplicateValidation.sourceRowConflicts.isEmpty()) {
+                    "Aynı fotoğraf satırından iki öğrenci aktarılamaz. Yinelenen okumayı aktarımdan çıkarın."
+                }
                 require(duplicateValidation.schoolNumberConflicts.isEmpty()) {
                     "Aynı okul numarasına sahip satır var. Okul numarasını düzeltin veya satırı aktarımdan çıkarın."
                 }
