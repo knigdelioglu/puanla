@@ -162,12 +162,36 @@ interface GroupTaskDao {
     @Query("SELECT * FROM group_tasks WHERE id = :id LIMIT 1")
     suspend fun getGroupTaskById(id: String): GroupTaskEntity?
 
-    @Query("SELECT * FROM group_tasks WHERE classroomId = :classroomId AND rubricId = :rubricId")
-    fun getGroupTasksFlow(classroomId: String, rubricId: String): Flow<List<GroupTaskEntity>>
+    @Query("SELECT * FROM group_tasks WHERE classroomId = :classroomId ORDER BY createdAt, title")
+    fun getGroupTasksFlow(classroomId: String): Flow<List<GroupTaskEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateGroupTask(task: GroupTaskEntity)
 
     @Delete
     suspend fun deleteGroupTask(task: GroupTaskEntity)
+}
+
+
+@Dao
+interface GroupAssessmentDao {
+    @Query("SELECT * FROM group_assessment_sessions WHERE classroomId = :classroomId AND rubricId = :rubricId ORDER BY createdAt DESC")
+    fun getSessionsFlow(classroomId: String, rubricId: String): Flow<List<GroupAssessmentSessionEntity>>
+    @Query("SELECT * FROM group_assessment_sessions WHERE id = :id LIMIT 1")
+    suspend fun getSession(id: String): GroupAssessmentSessionEntity?
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertSession(row: GroupAssessmentSessionEntity)
+    @Query("SELECT * FROM group_assessments WHERE sessionId = :sessionId")
+    fun getAssessmentsFlow(sessionId: String): Flow<List<GroupAssessmentEntity>>
+    @Query("SELECT * FROM group_assessments WHERE sessionId = :sessionId")
+    suspend fun getAssessments(sessionId: String): List<GroupAssessmentEntity>
+    @Query("SELECT * FROM group_assessments WHERE sessionId = :sessionId AND groupId = :groupId LIMIT 1")
+    suspend fun getAssessment(sessionId: String, groupId: String): GroupAssessmentEntity?
+    @Upsert suspend fun upsertAssessment(row: GroupAssessmentEntity)
+    @Query("SELECT * FROM group_criterion_scores WHERE groupAssessmentId = :assessmentId")
+    suspend fun getScores(assessmentId: String): List<GroupCriterionScoreEntity>
+    @Upsert suspend fun upsertScore(row: GroupCriterionScoreEntity)
+    @Query("SELECT * FROM group_member_results WHERE groupAssessmentId = :assessmentId")
+    suspend fun getMemberResults(assessmentId: String): List<GroupMemberResultEntity>
+    @Upsert suspend fun upsertMemberResults(rows: List<GroupMemberResultEntity>)
 }

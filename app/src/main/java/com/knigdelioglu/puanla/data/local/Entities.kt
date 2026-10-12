@@ -204,3 +204,42 @@ data class AuditLogEntity(
     val action: String,
     val details: String
 )
+
+
+/** Rubric-independent groups stay in legacy group_tasks; assessment snapshots live here. */
+@Entity(tableName = "group_assessment_sessions", indices = [Index(value = ["classroomId", "rubricId"])])
+@Serializable
+data class GroupAssessmentSessionEntity(
+    @PrimaryKey val id: String, val classroomId: String, val rubricId: String,
+    val title: String, val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "group_assessments", indices = [
+    Index(value = ["sessionId", "groupId"], unique = true), Index(value = ["sessionId"])
+])
+@Serializable
+data class GroupAssessmentEntity(
+    @PrimaryKey val id: String, val sessionId: String, val groupId: String,
+    val groupTitleSnapshot: String, val memberStudentIdsJson: String,
+    val isCompleted: Boolean = false, val definitiveTotal: Int? = null,
+    val scoredCount: Int = 0, val lastModifiedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "group_criterion_scores", indices = [
+    Index(value = ["groupAssessmentId", "criterionId"], unique = true)
+])
+@Serializable
+data class GroupCriterionScoreEntity(
+    @PrimaryKey val id: String, val groupAssessmentId: String, val criterionId: String,
+    val points: Int?, val evidenceNote: String? = null, val scoredAt: Long = System.currentTimeMillis()
+)
+
+/** Materialized grade for a student; group_assessments remains authoritative. */
+@Entity(tableName = "group_member_results", indices = [
+    Index(value = ["groupAssessmentId", "studentId"], unique = true), Index(value = ["studentId"])
+])
+@Serializable
+data class GroupMemberResultEntity(
+    @PrimaryKey val id: String, val groupAssessmentId: String, val studentId: String,
+    val definitiveTotal: Int? = null, val isCompleted: Boolean = false
+)
