@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DocumentScanner
@@ -48,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,20 +90,54 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
     val ocrError by viewModel.ocrError.collectAsState()
     val importedCount by viewModel.ocrImportedCount.collectAsState()
 
-    val steps = listOf(
-        "1. Fotoğraf Seç",
-        "2. Algılama & OCR",
-        "3. Doğrulama Kapısı",
-        "4. Tamamlandı"
-    )
+    // Verification owns one vertical lazy list for the header, alerts and students.
+    // Do not pin the header above a separate weighted roster viewport.
+    if (step == 2 && selectedClassroom != null) {
+        OcrStepVerification(candidates, viewModel) {
+            OcrImportChrome(
+                classroomName = selectedClassroom?.name,
+                step = step,
+                viewModel = viewModel
+            )
+        }
+        return
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Header
+        OcrImportChrome(
+            classroomName = selectedClassroom?.name,
+            step = step,
+            viewModel = viewModel
+        )
+
+        if (selectedClassroom == null) {
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                ArcEmptyState(
+                    title = "Sınıf Seçilmedi",
+                    description = "Öğrenci aktarmadan önce üst menüden hedef sınıfı seçmelisiniz."
+                )
+            }
+            return@Column
+        }
+
+        when (step) {
+            0 -> OcrStepPhotoSelection(viewModel)
+            1 -> OcrStepScanning(isScanning, ocrError)
+            3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
+        }
+    }
+}
+
+@Composable
+private fun OcrImportChrome(
+    classroomName: String?,
+    step: Int,
+    viewModel: PuanlaViewModel
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text = "Fotoğraftan Öğrenci Listesi Aktarımı",
@@ -113,11 +150,8 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)
             ) {
-                if (selectedClassroom != null) {
-                    ArcBadge(
-                        text = "Hedef: ${selectedClassroom?.name}",
-                        variant = ArcBadgeVariant.Accent
-                    )
+                if (classroomName != null) {
+                    ArcBadge(text = "Hedef: $classroomName", variant = ArcBadgeVariant.Accent)
                 }
                 ArcButton(
                     text = "Sınıflara Dön",
@@ -128,34 +162,19 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
             }
         }
 
-        // Stepper
         ArcStepper(
-            steps = steps,
+            steps = listOf(
+                "1. Fotoğraf Seç",
+                "2. Algılama & OCR",
+                "3. Doğrulama Kapısı",
+                "4. Tamamlandı"
+            ),
             currentStepIndex = step,
             onStepClick = { targetStep ->
                 if (targetStep < step) viewModel.ocrStep.value = targetStep
             }
         )
-
         Divider(color = ArcTheme.colors.borderSubtle)
-
-        if (selectedClassroom == null) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Sınıf Seçilmedi",
-                    description = "Öğrenci aktarmadan önce üst menüden hedef sınıfı seçmelisiniz."
-                )
-            }
-            return@Column
-        }
-
-        // Body based on step
-        when (step) {
-            0 -> OcrStepPhotoSelection(viewModel)
-            1 -> OcrStepScanning(isScanning, ocrError)
-            2 -> OcrStepVerification(candidates, viewModel)
-            3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
-        }
     }
 }
 
@@ -301,7 +320,8 @@ private fun OcrStepScanning(isScanning: Boolean, error: String?) {
 @Composable
 private fun OcrStepVerification(
     candidates: List<OcrStudentRow>,
-    viewModel: PuanlaViewModel
+    viewModel: PuanlaViewModel,
+    header: @Composable () -> Unit
 ) {
     var focusReview by remember { mutableStateOf(false) }
     val currentStudents by viewModel.students.collectAsState()
@@ -321,8 +341,16 @@ private fun OcrStepVerification(
     val selectedSourceRowConflicts = duplicateValidation.sourceRowConflicts.size
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(24.dp).testTag("ocrVerificationScroll"),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item(key = "ocr-import-header") { header() }
+        item(key = "ocr-review-controls") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -493,14 +521,19 @@ private fun OcrStepVerification(
             Spacer(Modifier.height(10.dp))
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            itemsIndexed(candidates) { index, cand ->
+            }
+        }
+
+        // A single lazy vertical list makes the whole header and warnings scroll
+        // out of the way while composing student cards on demand.
+        itemsIndexed(
+            items = candidates,
+            key = { _, candidate -> candidate.id }
+        ) { index, cand ->
                 val isIncluded = cand.isApproved
 
                 ArcCard(
+                    modifier = Modifier.fillMaxWidth().testTag("ocrStudent-${cand.id}"),
                     color = if (isIncluded) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surfaceMuted,
                     border = BorderStroke(
                         1.dp,
@@ -619,7 +652,6 @@ private fun OcrStepVerification(
                     }
                 }
             }
-        }
     }
 }
 
