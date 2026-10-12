@@ -93,6 +93,58 @@ class OcrImportDuplicateDetectorTest {
         assertFalse(bothSelectedRows.canImport)
     }
 
+
+    @Test
+    fun flagsAyseYilmazAndCorruptedAesyeYklmnzWithoutMatchingSchoolNumber() {
+        val candidates = listOf(
+            row("245", "Ayşe", "Yılmaz"),
+            row("999", "aesye", "yklmnz").copy(isApproved = true)
+        )
+        val hints = OcrImportDuplicateDetector.findPotentialDuplicates(candidates, emptyList())
+        assertEquals("Ayşe Yılmaz", hints[1]?.matchedName)
+        assertFalse(hints[1]?.sameStudentNumber ?: true)
+        assertFalse(OcrImportDuplicateDetector.validateSelectedCandidates(candidates, emptyList()).canImport)
+    }
+
+    @Test
+    fun twoCandidatesFromIdenticalPhotoRowCannotBothBeImportedEvenWhenNamesDiffer() {
+        val candidates = listOf(
+            row("245", "Ayşe", "Yılmaz").copy(
+                isApproved = true, sourceLeft = 20, sourceTop = 50,
+                sourceRight = 450, sourceBottom = 70
+            ),
+            row("999", "Mehmet", "Demir").copy(
+                isApproved = true, sourceLeft = 22, sourceTop = 51,
+                sourceRight = 453, sourceBottom = 71,
+                isConfirmedDistinctFromPossibleMatch = true
+            )
+        )
+        val validation = OcrImportDuplicateDetector.validateSelectedCandidates(candidates, emptyList())
+        assertEquals(setOf(1), validation.sourceRowConflicts)
+        assertFalse(validation.canImport)
+        val single = OcrImportDuplicateDetector.validateSelectedCandidates(
+            candidates.mapIndexed { index, candidate ->
+                if (index == 1) candidate.copy(isApproved = false) else candidate
+            }, emptyList()
+        )
+        assertTrue(single.canImport)
+    }
+
+    @Test
+    fun differentPhotoRowsAreNeverTreatedAsSameSource() {
+        val candidates = listOf(
+            row("245", "Ayşe", "Yılmaz").copy(
+                isApproved = true, sourceLeft = 20, sourceTop = 50,
+                sourceRight = 450, sourceBottom = 70
+            ),
+            row("246", "Mehmet", "Demir").copy(
+                isApproved = true, sourceLeft = 20, sourceTop = 85,
+                sourceRight = 450, sourceBottom = 105
+            )
+        )
+        assertTrue(OcrImportDuplicateDetector.validateSelectedCandidates(candidates, emptyList()).canImport)
+    }
+
     private fun row(number: String, firstName: String, lastName: String) = OcrStudentRow(
         rawIndex = number.toInt(),
         studentNumber = number,
