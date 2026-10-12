@@ -774,35 +774,31 @@ internal fun QuickScoreControls(
         quickScorePresets(maxPoints, levels.map { it.points })
     }
 
-    Text(
-        if (levels.isNotEmpty()) "Hızlı düzey seçimi" else "Hızlı puan • tek dokunuş",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = colors.textSecondary
-    )
-    Spacer(Modifier.height(7.dp))
-    ArcSegmentedControl(
-        items = options.map { "$it P" },
-        selectedIndex = options.indexOf(points),
-        onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
-        modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
-    )
-    Spacer(Modifier.height(8.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            if (levels.isNotEmpty()) "Hızlı düzey seçimi" else "Hızlı puan • tek dokunuş",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary
+        )
+        Spacer(Modifier.height(7.dp))
+        ArcSegmentedControl(
+            items = options.map { "$it P" },
+            selectedIndex = options.indexOf(points),
+            onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
+            modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
+        )
+        Spacer(Modifier.height(7.dp))
         ArcSwitch(
             checked = autoAdvance,
             onCheckedChange = onAutoAdvanceChange,
-            label = "Otomatik sonraki ölçüt",
-            modifier = Modifier.weight(1f)
+            label = "Otomatik sonraki ölçüt"
         )
-        if (hasNextCriterion) {
+        if (hasNextCriterion && !autoAdvance) {
             ArcButton(
                 text = "Sonraki ölçüt",
                 onClick = onNextCriterion,
+                modifier = Modifier.fillMaxWidth(),
                 variant = ArcButtonVariant.Ghost,
                 size = ArcButtonSize.Sm
             )
