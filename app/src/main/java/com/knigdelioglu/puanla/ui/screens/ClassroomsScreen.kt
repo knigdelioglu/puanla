@@ -2,6 +2,8 @@ package com.knigdelioglu.puanla.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,6 +125,8 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .testTag("classroomManagementScroll")
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
@@ -267,7 +273,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
 
         // Students Table Section
         if (selectedClassroom == null) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp), contentAlignment = Alignment.Center) {
                 if (classrooms.isEmpty()) {
                     ArcEmptyState(
                         title = "Henüz sınıf yok",
@@ -289,7 +295,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 }
             }
         } else {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -415,9 +421,10 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     ArcSortableDataTable(
                         items = filteredStudents,
                         columns = columns,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth(),
                         pageSize = 25,
-                        rowKey = { it.id }
+                        rowKey = { it.id },
+                        expandRowsInParentScroll = true
                     )
                 }
             }
