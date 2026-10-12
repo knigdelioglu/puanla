@@ -49,6 +49,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -72,9 +78,6 @@ import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcAccordion
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
-import com.knigdelioglu.arc.compose.display.ArcExpandableCard
-import com.knigdelioglu.arc.compose.display.ArcTreeNode
-import com.knigdelioglu.arc.compose.display.ArcTreeView
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
 import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
@@ -150,8 +153,6 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                     CriteriaExplorerPane(
                         criteria = criteria,
                         activeCriterion = activeCriterion,
-                        currentScores = currentScores,
-                        levels = levels,
                         onSelectCriterion = { crit ->
                             activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
                         }
@@ -339,29 +340,14 @@ private fun StudentRosterPane(
 }
 
 @Composable
-private fun CriteriaExplorerPane(
+internal fun CriteriaExplorerPane(
     criteria: List<CriterionEntity>,
     activeCriterion: CriterionEntity?,
-    currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
-    levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
     onSelectCriterion: (CriterionEntity) -> Unit
 ) {
-    var showCriterionTree by remember { mutableStateOf(false) }
-    val criterionTree = remember(criteria) {
-        listOf(
-            ArcTreeNode(
-                id = "rubric-criteria-root",
-                title = "Mevcut rubriğin ölçütleri",
-                children = criteria.map {
-                    ArcTreeNode(id = it.id, title = "${it.orderIndex + 1}. ${it.title}")
-                }
-            )
-        )
-    }
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = ArcTheme.colors.surface
-    ) {
+    val colors = ArcTheme.colors
+
+    Surface(modifier = Modifier.fillMaxSize(), color = colors.surface) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -376,111 +362,98 @@ private fun CriteriaExplorerPane(
                     text = "Değerlendirme Ölçütleri",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
+                    color = colors.foreground
                 )
-                ArcBadge(
-                    text = "${criteria.size} Ölçüt",
-                    variant = ArcBadgeVariant.Accent
-                )
+                ArcBadge(text = "${criteria.size} Ölçüt", variant = ArcBadgeVariant.Accent)
             }
 
-            Spacer(Modifier.height(10.dp))
-            ArcButton(
-                text = if (showCriterionTree) "Ölçüt ağacını gizle" else "Ölçüt ağacından seç",
-                onClick = { showCriterionTree = !showCriterionTree },
-                variant = ArcButtonVariant.Ghost,
-                size = ArcButtonSize.Sm
-            )
-            if (showCriterionTree) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 175.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    ArcTreeView(
-                        nodes = criterionTree,
-                        onNodeClick = { node ->
-                            criteria.firstOrNull { it.id == node.id }?.let(onSelectCriterion)
-                        }
+            Spacer(Modifier.height(12.dp))
+
+            if (criteria.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    ArcEmptyState(
+                        title = "Ölçüt Bulunamadı",
+                        description = "Seçili rubrikte değerlendirilecek ölçüt bulunmuyor."
                     )
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(criteria) { criterion ->
-                    val isActive = criterion.id == activeCriterion?.id
-                    val score = currentScores[criterion.id]
-                    val criterionLevels = levels.filter { it.criterionId == criterion.id }
+            } else {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val spacing = 6.dp
+                    val minimumItemHeight = 56.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    // Show every criterion at once on tablets when the available height permits.
+                    // Large system fonts and smaller windows fall back to scrolling.
+                    val fitsAtOnce = maxHeight >= minimumItemHeight * criteria.size +
+                        spacing * (criteria.size - 1)
 
-                    ArcExpandableCard(
-                        title = "${criterion.orderIndex + 1}. ${criterion.title}",
-                        subtitle = criterion.description,
-                        initiallyExpanded = isActive,
-                        badge = {
-                            val isScored = score?.points != null
-                            ArcBadge(
-                                text = if (isScored) "${score?.points} / ${criterion.maxPoints}" else "Max ${criterion.maxPoints} P",
-                                variant = if (isScored) ArcBadgeVariant.Success else ArcBadgeVariant.Default
-                            )
-                        }
-                    ) {
+                    if (fitsAtOnce) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectCriterion(criterion) }
+                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
+                            verticalArrangement = Arrangement.spacedBy(spacing)
                         ) {
-                            Text(
-                                text = "Niteliksel Düzeyler:",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = ArcTheme.colors.textSecondary
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            criterionLevels.forEach { lvl ->
-                                val isSelectedLevel = score?.points == lvl.points
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 3.dp),
-                                    shape = ArcTheme.shapes.control,
-                                    color = if (isSelectedLevel) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surface,
-                                    border = BorderStroke(
-                                        if (isSelectedLevel) 1.5.dp else 1.dp,
-                                        if (isSelectedLevel) ArcTheme.colors.accent else ArcTheme.colors.borderSubtle
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Surface(
-                                            shape = ArcTheme.shapes.pill,
-                                            color = if (isSelectedLevel) ArcTheme.colors.accent else ArcTheme.colors.surfaceMuted
-                                        ) {
-                                            Text(
-                                                text = "${lvl.points}P",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelectedLevel) ArcTheme.colors.accentForeground else ArcTheme.colors.textSecondary,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            text = lvl.description,
-                                            fontSize = 13.sp,
-                                            color = ArcTheme.colors.foreground,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
+                            criteria.forEach { criterion ->
+                                CriterionSelectionRow(
+                                    criterion = criterion,
+                                    isActive = criterion.id == activeCriterion?.id,
+                                    onClick = { onSelectCriterion(criterion) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
+                            verticalArrangement = Arrangement.spacedBy(spacing)
+                        ) {
+                            items(criteria, key = { it.id }) { criterion ->
+                                CriterionSelectionRow(
+                                    criterion = criterion,
+                                    isActive = criterion.id == activeCriterion?.id,
+                                    onClick = { onSelectCriterion(criterion) },
+                                    modifier = Modifier.heightIn(min = minimumItemHeight)
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CriterionSelectionRow(
+    criterion: CriterionEntity,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = ArcTheme.colors
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("rubricCriterion-${criterion.id}")
+            .semantics { selected = isActive }
+            .clickable(role = Role.Button, onClickLabel = "Ölçütü seç", onClick = onClick),
+        shape = ArcTheme.shapes.control,
+        color = if (isActive) colors.surfaceRaised else colors.surface,
+        border = BorderStroke(
+            if (isActive) 2.dp else 1.dp,
+            if (isActive) colors.accent else colors.borderSubtle
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${criterion.orderIndex + 1}. ${criterion.title}",
+                fontSize = 15.sp,
+                lineHeight = 19.sp,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                color = colors.foreground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -835,8 +808,6 @@ private fun CompactScoringLayout(
             1 -> CriteriaExplorerPane(
                 criteria = criteria,
                 activeCriterion = activeCriterion,
-                currentScores = currentScores,
-                levels = levels,
                 onSelectCriterion = {
                     onSelectCriterion(it)
                     selectedTab = 2 // jump to scoring
