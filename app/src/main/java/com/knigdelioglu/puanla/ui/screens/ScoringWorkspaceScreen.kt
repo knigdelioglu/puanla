@@ -699,23 +699,31 @@ private fun ScoringControlPane(
                     LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
                     }
-                    Text(
-                        text = "Gözlem ve Kanıt Notu",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.foreground
+                    var showNoteEditor by remember(student.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
+                    ArcButton(
+                        text = if (showNoteEditor) "Gözlem notunu gizle"
+                            else if (noteText.isBlank()) "Gözlem ve kanıt notu ekle"
+                            else "Gözlem notunu düzenle (mevcut not)",
+                        onClick = { showNoteEditor = !showNoteEditor },
+                        variant = ArcButtonVariant.Outline,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = ArcButtonSize.Sm
                     )
-                    ArcRichTextEditor(
-                        value = noteText,
-                        onValueChange = {
-                            noteText = it
-                            noteTouched = true
-                            onNoteChange(it)
-                        },
-                        placeholder = "Ölçüte özel gözlem, kanıt veya öğretmen değerlendirme notu...",
-                        characterCountLabel = { "$it karakter" },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    if (showNoteEditor) {
+                        ArcRichTextEditor(
+                            value = noteText,
+                            onValueChange = {
+                                noteText = it
+                                noteTouched = true
+                                onNoteChange(it)
+                            },
+                            placeholder = "Ölçüte özel gözlem veya kanıt...",
+                            characterCountLabel = { "$it karakter" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
 
             }
@@ -746,6 +754,58 @@ private fun ScoringControlPane(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun QuickScoreControls(
+    maxPoints: Int,
+    points: Int?,
+    levels: List<CriterionLevelEntity>,
+    autoAdvance: Boolean,
+    onAutoAdvanceChange: (Boolean) -> Unit,
+    hasNextCriterion: Boolean,
+    onNextCriterion: () -> Unit,
+    onChooseScore: (Int) -> Unit
+) {
+    val colors = ArcTheme.colors
+    val options = remember(maxPoints, levels) {
+        quickScorePresets(maxPoints, levels.map { it.points })
+    }
+
+    Text(
+        if (levels.isNotEmpty()) "Hızlı düzey seçimi" else "Hızlı puan • tek dokunuş",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = colors.textSecondary
+    )
+    Spacer(Modifier.height(7.dp))
+    ArcSegmentedControl(
+        items = options.map { "$it P" },
+        selectedIndex = options.indexOf(points),
+        onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
+        modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        ArcSwitch(
+            checked = autoAdvance,
+            onCheckedChange = onAutoAdvanceChange,
+            label = "Otomatik sonraki ölçüt",
+            modifier = Modifier.weight(1f)
+        )
+        if (hasNextCriterion) {
+            ArcButton(
+                text = "Sonraki ölçüt",
+                onClick = onNextCriterion,
+                variant = ArcButtonVariant.Ghost,
+                size = ArcButtonSize.Sm
+            )
         }
     }
 }
