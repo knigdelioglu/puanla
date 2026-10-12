@@ -21,7 +21,12 @@ data class OcrStudentRow(
     val isAmbiguous: Boolean = false,
     val ambiguityReason: String? = null,
     val isApproved: Boolean = false,
-    val isConfirmedDistinctFromPossibleMatch: Boolean = false
+    val isConfirmedDistinctFromPossibleMatch: Boolean = false,
+    /** Source-image row bounds; kept through review for geometric duplicate detection. */
+    val sourceLeft: Int? = null,
+    val sourceTop: Int? = null,
+    val sourceRight: Int? = null,
+    val sourceBottom: Int? = null
 )
 
 /** ML Kit element boundary data used for geometry-based column isolation and tests. */
@@ -38,7 +43,52 @@ data class OcrPositionedWord(
     val centerY: Double get() = y + height / 2.0
 }
 
+/** Rows can be the same source even when OCR produces unrelated names or numbers. */
+internal fun sameSourceImageRow(first: OcrStudentRow, second: OcrStudentRow): Boolean {
+    val leftA = first.sourceLeft ?: return false
+    val rightA = first.sourceRight ?: return false
+    val topA = first.sourceTop ?: return false
+    val bottomA = first.sourceBottom ?: return false
+    val leftB = second.sourceLeft ?: return false
+    val rightB = second.sourceRight ?: return false
+    val topB = second.sourceTop ?: return false
+    val bottomB = second.sourceBottom ?: return false
+    val width = minOf(rightA - leftA, rightB - leftB)
+    val height = minOf(bottomA - topA, bottomB - topB)
+    if (width <= 0 || height <= 0) return false
+    val xOverlap = (minOf(rightA, rightB) - maxOf(leftA, leftB)).coerceAtLeast(0)
+    val yOverlap = (minOf(bottomA, bottomB) - maxOf(topA, topB)).coerceAtLeast(0)
+    return xOverlap.toDouble() / width >= 0.65 && yOverlap.toDouble() / height >= 0.65
+}
+
 object OcrRosterParser {
+
+    private data class OverlapFiltering(
+        val unique: List<OcrPositionedWord>,
+        val conflicting: List<OcrPositionedWord>
+    )
+
+    /** Suppress two ML Kit elements describing the same pixels, not nearby separate words. */
+    private fun filterRepeatedDetections(words: List<OcrPositionedWord>): OverlapFiltering {
+        val unique = mutableListOf<OcrPositionedWord>()
+        val conflicting = mutableListOf<OcrPositionedWord>()
+        for (word in words) {
+            val duplicate = unique.firstOrNull { existing ->
+                val xOverlap = (minOf(word.x + word.width, existing.x + existing.width) -
+                    maxOf(word.x, existing.x)).coerceAtLeast(0)
+                val yOverlap = (minOf(word.y + word.height, existing.y + existing.height) -
+                    maxOf(word.y, existing.y)).coerceAtLeast(0)
+                val minWidth = minOf(word.width, existing.width)
+                val minHeight = minOf(word.height, existing.height)
+                minWidth > 0 && minHeight > 0 &&
+                    xOverlap.toDouble() / minWidth >= 0.75 &&
+                    yOverlap.toDouble() / minHeight >= 0.70
+            }
+            if (duplicate == null) unique.add(word)
+            else if (!duplicate.text.equals(word.text, ignoreCase = true)) conflicting.add(word)
+        }
+        return OverlapFiltering(unique, conflicting)
+    }
 
     private val GENDER_TOKENS = setOf("K", "E", "KIZ", "ERKEK", "Kız", "Erkek", "kız", "erkek")
     private val BOARDING_TOKENS = setOf("P", "G", "PANSİYONLU", "GÜNDÜZLÜ", "PANSİYON", "YATILI", "Pansiyonlu", "Gündüzlü")
@@ -88,6 +138,8 @@ object OcrRosterParser {
      */
     fun parsePositionedWords(words: List<OcrPositionedWord>): List<OcrStudentRow> {
         if (words.isEmpty()) return emptyList()
+        val filtered = filterRepeatedDetections(words)
+        val uniqueWords = filtered.unique
 
         // Turkish headings are sometimes returned without diacritics, and a
         // photographed sheet can make separate column labels land at different
@@ -98,7 +150,7 @@ object OcrRosterParser {
                 .replace('Ö', 'O').replace('Ş', 'S').replace('Ü', 'U')
                 .replace(Regex("[^A-Z0-9]"), "")
         }
-        val headerAnchors = words.filter {
+        val headerAnchors = uniqueWords.filter {
             normalized(it.text) in setOf(
                 "ADI", "AD", "ADISOYADI", "SOYADI", "SOYAD", "NO", "OGRENCI",
                 "OGRENCINO", "NUMARASI", "OKUL", "CINSIYET", "CINSIYETI",
@@ -115,7 +167,7 @@ object OcrRosterParser {
         fun projectedY(word: OcrPositionedWord) = word.centerY - slope * word.centerX
 
         val lines = mutableListOf<MutableList<OcrPositionedWord>>()
-        for (word in words.sortedWith(compareBy<OcrPositionedWord> { projectedY(it) }.thenBy { it.x })) {
+        for (word in uniqueWords.sortedWith(compareBy<OcrPositionedWord> { projectedY(it) }.thenBy { it.x })) {
             // ML Kit already groups elements into text lines. Keep that signal so
             // perspective/skew across a wide printed table cannot split its header
             // into unrelated rows. The projected Y also reunites a visual row when
@@ -182,7 +234,16 @@ object OcrRosterParser {
             val lastName = if (lastNameColumn) lastTokens.joinToString(" ")
                 else firstTokens.lastOrNull().orEmpty()
             if (firstName.isEmpty() && lastName.isEmpty()) continue
-            val ambiguous = school == null || firstName.isBlank() || lastName.isBlank() || !lastNameColumn
+            val rowTop = sorted.minOf { it.y }
+            val rowBottom = sorted.maxOf { it.y + it.height }
+            val rowLeft = sorted.minOf { it.x }
+            val rowRight = sorted.maxOf { it.x + it.width }
+            val conflictingRead = filtered.conflicting.any { other ->
+                other.y < rowBottom && other.y + other.height > rowTop &&
+                    other.x < rowRight && other.x + other.width > rowLeft
+            }
+            val missingFields = school == null || firstName.isBlank() || lastName.isBlank() || !lastNameColumn
+            val ambiguous = missingFields || conflictingRead
             output.add(
                 OcrStudentRow(
                     rawIndex = output.size + 1,
@@ -190,13 +251,40 @@ object OcrRosterParser {
                     firstName = firstName,
                     lastName = lastName.uppercase(Locale("tr", "TR")),
                     isAmbiguous = ambiguous,
-                    ambiguityReason = if (ambiguous)
-                        "Eksik alan veya birleşik ad-soyad sütunu: öğretmen düzeltip onaylamalı." else null,
-                    isApproved = false
+                    ambiguityReason = when {
+                        conflictingRead -> "Aynı görüntü bölgesinden farklı OCR okumaları geldi; fotoğrafla doğrulayın."
+                        missingFields -> "Eksik alan veya birleşik ad-soyad sütunu: öğretmen düzeltip onaylamalı."
+                        else -> null
+                    },
+                    isApproved = false,
+                    sourceLeft = rowLeft,
+                    sourceTop = rowTop,
+                    sourceRight = rowRight,
+                    sourceBottom = rowBottom
                 )
             )
         }
-        return output
+        // A single physical student row must never become two import candidates.
+        // Conflicting readings are retained as uncertainty rather than silently trusted.
+        val collapsed = mutableListOf<OcrStudentRow>()
+        for (candidate in output) {
+            val existingIndex = collapsed.indexOfFirst { sameSourceImageRow(it, candidate) }
+            if (existingIndex < 0) {
+                collapsed.add(candidate)
+            } else {
+                val previous = collapsed[existingIndex]
+                val priorCompleteness = listOf(previous.studentNumber, previous.firstName, previous.lastName)
+                    .count { it.isNotBlank() }
+                val nextCompleteness = listOf(candidate.studentNumber, candidate.firstName, candidate.lastName)
+                    .count { it.isNotBlank() }
+                val preferred = if (nextCompleteness > priorCompleteness) candidate else previous
+                collapsed[existingIndex] = preferred.copy(
+                    isAmbiguous = true,
+                    ambiguityReason = "Aynı fotoğraf satırı birden fazla okundu; kaynak fotoğraftan doğrulayın."
+                )
+            }
+        }
+        return collapsed.mapIndexed { index, candidate -> candidate.copy(rawIndex = index + 1) }
     }
 
     /**
