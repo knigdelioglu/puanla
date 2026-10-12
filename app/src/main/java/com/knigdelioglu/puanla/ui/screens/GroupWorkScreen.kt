@@ -46,6 +46,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.LaunchedEffect
+import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
+import com.knigdelioglu.arc.compose.controls.ArcNumberField
+import kotlin.math.roundToInt
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
@@ -208,6 +213,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                             thirdPane = {
                                 GroupScoringPane(
                                     group = selectedGroup, assessment = assessment,
+                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                                     criterion = activeCriterion, criteria = criteria,
                                     scores = scores, students = students, memberResults = memberResults,
                                     quickGrading = quickGrading,
@@ -359,6 +365,7 @@ private fun GroupRosterPane(
 private fun GroupScoringPane(
     group: GroupTaskEntity?,
     assessment: GroupAssessmentEntity?,
+    modifier: Modifier = Modifier,
     criterion: CriterionEntity?,
     criteria: List<CriterionEntity>,
     scores: Map<String, GroupCriterionScoreEntity>,
@@ -387,7 +394,7 @@ private fun GroupScoringPane(
     val names = remember(students) { students.associateBy { it.id } }
     val total = assessment?.definitiveTotal
     Column(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        modifier = modifier.fillMaxWidth().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(group.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
@@ -416,6 +423,39 @@ private fun GroupScoringPane(
                         onChooseScore = onScore,
                         quickGrading = quickGrading
                     )
+                    var precisionVisible by remember(group.id, criterion.id) { mutableStateOf(false) }
+                    ArcButton(
+                        text = if (precisionVisible) "Hassas puanı gizle" else "Hassas puan",
+                        onClick = { precisionVisible = !precisionVisible },
+                        modifier = Modifier.fillMaxWidth(),
+                        variant = ArcButtonVariant.Outline, size = ArcButtonSize.Sm
+                    )
+                    if (precisionVisible) {
+                        val points = scores[criterion.id]?.points
+                        var preview by remember(group.id, criterion.id) {
+                            mutableFloatStateOf((points ?: 0).toFloat())
+                        }
+                        LaunchedEffect(group.id, criterion.id, points) {
+                            preview = (points ?: 0).toFloat()
+                        }
+                        if (criterion.maxPoints > 0) {
+                            ArcElasticSlider(
+                                value = preview,
+                                onValueChange = { preview = it },
+                                onValueCommit = { onScore(it.roundToInt()) },
+                                step = 1f,
+                                valueRange = 0f..criterion.maxPoints.toFloat(),
+                                label = "Hassas puan",
+                                formatValue = { "${it.roundToInt()} / ${criterion.maxPoints}" }
+                            )
+                        }
+                        ArcNumberField(
+                            value = points,
+                            onValueChange = { value -> if (value == null) onClear() else onScore(value) },
+                            min = 0, max = criterion.maxPoints,
+                            label = "Tam sayı"
+                        )
+                    }
                     ArcButton(
                         text = "Puanı kaldır", onClick = onClear,
                         enabled = scores[criterion.id]?.points != null,
