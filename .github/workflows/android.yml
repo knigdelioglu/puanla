@@ -66,5 +66,5 @@ jobs:
           TAG="v0.1.1-tablet.${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" "app/build/outputs/apk/debug/app-debug.apk#Puanla-${TAG}-debug.apk" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Puanla 0.1.1 Tablet Test Sürümü" \
-            --notes "Tablet performansı ve uzun oturum bellek kullanımı iyileştirmeleri. Test için imzalanmış debug APK; kalıcı sürüm imzası değildir. Mevcut uygulamayı kaldırmadan önce verileri yedekleyin."
+            --title "Puanla 0.1.1 Tablet OCR Düzeltmesi" \
+            --notes "OCR: Aynı fotoğraf satırındaki yinelenen okumalar birleştirildi; bozuk okunan ad-soyadlar olası mükerrer olarak işaretleniyor. Yanlışlıkla iki kez aktarma engelleniyor. Test için imzalanmış debug APK; kalıcı sürüm imzası değildir. Mevcut uygulamayı kaldırmadan önce verileri yedekleyin."
