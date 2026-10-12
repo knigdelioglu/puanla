@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +71,7 @@ import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAvatar
@@ -84,6 +86,8 @@ import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
 import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
+import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -105,6 +109,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
 
     var searchQuery by remember { mutableStateOf("") }
     var activeCriterionIndex by remember { mutableIntStateOf(0) }
+    var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(selectedRubric?.id) { activeCriterionIndex = 0 }
 
     val filteredStudents = remember(students, searchQuery) {
         if (searchQuery.isBlank()) students
@@ -166,6 +172,11 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                         currentAssessment = currentAssessment,
                         currentScores = currentScores,
                         levels = levels.filter { it.criterionId == activeCriterion?.id },
+                        autoAdvanceQuickScore = autoAdvanceQuickScore,
+                        onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
+                        onNextCriterion = {
+                            if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
+                        },
                         onScore = { points, note ->
                             activeCriterion?.let { crit ->
                                 viewModel.setScore(crit.id, points, note)
@@ -217,6 +228,11 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 },
                 onPrevStudent = { viewModel.previousStudent() },
                 onNextStudent = { viewModel.nextStudent() },
+                autoAdvanceQuickScore = autoAdvanceQuickScore,
+                onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
+                onNextCriterion = {
+                    if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
+                },
                 onUndo = undoSelected
             )
         }
@@ -465,7 +481,10 @@ private fun ScoringControlPane(
     criteria: List<CriterionEntity>,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
-    levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
+    levels: List<CriterionLevelEntity>,
+    autoAdvanceQuickScore: Boolean,
+    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
+    onNextCriterion: () -> Unit,
     onScore: (Int?, String?) -> Unit,
     onClearScore: () -> Unit,
     onNoteChange: (String) -> Unit,
@@ -562,141 +581,114 @@ private fun ScoringControlPane(
                     val points = currentScore?.points
                     val maxPoints = criterion.maxPoints
 
-                    var showCriterionHelp by remember(student.id, criterion.id) { mutableStateOf(false) }
+                    val hasNextCriterion =
+                        criteria.indexOfFirst { it.id == criterion.id } in 0 until criteria.lastIndex
+                    var showPrecision by remember(student.id, criterion.id) { mutableStateOf(false) }
+
                     ArcCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
                                     text = "${criterion.orderIndex + 1}. ${criterion.title}",
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.foreground
+                                    color = colors.foreground,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 ArcBadge(
-                                    text = if (points != null) "$points Puan" else "Puanlanmadı",
-                                    variant = if (points != null) ArcBadgeVariant.Accent else ArcBadgeVariant.Default
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Box {
-                                ArcButton(
-                                    text = "Ölçüt hakkında",
-                                    onClick = { showCriterionHelp = !showCriterionHelp },
-                                    variant = ArcButtonVariant.Ghost,
-                                    size = ArcButtonSize.Sm
-                                )
-                                ArcPopover(
-                                    isOpen = showCriterionHelp,
-                                    onDismiss = { showCriterionHelp = false }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.width(260.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(criterion.title, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            criterion.description.ifBlank { "Ölçüt yönergesi verilmemiş." },
-                                            color = colors.textSecondary
-                                        )
-                                        Text("Azami puan: $maxPoints", color = colors.foreground)
-                                    }
-                                }
-                            }
-                            val guidance = buildList {
-                                if (criterion.description.isNotBlank()) {
-                                    add("Ölçüt yönergesi" to criterion.description)
-                                }
-                                if (levels.isNotEmpty()) {
-                                    add("Puan düzeylerinin açıklamaları" to levels.joinToString("\n") {
-                                        "${it.points} puan: ${it.description}"
-                                    })
-                                }
-                            }
-                            if (guidance.isNotEmpty()) {
-                                ArcAccordion(items = guidance, modifier = Modifier.fillMaxWidth())
-                            } else {
-                                Text(
-                                    text = "Bu ölçüt için açıklama eklenmemiş.",
-                                    fontSize = 13.sp,
-                                    color = colors.textSecondary
+                                    text = points?.let { "$it / $maxPoints" } ?: "Puanlanmadı",
+                                    variant = if (points != null) ArcBadgeVariant.Success else ArcBadgeVariant.Default
                                 )
                             }
 
-                            Spacer(Modifier.height(18.dp))
-
-                            // Preview is local; persist exactly once on release (never per pointer pixel).
-                            var sliderPreview by remember(student.id, criterion.id) {
-                                mutableFloatStateOf((points ?: 0).toFloat())
-                            }
-                            LaunchedEffect(student.id, criterion.id, points) {
-                                sliderPreview = (points ?: 0).toFloat()
-                            }
-                            ArcElasticSlider(
-                                value = sliderPreview,
-                                onValueChange = { sliderPreview = it },
-                                onValueCommit = { released ->
-                                    onScore(released.roundToInt(), currentScore?.evidenceNote)
-                                },
-                                step = 1f,
-                                valueRange = 0f..maxPoints.toFloat(),
-                                label = "Ölçüt Puanı",
-                                formatValue = { "${it.roundToInt()} / $maxPoints" }
+                            Spacer(Modifier.height(14.dp))
+                            QuickScoreControls(
+                                maxPoints = maxPoints,
+                                points = points,
+                                levels = levels,
+                                autoAdvance = autoAdvanceQuickScore,
+                                onAutoAdvanceChange = onAutoAdvanceQuickScoreChange,
+                                hasNextCriterion = hasNextCriterion,
+                                onNextCriterion = onNextCriterion,
+                                onChooseScore = { chosen ->
+                                    // setScore owns the original student/rubric/criterion IDs.
+                                    // Navigation only changes the selected criterion after dispatch.
+                                    onScore(chosen, currentScore?.evidenceNote)
+                                    if (autoAdvanceQuickScore && hasNextCriterion) onNextCriterion()
+                                }
                             )
 
-                            Spacer(Modifier.height(16.dp))
-
-                            // Qualitative Levels Segmented Control (if levels exist)
-                            if (levels.isNotEmpty()) {
-                                Text(
-                                    text = "Hızlı Nitelik Seçimi:",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.textSecondary
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                val levelLabels = levels.map { "${it.points}P" }
-                                val selectedLevelIndex = levels.indexOfFirst { it.points == points }
-                                ArcSegmentedControl(
-                                    items = levelLabels,
-                                    selectedIndex = selectedLevelIndex,
-                                    onSelectIndex = { idx ->
-                                        val chosenLvl = levels.getOrNull(idx)
-                                        if (chosenLvl != null) {
-                                            onScore(chosenLvl.points, currentScore?.evidenceNote)
-                                        }
-                                    }
-                                )
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-
-                            // Precision Number Field & Reset Action
+                            Spacer(Modifier.height(10.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                ArcButton(
+                                    text = if (showPrecision) "Hassas ayarı gizle" else "Hassas puan",
+                                    onClick = { showPrecision = !showPrecision },
+                                    size = ArcButtonSize.Sm,
+                                    variant = ArcButtonVariant.Outline,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ArcButton(
+                                    text = "Puanı kaldır",
+                                    onClick = onClearScore,
+                                    enabled = points != null,
+                                    size = ArcButtonSize.Sm,
+                                    variant = ArcButtonVariant.Ghost
+                                )
+                            }
+
+                            if (showPrecision) {
+                                Spacer(Modifier.height(12.dp))
+                                // Preview is local. Room is updated only on slider release.
+                                var sliderPreview by remember(student.id, criterion.id) {
+                                    mutableFloatStateOf((points ?: 0).toFloat())
+                                }
+                                LaunchedEffect(student.id, criterion.id, points) {
+                                    sliderPreview = (points ?: 0).toFloat()
+                                }
+                                if (maxPoints > 0) {
+                                    ArcElasticSlider(
+                                        value = sliderPreview,
+                                        onValueChange = { sliderPreview = it },
+                                        onValueCommit = { onScore(it.roundToInt(), currentScore?.evidenceNote) },
+                                        step = 1f,
+                                        valueRange = 0f..maxPoints.toFloat(),
+                                        label = "Hassas puan",
+                                        formatValue = { "${it.roundToInt()} / $maxPoints" }
+                                    )
+                                }
                                 key(student.id, criterion.id) {
                                     ArcNumberField(
                                         value = points,
                                         onValueChange = { onScore(it, currentScore?.evidenceNote) },
                                         min = 0,
                                         max = maxPoints,
-                                        label = "Hassas Tam Sayı"
+                                        label = "Tam sayı"
                                     )
                                 }
-                                ArcButton(
-                                    text = "Puanı Kaldır",
-                                    onClick = onClearScore,
-                                    variant = ArcButtonVariant.Ghost,
-                                    size = ArcButtonSize.Sm
-                                )
                             }
                         }
+                    }
+
+                    val guidance = buildList {
+                        if (criterion.description.isNotBlank()) {
+                            add("Ölçüt yönergesi" to criterion.description)
+                        }
+                        if (levels.isNotEmpty()) {
+                            add("Puan düzeylerinin açıklamaları" to levels.joinToString("\n") {
+                                "${it.points} puan: ${it.description}"
+                            })
+                        }
+                    }
+                    if (guidance.isNotEmpty()) {
+                        ArcAccordion(items = guidance, modifier = Modifier.fillMaxWidth())
                     }
 
                     // Evidence / Observation Note
@@ -707,23 +699,31 @@ private fun ScoringControlPane(
                     LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
                     }
-                    Text(
-                        text = "Gözlem ve Kanıt Notu",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.foreground
+                    var showNoteEditor by remember(student.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
+                    ArcButton(
+                        text = if (showNoteEditor) "Gözlem notunu gizle"
+                            else if (noteText.isBlank()) "Gözlem ve kanıt notu ekle"
+                            else "Gözlem notunu düzenle (mevcut not)",
+                        onClick = { showNoteEditor = !showNoteEditor },
+                        variant = ArcButtonVariant.Outline,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = ArcButtonSize.Sm
                     )
-                    ArcRichTextEditor(
-                        value = noteText,
-                        onValueChange = {
-                            noteText = it
-                            noteTouched = true
-                            onNoteChange(it)
-                        },
-                        placeholder = "Ölçüte özel gözlem, kanıt veya öğretmen değerlendirme notu...",
-                        characterCountLabel = { "$it karakter" },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    if (showNoteEditor) {
+                        ArcRichTextEditor(
+                            value = noteText,
+                            onValueChange = {
+                                noteText = it
+                                noteTouched = true
+                                onNoteChange(it)
+                            },
+                            placeholder = "Ölçüte özel gözlem veya kanıt...",
+                            characterCountLabel = { "$it karakter" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
 
             }
@@ -759,6 +759,54 @@ private fun ScoringControlPane(
 }
 
 @Composable
+internal fun QuickScoreControls(
+    maxPoints: Int,
+    points: Int?,
+    levels: List<CriterionLevelEntity>,
+    autoAdvance: Boolean,
+    onAutoAdvanceChange: (Boolean) -> Unit,
+    hasNextCriterion: Boolean,
+    onNextCriterion: () -> Unit,
+    onChooseScore: (Int) -> Unit
+) {
+    val colors = ArcTheme.colors
+    val options = remember(maxPoints, levels) {
+        quickScorePresets(maxPoints, levels.map { it.points })
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            if (levels.isNotEmpty()) "Hızlı düzey seçimi" else "Hızlı puan • tek dokunuş",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary
+        )
+        Spacer(Modifier.height(7.dp))
+        ArcSegmentedControl(
+            items = options.map { "$it P" },
+            selectedIndex = options.indexOf(points),
+            onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
+            modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
+        )
+        Spacer(Modifier.height(7.dp))
+        ArcSwitch(
+            checked = autoAdvance,
+            onCheckedChange = onAutoAdvanceChange,
+            label = "Otomatik sonraki ölçüt"
+        )
+        if (hasNextCriterion && !autoAdvance) {
+            ArcButton(
+                text = "Sonraki ölçüt",
+                onClick = onNextCriterion,
+                modifier = Modifier.fillMaxWidth(),
+                variant = ArcButtonVariant.Ghost,
+                size = ArcButtonSize.Sm
+            )
+        }
+    }
+}
+
+@Composable
 private fun CompactScoringLayout(
     students: List<StudentEntity>,
     selectedStudent: StudentEntity?,
@@ -777,6 +825,9 @@ private fun CompactScoringLayout(
     onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
     onNextStudent: () -> Unit,
+    autoAdvanceQuickScore: Boolean,
+    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
+    onNextCriterion: () -> Unit,
     onUndo: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
@@ -820,6 +871,9 @@ private fun CompactScoringLayout(
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
+                autoAdvanceQuickScore = autoAdvanceQuickScore,
+                onAutoAdvanceQuickScoreChange = onAutoAdvanceQuickScoreChange,
+                onNextCriterion = onNextCriterion,
                 onScore = onScore,
                 onClearScore = onClearScore,
                 onNoteChange = onNoteChange,
