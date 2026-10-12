@@ -83,16 +83,6 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                     modifier = Modifier.width(115.dp)
                 )
 
-                // Rubric Selector
-                ArcSelect(
-                    selectedItem = selectedRubric,
-                    items = matchingRubrics,
-                    onItemSelected = { viewModel.selectRubric(it) },
-                    labelProvider = { it.title },
-                    placeholder = "Rubrik Seç",
-                    modifier = Modifier.width(180.dp)
-                )
-
                 // Tablet/compact fallback for long rubric titles: real Arc radio-card picker.
                 ArcButton(
                     text = "Rubrikler",

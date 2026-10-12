@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,6 +97,14 @@ import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import kotlin.math.roundToInt
 
+/**
+ * The criterion selection belongs to a student/rubric pair, not the screen.
+ * Changing either identity restarts grading at criterion one immediately.
+ */
+@Composable
+internal fun rememberStudentCriterionIndex(studentId: String?, rubricId: String?): MutableIntState =
+    remember(studentId, rubricId) { mutableIntStateOf(0) }
+
 @Composable
 fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
@@ -112,9 +121,10 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val undoSelected: () -> Unit = { scope.launch { viewModel.undoLastAction() } }
 
     var searchQuery by remember { mutableStateOf("") }
-    var activeCriterionIndex by remember { mutableIntStateOf(0) }
+    // Reset to the first criterion whenever the selected student or rubric changes.
+    // Keyed state prevents the previous student's last criterion flashing on screen.
+    var activeCriterionIndex by rememberStudentCriterionIndex(selectedStudent?.id, selectedRubric?.id)
     var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(selectedRubric?.id) { activeCriterionIndex = 0 }
 
     val filteredStudents = remember(students, searchQuery) {
         if (searchQuery.isBlank()) students
