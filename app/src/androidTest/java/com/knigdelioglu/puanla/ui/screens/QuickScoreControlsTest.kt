@@ -9,6 +9,8 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.ArcTestHostActivity
+import com.knigdelioglu.puanla.ui.preferences.QuickGradeAppearance
+import com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -69,5 +71,63 @@ class QuickScoreControlsTest {
         }
         rule.onNodeWithText("5 P").assertIsDisplayed()
         rule.onNodeWithText("20 P").assertDoesNotExist()
+    }
+
+    @Test
+    fun fourStarGradesShowTheirActualPointsAndSelectWithOneTap() {
+        val score = mutableStateOf<Int?>(null)
+        rule.setContent {
+            ArcTheme(reducedMotion = true) {
+                QuickScoreControls(
+                    maxPoints = 5,
+                    points = score.value,
+                    levels = emptyList(),
+                    autoAdvance = false,
+                    onAutoAdvanceChange = {},
+                    hasNextCriterion = false,
+                    onNextCriterion = {},
+                    onChooseScore = { score.value = it },
+                    quickGrading = QuickGradingPreference(
+                        qualitativeEnabled = true,
+                        levelCount = 4,
+                        appearance = QuickGradeAppearance.Stars
+                    )
+                )
+            }
+        }
+        rule.onNodeWithText("★  Yetersiz").assertIsDisplayed().performClick()
+        rule.runOnIdle { assertEquals(0, score.value) }
+        rule.onNodeWithText("★★★  Yeterli").assertIsDisplayed().performClick()
+        rule.runOnIdle { assertEquals(3, score.value) }
+        rule.onNodeWithText("3 / 5").assertIsDisplayed()
+        rule.onNodeWithText("5 P").assertDoesNotExist()
+    }
+
+    @Test
+    fun faceStyleHasThreeQualitativeChoicesAndPreservesMaximumScore() {
+        val score = mutableStateOf<Int?>(null)
+        rule.setContent {
+            ArcTheme(reducedMotion = true) {
+                QuickScoreControls(
+                    maxPoints = 20,
+                    points = score.value,
+                    levels = emptyList(),
+                    autoAdvance = false,
+                    onAutoAdvanceChange = {},
+                    hasNextCriterion = false,
+                    onNextCriterion = {},
+                    onChooseScore = { score.value = it },
+                    quickGrading = QuickGradingPreference(
+                        qualitativeEnabled = true,
+                        levelCount = 3,
+                        appearance = QuickGradeAppearance.Faces
+                    )
+                )
+            }
+        }
+        rule.onNodeWithText("😄  İyi").assertIsDisplayed().performClick()
+        rule.runOnIdle { assertEquals(20, score.value) }
+        rule.onNodeWithText("20 / 20").assertIsDisplayed()
+        rule.onNodeWithText("😞  Yetersiz").assertDoesNotExist()
     }
 }
