@@ -71,6 +71,7 @@ import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcRadioCards
 import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
@@ -88,6 +89,8 @@ import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
 import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
+import com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference
+import com.knigdelioglu.puanla.ui.preferences.qualitativeQuickOptions
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -101,6 +104,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val selectedStudent by viewModel.selectedStudent.collectAsState()
     val criteria by viewModel.criteria.collectAsState()
     val levels by viewModel.levels.collectAsState()
+    val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
@@ -173,6 +177,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                         currentScores = currentScores,
                         levels = levels.filter { it.criterionId == activeCriterion?.id },
                         autoAdvanceQuickScore = autoAdvanceQuickScore,
+                        quickGrading = quickGrading,
                         onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
                         onNextCriterion = {
                             if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
@@ -229,6 +234,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 onPrevStudent = { viewModel.previousStudent() },
                 onNextStudent = { viewModel.nextStudent() },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
+                quickGrading = quickGrading,
                 onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
                 onNextCriterion = {
                     if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
@@ -483,6 +489,7 @@ private fun ScoringControlPane(
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
     levels: List<CriterionLevelEntity>,
     autoAdvanceQuickScore: Boolean,
+    quickGrading: QuickGradingPreference,
     onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
     onNextCriterion: () -> Unit,
     onScore: (Int?, String?) -> Unit,
@@ -610,6 +617,7 @@ private fun ScoringControlPane(
                                 maxPoints = maxPoints,
                                 points = points,
                                 levels = levels,
+                                quickGrading = quickGrading,
                                 autoAdvance = autoAdvanceQuickScore,
                                 onAutoAdvanceChange = onAutoAdvanceQuickScoreChange,
                                 hasNextCriterion = hasNextCriterion,
@@ -767,7 +775,8 @@ internal fun QuickScoreControls(
     onAutoAdvanceChange: (Boolean) -> Unit,
     hasNextCriterion: Boolean,
     onNextCriterion: () -> Unit,
-    onChooseScore: (Int) -> Unit
+    onChooseScore: (Int) -> Unit,
+    quickGrading: QuickGradingPreference = QuickGradingPreference()
 ) {
     val colors = ArcTheme.colors
     val options = remember(maxPoints, levels) {
@@ -782,12 +791,30 @@ internal fun QuickScoreControls(
             color = colors.textSecondary
         )
         Spacer(Modifier.height(7.dp))
-        ArcSegmentedControl(
-            items = options.map { "$it P" },
-            selectedIndex = options.indexOf(points),
-            onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
-            modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
-        )
+        if (quickGrading.qualitativeEnabled) {
+            val choices = remember(maxPoints, quickGrading.levelCount, quickGrading.appearance) {
+                qualitativeQuickOptions(
+                    maxPoints = maxPoints,
+                    levelCount = quickGrading.levelCount,
+                    appearance = quickGrading.appearance
+                )
+            }
+            ArcRadioCards(
+                options = choices,
+                selectedOption = choices.firstOrNull { points != null && it.points == points },
+                onOptionSelected = { onChooseScore(it.points) },
+                modifier = Modifier.fillMaxWidth().testTag("qualitativeQuickScoreOptions"),
+                titleProvider = { it.title(quickGrading.appearance) },
+                badgeProvider = { "${it.points} / $maxPoints" }
+            )
+        } else {
+            ArcSegmentedControl(
+                items = options.map { "$it P" },
+                selectedIndex = options.indexOf(points),
+                onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
+                modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
+            )
+        }
         Spacer(Modifier.height(7.dp))
         ArcSwitch(
             checked = autoAdvance,
@@ -826,6 +853,7 @@ private fun CompactScoringLayout(
     onPrevStudent: () -> Unit,
     onNextStudent: () -> Unit,
     autoAdvanceQuickScore: Boolean,
+    quickGrading: QuickGradingPreference,
     onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
     onNextCriterion: () -> Unit,
     onUndo: () -> Unit
@@ -872,6 +900,7 @@ private fun CompactScoringLayout(
                 currentScores = currentScores,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
+                quickGrading = quickGrading,
                 onAutoAdvanceQuickScoreChange = onAutoAdvanceQuickScoreChange,
                 onNextCriterion = onNextCriterion,
                 onScore = onScore,
