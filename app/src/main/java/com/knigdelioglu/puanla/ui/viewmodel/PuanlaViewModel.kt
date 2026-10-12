@@ -808,7 +808,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             withContext(Dispatchers.Main.immediate) {
                 pendingNoteWrites.clear()
                 undoStack.clear()
-                scoreLocks.clear()
+                // scoreLocks is a fixed Array<Mutex>; no clearing is needed or supported.
                 selectedStudent.value = null
                 selectedClassroom.value = null
                 selectedRubric.value = null
