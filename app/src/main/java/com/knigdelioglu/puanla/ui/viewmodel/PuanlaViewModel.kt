@@ -19,6 +19,7 @@ import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
 import com.knigdelioglu.puanla.data.local.PuanlaDatabase
 import com.knigdelioglu.puanla.data.local.RubricEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.data.local.StudentGroupGrade
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.repository.PuanlaRepository
 import com.knigdelioglu.arc.compose.foundation.ArcAccent
@@ -172,6 +173,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     // Assessment for selected student & rubric
     val currentAssessment = MutableStateFlow<AssessmentEntity?>(null)
     val currentScores = MutableStateFlow<Map<String, CriterionScoreEntity>>(emptyMap())
+    val currentStudentGroupGrades = MutableStateFlow<List<StudentGroupGrade>>(emptyList())
 
     // Assessments for class & rubric
     val classAssessments = MutableStateFlow<List<AssessmentEntity>>(emptyList())
@@ -233,6 +235,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     private var groupAssessmentFlowJob: Job? = null
     private var currentGroupScoreJob: Job? = null
     private var currentAssessmentJob: Job? = null
+    private var studentGroupGradesJob: Job? = null
 
     // OCR Import State
     val ocrStep = MutableStateFlow(0) // 0: Select, 1: Scan, 2: Verify, 3: Done
@@ -290,6 +293,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     criteria.value = repository.getCriteriaForRubric(rubric.id)
                     levels.value = db.rubricDao().getLevelsForRubric(rubric.id)
                     loadCurrentAssessment()
+                    loadStudentGroupGrades()
                     loadGroupSessions()
                     loadClassAssessments()
                 } else {
@@ -315,6 +319,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             selectedStudent.collect {
                 loadCurrentAssessment()
+                loadStudentGroupGrades()
             }
         }
     }
@@ -369,6 +374,20 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             repository.getAssessmentsFlow(c.id, r.id).collect { list ->
                 if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id) {
                     classAssessments.value = list
+                }
+            }
+        }
+    }
+
+    private fun loadStudentGroupGrades() {
+        studentGroupGradesJob?.cancel()
+        currentStudentGroupGrades.value = emptyList()
+        val student = selectedStudent.value ?: return
+        val rubric = selectedRubric.value ?: return
+        studentGroupGradesJob = viewModelScope.launch {
+            repository.getStudentGroupGradesFlow(student.id, rubric.id).collect { grades ->
+                if (selectedStudent.value?.id == student.id && selectedRubric.value?.id == rubric.id) {
+                    currentStudentGroupGrades.value = grades
                 }
             }
         }

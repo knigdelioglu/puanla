@@ -402,6 +402,9 @@ class PuanlaRepository(
 
 
     /** Sessions are independent of editable classroom groups, and scoped to a rubric. */
+    fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>> =
+        db.groupAssessmentDao().getStudentGroupGradesFlow(studentId, rubricId)
+
     fun getGroupSessionsFlow(classroomId: String, rubricId: String): Flow<List<GroupAssessmentSessionEntity>> =
         db.groupAssessmentDao().getSessionsFlow(classroomId, rubricId)
 

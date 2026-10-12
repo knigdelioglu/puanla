@@ -22,6 +22,17 @@ data class AssessmentWithScores(
     val scores: List<CriterionScoreEntity>
 )
 
+/** Read-only group-originated grades, separate from individual rubric scores. */
+data class StudentGroupGrade(
+    val studentId: String,
+    val sessionId: String,
+    val sessionTitle: String,
+    val groupTitle: String,
+    val definitiveTotal: Int?,
+    val isCompleted: Boolean,
+    val createdAt: Long
+)
+
 @Dao
 interface ClassroomDao {
     @Query("SELECT * FROM classrooms ORDER BY grade ASC, section ASC")
@@ -175,6 +186,18 @@ interface GroupTaskDao {
 
 @Dao
 interface GroupAssessmentDao {
+    @Query("""
+        SELECT m.studentId AS studentId, s.id AS sessionId, s.title AS sessionTitle,
+               a.groupTitleSnapshot AS groupTitle, m.definitiveTotal AS definitiveTotal,
+               m.isCompleted AS isCompleted, s.createdAt AS createdAt
+          FROM group_member_results m
+          JOIN group_assessments a ON a.id = m.groupAssessmentId
+          JOIN group_assessment_sessions s ON s.id = a.sessionId
+         WHERE m.studentId = :studentId AND s.rubricId = :rubricId
+         ORDER BY s.createdAt DESC, s.id DESC
+    """)
+    fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>>
+
     @Query("SELECT * FROM group_assessment_sessions WHERE classroomId = :classroomId AND rubricId = :rubricId ORDER BY createdAt DESC")
     fun getSessionsFlow(classroomId: String, rubricId: String): Flow<List<GroupAssessmentSessionEntity>>
     @Query("SELECT * FROM group_assessment_sessions WHERE id = :id LIMIT 1")
