@@ -785,7 +785,9 @@ internal fun QuickScoreControls(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            if (levels.isNotEmpty()) "Hızlı düzey seçimi" else "Hızlı puan • tek dokunuş",
+            if (quickGrading.qualitativeEnabled) "Niteliksel hızlı puanlama"
+            else if (levels.isNotEmpty()) "Hızlı düzey seçimi"
+            else "Hızlı puan • tek dokunuş",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = colors.textSecondary
