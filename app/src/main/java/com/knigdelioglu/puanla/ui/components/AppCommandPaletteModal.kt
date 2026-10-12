@@ -26,7 +26,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     actions.add(
         ArcCommandAction(
             id = "nav_workspace",
-            title = "Değerlendirme Çalışma Alanına Git",
+            title = "Puanlamaya Git (Bireysel)",
             category = "Gezinme",
             shortcut = "1",
             onExecute = { viewModel.currentDestination.value = AppDestination.WORKSPACE }
@@ -35,7 +35,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     actions.add(
         ArcCommandAction(
             id = "nav_classrooms",
-            title = "Sınıflar & Öğrenciler Ekranına Git",
+            title = "Sınıflara Git",
             category = "Gezinme",
             shortcut = "2",
             onExecute = { viewModel.currentDestination.value = AppDestination.CLASSROOMS }
@@ -44,7 +44,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     actions.add(
         ArcCommandAction(
             id = "nav_group",
-            title = "Grup Çalışmaları & Hazırlık Takibi",
+            title = "Puanlama / Grup Çalışmaları",
             category = "Gezinme",
             shortcut = "3",
             onExecute = { viewModel.currentDestination.value = AppDestination.GROUP_WORK }
@@ -53,7 +53,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     actions.add(
         ArcCommandAction(
             id = "nav_reports",
-            title = "Raporlar & Analiz / CSV Dışa Aktar",
+            title = "Raporlara Git / CSV Dışa Aktar",
             category = "Gezinme",
             shortcut = "4",
             onExecute = { viewModel.currentDestination.value = AppDestination.REPORTS }

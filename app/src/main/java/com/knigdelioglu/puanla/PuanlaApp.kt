@@ -20,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
@@ -39,6 +42,7 @@ import com.knigdelioglu.arc.compose.display.ArcToastStack
 import com.knigdelioglu.arc.compose.display.ArcNotificationItem
 import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
 import com.knigdelioglu.arc.compose.controls.ArcButton
+import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.advanced.ArcAdvancedItem
 import com.knigdelioglu.arc.compose.advanced.ArcGlassTabBar
@@ -52,6 +56,8 @@ import com.knigdelioglu.puanla.ui.screens.OcrImportScreen
 import com.knigdelioglu.puanla.ui.screens.ReportsScreen
 import com.knigdelioglu.puanla.ui.screens.ScoringWorkspaceScreen
 import com.knigdelioglu.puanla.ui.screens.SettingsScreen
+import com.knigdelioglu.puanla.ui.navigation.primaryNavigationDestinations
+import com.knigdelioglu.puanla.ui.navigation.primaryTab
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
@@ -76,7 +82,11 @@ fun PuanlaApp(
     val showHistory by viewModel.isNotificationCenterOpen.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
 
-    val destinations = remember { AppDestination.values().filter { it != AppDestination.OCR_IMPORT } }
+    val destinations = remember { primaryNavigationDestinations }
+    var lastMainTab by remember { mutableStateOf(AppDestination.WORKSPACE) }
+    LaunchedEffect(currentDestination) {
+        lastMainTab = currentDestination.primaryTab(lastMainTab)
+    }
     val navigationItems = remember {
         destinations.map { destination ->
             ArcAdvancedItem(
@@ -126,19 +136,42 @@ fun PuanlaApp(
                 Scaffold(
                     topBar = {
                         Column {
-                            AppTopBar(viewModel = viewModel)
-                            ArcGlassTabBar(
-                                tabs = navigationItems,
-                                selectedKey = if (currentDestination == AppDestination.OCR_IMPORT) {
-                                    AppDestination.CLASSROOMS.name
-                                } else currentDestination.name,
-                                onTabSelected = { key ->
-                                    destinations.firstOrNull { it.name == key }?.let {
-                                        viewModel.currentDestination.value = it
-                                    }
-                                },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                            AppTopBar(
+                                viewModel = viewModel,
+                                onBackFromSettings = {
+                                    viewModel.currentDestination.value = lastMainTab
+                                }
                             )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                ArcGlassTabBar(
+                                    tabs = navigationItems,
+                                    selectedKey = currentDestination.primaryTab(lastMainTab).name,
+                                    onTabSelected = { key ->
+                                        destinations.firstOrNull { it.name == key }?.let {
+                                            lastMainTab = it
+                                            viewModel.currentDestination.value = it
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (currentDestination == AppDestination.WORKSPACE ||
+                                    currentDestination == AppDestination.GROUP_WORK
+                                ) {
+                                    ArcSegmentedControl(
+                                        items = listOf("Bireysel", "Grup"),
+                                        selectedIndex = if (currentDestination == AppDestination.GROUP_WORK) 1 else 0,
+                                        onSelectIndex = { index ->
+                                            viewModel.currentDestination.value =
+                                                if (index == 1) AppDestination.GROUP_WORK else AppDestination.WORKSPACE
+                                        },
+                                        modifier = Modifier.width(224.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 ) { innerPadding ->

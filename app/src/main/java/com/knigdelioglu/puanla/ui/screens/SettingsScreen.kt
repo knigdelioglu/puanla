@@ -163,12 +163,22 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
         // Header
-        Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Text(
                 text = "Ayarlar",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = ArcTheme.colors.foreground
+            )
+            ArcButton(
+                text = "İşlem Geçmişi",
+                onClick = { viewModel.isNotificationCenterOpen.value = true },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
             )
         }
 
