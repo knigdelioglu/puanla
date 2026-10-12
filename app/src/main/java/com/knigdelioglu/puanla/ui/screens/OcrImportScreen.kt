@@ -318,6 +318,7 @@ private fun OcrStepVerification(
         )
     }
     val selectedNumberConflicts = duplicateValidation.schoolNumberConflicts.size
+    val selectedSourceRowConflicts = duplicateValidation.sourceRowConflicts.size
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -348,9 +349,10 @@ private fun OcrStepVerification(
                     variant = ArcButtonVariant.Secondary,
                     size = ArcButtonSize.Md
                 )
-            } else if (selectedNumberConflicts > 0 || selectedUnconfirmedMatches > 0) {
+            } else if (selectedSourceRowConflicts > 0 || selectedNumberConflicts > 0 || selectedUnconfirmedMatches > 0) {
                 ArcButton(
-                    text = if (selectedNumberConflicts > 0) "Okul Numarası Çakışması"
+                    text = if (selectedSourceRowConflicts > 0) "Aynı Fotoğraf Satırı Tekrarı"
+                    else if (selectedNumberConflicts > 0) "Okul Numarası Çakışması"
                     else "Benzer Öğrenciyi Doğrulayın",
                     onClick = {},
                     enabled = false,
@@ -439,18 +441,21 @@ private fun OcrStepVerification(
                                     ?.let { candidates.getOrNull(it)?.isApproved } ?: true
                                 if (duplicateHint != null) {
                                     ArcAlert(
-                                        title = if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
+                                        title = if (duplicateHint.sameSourceRow) "Aynı fotoğraf satırı iki kez algılandı"
+                                        else if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
                                             "Okul numarası zaten kullanılıyor"
                                         else if (duplicateHint.sameStudentNumber) "Okul numarası başka OCR satırında da var"
                                         else "Olası aynı öğrenci: ${duplicateHint.matchedName}",
-                                        message = if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
+                                        message = if (duplicateHint.sameSourceRow)
+                                            "İki okuma aynı görüntü satırına ait. İkisini birlikte aktaramazsınız; kaynak görseli doğrulayın."
+                                        else if (duplicateHint.sameStudentNumber && duplicateHint.matchedCandidateIndex == null)
                                             "Bu sınıfta aynı okul numarası bulundu. Numarayı düzeltin veya satırı aktarımdan çıkarın."
                                         else if (duplicateHint.sameStudentNumber)
                                             "Aynı numaralı iki satırı birlikte aktaramazsınız. Doğru satırı seçin."
                                         else "Kaynak fotoğraftan bu satırın aynı kişi mi, farklı bir öğrenci mi olduğunu doğrulayın.",
                                         type = ArcAlertType.Warning
                                     )
-                                    if (!duplicateHint.sameStudentNumber) {
+                                    if (!duplicateHint.sameStudentNumber && !duplicateHint.sameSourceRow) {
                                         ArcCheckbox(
                                             checked = candidate.isConfirmedDistinctFromPossibleMatch,
                                             onCheckedChange = { checked ->
@@ -473,8 +478,10 @@ private fun OcrStepVerification(
                                         }
                                     },
                                     enabled = candidate.isApproved || duplicateHint == null ||
+                                        (duplicateHint.sameSourceRow && !matchedCandidateSelected) ||
                                         (duplicateHint.sameStudentNumber && !matchedCandidateSelected) ||
-                                        (!duplicateHint.sameStudentNumber && candidate.isConfirmedDistinctFromPossibleMatch),
+                                        (!duplicateHint.sameStudentNumber && !duplicateHint.sameSourceRow &&
+                                            candidate.isConfirmedDistinctFromPossibleMatch),
                                     size = ArcButtonSize.Sm,
                                     variant = if (candidate.isApproved) ArcButtonVariant.Outline else ArcButtonVariant.Primary
                                 )
