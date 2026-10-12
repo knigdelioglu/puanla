@@ -196,6 +196,8 @@ interface GroupAssessmentDao {
         WHERE s.classroomId = :classroomId
     """)
     suspend fun countAssessmentsForClassroom(classroomId: String): Int
+    @Query("SELECT COUNT(*) FROM group_assessment_sessions WHERE classroomId = :classroomId")
+    suspend fun countSessionsForClassroom(classroomId: String): Int
 
     @Query("""
         SELECT m.studentId AS studentId, s.id AS sessionId, s.title AS sessionTitle,

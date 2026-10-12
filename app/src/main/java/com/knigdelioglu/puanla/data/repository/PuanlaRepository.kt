@@ -100,8 +100,9 @@ class PuanlaRepository(
     }
 
     suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
-        require(db.groupAssessmentDao().countAssessmentsForClassroom(classroom.id) == 0) {
-            "Bu sınıfın grup değerlendirmeleri var. Not geçmişini korumak için silme engellendi."
+        require(db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
+            groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty()) {
+            "Bu sınıfta grup veya grup değerlendirme oturumu var. Önce bu kayıtları düzenleyin."
         }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
