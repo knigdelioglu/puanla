@@ -45,9 +45,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.weight
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.GroupAssessmentEntity
@@ -385,12 +384,12 @@ private fun GroupScoringPane(
     ) {
         Text(group.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
         Text(
-            if (assessment?.isCompleted == true) "Grup puanı: " + total + " / 100"
+            if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
             else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
             color = ArcTheme.colors.textSecondary
         )
         if (criterion != null) {
-            ArcCard(Modifier.fillMaxWidth()) {
+            ArcCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text(criterion.title, color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
                     ArcBadge(

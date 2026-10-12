@@ -105,7 +105,7 @@ data class BackupSnapshot(
         require(groupScores.all {
             val e = evaluations[it.groupAssessmentId]
             val criterion = criterionById[it.criterionId]
-            e != null && criterion?.rubricId == sessions[e.sessionId]?.rubricId &&
+            e != null && criterion != null && criterion.rubricId == sessions[e.sessionId]?.rubricId &&
                 (it.points == null || it.points in 0..criterion.maxPoints)
         }) { "Grup ölçüt puanı geçersiz." }
         unique(groupScores) { it.groupAssessmentId + "/" + it.criterionId }
