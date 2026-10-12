@@ -14,16 +14,19 @@ data class OcrDuplicateHint(
     val matchedName: String,
     /** Equal same-class school numbers cannot both be imported. */
     val sameStudentNumber: Boolean,
+    /** Both OCR candidates originate from the same physical image row. */
+    val sameSourceRow: Boolean = false,
     /** Non-null when the match is another OCR row; null means a saved roster entry. */
     val matchedCandidateIndex: Int?
 )
 
 data class OcrDuplicateValidation(
     val schoolNumberConflicts: Set<Int>,
-    val unconfirmedPossibleMatches: Set<Int>
+    val unconfirmedPossibleMatches: Set<Int>,
+    val sourceRowConflicts: Set<Int> = emptySet()
 ) {
     val canImport: Boolean
-        get() = schoolNumberConflicts.isEmpty() && unconfirmedPossibleMatches.isEmpty()
+        get() = schoolNumberConflicts.isEmpty() && unconfirmedPossibleMatches.isEmpty() && sourceRowConflicts.isEmpty()
 }
 
 /** Finds likely repeated OCR rows without silently merging or correcting student records. */
@@ -43,13 +46,16 @@ object OcrImportDuplicateDetector {
                 .mapNotNull { (existing, matchedCandidateIndex) ->
                     val sameNumber = candidate.studentNumber.isNotBlank() &&
                         candidate.studentNumber.trim() == existing.studentNumber.trim()
-                    val similarity = if (sameNumber) 1.0 else nameSimilarity(candidate, existing)
-                    if (sameNumber || similarity >= NAME_SIMILARITY_THRESHOLD) {
-                        Match(existing, sameNumber, similarity, matchedCandidateIndex)
+                    val sameSource = matchedCandidateIndex != null &&
+                        sameSourceImageRow(candidate, candidates[matchedCandidateIndex])
+                    val similarity = if (sameNumber || sameSource) 1.0 else nameSimilarity(candidate, existing)
+                    if (sameNumber || sameSource || similarity >= NAME_SIMILARITY_THRESHOLD) {
+                        Match(existing, sameNumber, sameSource, similarity, matchedCandidateIndex)
                     } else null
                 }
                 .maxWithOrNull(
-                    compareBy<Match> { it.sameNumber }
+                    compareBy<Match> { it.sameSourceRow }
+                        .thenBy { it.sameNumber }
                         .thenBy { it.matchedCandidateIndex == null }
                         .thenBy { it.similarity }
                 )
@@ -58,6 +64,7 @@ object OcrImportDuplicateDetector {
                 hints[index] = OcrDuplicateHint(
                     matchedName = match.identity.fullName,
                     sameStudentNumber = match.sameNumber,
+                    sameSourceRow = match.sameSourceRow,
                     matchedCandidateIndex = match.matchedCandidateIndex
                 )
             }
@@ -76,17 +83,23 @@ object OcrImportDuplicateDetector {
             hint.sameStudentNumber && (hint.matchedCandidateIndex == null ||
                 candidates[hint.matchedCandidateIndex].isApproved)
         }
+        val sourceConflicts = selectedIndices.filterTo(linkedSetOf()) { index ->
+            val hint = hints[index] ?: return@filterTo false
+            hint.sameSourceRow && hint.matchedCandidateIndex != null &&
+                candidates[hint.matchedCandidateIndex].isApproved
+        }
         val unconfirmedMatches = selectedIndices.filterTo(linkedSetOf()) { index ->
             val hint = hints[index]
-            hint != null && !hint.sameStudentNumber &&
+            hint != null && !hint.sameStudentNumber && !hint.sameSourceRow &&
                 !candidates[index].isConfirmedDistinctFromPossibleMatch
         }
-        return OcrDuplicateValidation(numberConflicts, unconfirmedMatches)
+        return OcrDuplicateValidation(numberConflicts, unconfirmedMatches, sourceConflicts)
     }
 
     private data class Match(
         val identity: OcrRosterIdentity,
         val sameNumber: Boolean,
+        val sameSourceRow: Boolean,
         val similarity: Double,
         val matchedCandidateIndex: Int?
     )
@@ -134,11 +147,49 @@ object OcrImportDuplicateDetector {
             }
             current.copyInto(previous)
         }
-        return 1.0 - previous[right.length].toDouble() / longest
+        val editSimilarity = 1.0 - previous[right.length].toDouble() / longest
+        // Jaro-Winkler tolerates swapped, skipped and repeatedly misread OCR letters.
+        return maxOf(editSimilarity, jaroWinkler(left, right))
+    }
+
+    private fun jaroWinkler(left: String, right: String): Double {
+        if (left == right) return 1.0
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        val window = (maxOf(left.length, right.length) / 2 - 1).coerceAtLeast(0)
+        val leftMatched = BooleanArray(left.length)
+        val rightMatched = BooleanArray(right.length)
+        var matches = 0
+        for (i in left.indices) {
+            val start = (i - window).coerceAtLeast(0)
+            val end = (i + window + 1).coerceAtMost(right.length)
+            for (j in start until end) {
+                if (!rightMatched[j] && left[i] == right[j]) {
+                    leftMatched[i] = true
+                    rightMatched[j] = true
+                    matches++
+                    break
+                }
+            }
+        }
+        if (matches == 0) return 0.0
+        var transpositions = 0
+        var cursor = 0
+        for (i in left.indices) {
+            if (!leftMatched[i]) continue
+            while (!rightMatched[cursor]) cursor++
+            if (left[i] != right[cursor]) transpositions++
+            cursor++
+        }
+        val m = matches.toDouble()
+        val jaro = (m / left.length + m / right.length + (m - transpositions / 2.0) / m) / 3.0
+        if (jaro <= 0.7) return jaro
+        var prefix = 0
+        while (prefix < minOf(4, left.length, right.length) && left[prefix] == right[prefix]) prefix++
+        return jaro + prefix * 0.1 * (1.0 - jaro)
     }
 
     private val TURKISH = Locale.forLanguageTag("tr-TR")
-    private const val MIN_FIRST_NAME_SIMILARITY = 0.75
-    private const val MIN_LAST_NAME_SIMILARITY = 0.50
-    private const val NAME_SIMILARITY_THRESHOLD = 0.64
+    private const val MIN_FIRST_NAME_SIMILARITY = 0.78
+    private const val MIN_LAST_NAME_SIMILARITY = 0.75
+    private const val NAME_SIMILARITY_THRESHOLD = 0.79
 }
