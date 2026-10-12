@@ -112,9 +112,12 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val undoSelected: () -> Unit = { scope.launch { viewModel.undoLastAction() } }
 
     var searchQuery by remember { mutableStateOf("") }
-    var activeCriterionIndex by remember { mutableIntStateOf(0) }
+    // Reset to the first criterion whenever the selected student or rubric changes.
+    // Keyed state prevents the previous student's last criterion flashing on screen.
+    var activeCriterionIndex by remember(selectedStudent?.id, selectedRubric?.id) {
+        mutableIntStateOf(0)
+    }
     var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(selectedRubric?.id) { activeCriterionIndex = 0 }
 
     val filteredStudents = remember(students, searchQuery) {
         if (searchQuery.isBlank()) students
