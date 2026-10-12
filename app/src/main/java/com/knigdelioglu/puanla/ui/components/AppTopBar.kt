@@ -16,7 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,40 +41,31 @@ import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
 @Composable
-fun AppTopBar(viewModel: PuanlaViewModel) {
+fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     val currentDestination by viewModel.currentDestination.collectAsState()
     val classrooms by viewModel.classrooms.collectAsState()
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val rubrics by viewModel.rubrics.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
-    val darkMode by viewModel.darkMode.collectAsState()
-    val commandPaletteShortcut by viewModel.commandPaletteShortcut.collectAsState()
-    val commandPaletteShortcutIsCustom by viewModel.commandPaletteShortcutIsCustom.collectAsState()
     var showRubricCards by remember { mutableStateOf(false) }
     val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
-    val breadcrumbItems = mutableListOf("Puanla")
-    selectedClassroom?.let { breadcrumbItems.add(it.name) }
-    selectedRubric?.let { breadcrumbItems.add(it.title) }
-
     ArcPageHeader(
         title = when (currentDestination) {
-            AppDestination.WORKSPACE -> selectedRubric?.title ?: "Değerlendirme"
-            AppDestination.CLASSROOMS -> "Sınıflar & Öğrenciler"
+            AppDestination.WORKSPACE, AppDestination.GROUP_WORK ->
+                selectedRubric?.title ?: "Puanlama"
+            AppDestination.CLASSROOMS -> "Sınıflar"
             AppDestination.OCR_IMPORT -> "Fotoğraftan Aktarım"
-            AppDestination.GROUP_WORK -> "Grup Çalışmaları"
-            AppDestination.REPORTS -> "Raporlar & Analiz"
+            AppDestination.REPORTS -> "Raporlar"
             AppDestination.SETTINGS -> "Ayarlar"
-        },
-        breadcrumb = {
-            ArcBreadcrumb(items = breadcrumbItems)
         },
         actions = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Classroom Selector
+                // Keep the classroom selector where the active context is useful.
+                if (currentDestination != AppDestination.SETTINGS) {
                 ArcSelect(
                     selectedItem = selectedClassroom,
                     items = classrooms,
@@ -82,8 +74,13 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                     placeholder = "Sınıf Seç",
                     modifier = Modifier.width(115.dp)
                 )
+                }
 
-                // Tablet/compact fallback for long rubric titles: real Arc radio-card picker.
+                // One rubric picker: the selected rubric is already visible in the title.
+                if (currentDestination == AppDestination.WORKSPACE ||
+                    currentDestination == AppDestination.GROUP_WORK ||
+                    currentDestination == AppDestination.REPORTS
+                ) {
                 ArcButton(
                     text = "Rubrikler",
                     onClick = { showRubricCards = true },
@@ -91,39 +88,32 @@ fun AppTopBar(viewModel: PuanlaViewModel) {
                     size = ArcButtonSize.Sm,
                     enabled = selectedClassroom != null && matchingRubrics.isNotEmpty()
                 )
-
-                // Command Palette Shortcut Button
-                ArcButton(
-                    text = when {
-                        !commandPaletteShortcutIsCustom -> "Ctrl/⌘+K Ara"
-                        commandPaletteShortcut.isBlank() -> "Komutlar"
-                        else -> "Ara (${commandPaletteShortcut})"
-                    },
-                    onClick = { viewModel.isCommandPaletteOpen.value = true },
-                    variant = ArcButtonVariant.Secondary,
-                    size = ArcButtonSize.Sm
-                )
-
-                // Real local audit events, not simulated notifications.
-                ArcTooltip(tooltipText = "İşlem geçmişini aç") {
-                    ArcActionButton(
-                        onClick = { viewModel.isNotificationCenterOpen.value = true },
-                        size = ArcButtonSize.Sm
-                    ) {
-                        Icon(Icons.Default.History, contentDescription = "İşlem Geçmişini Aç")
-                    }
                 }
 
-                // Theme switch and local settings shortcut; no fabricated user account.
-                ArcThemeSwitch(
-                    isDark = darkMode ?: com.knigdelioglu.arc.compose.foundation.ArcTheme.colors.isDark,
-                    onToggle = { viewModel.setDarkMode(it) }
-                )
-                ArcUserMenu(
-                    displayName = "Öğretmen",
-                    subtitle = selectedClassroom?.academicYear.orEmpty(),
-                    onSettingsClick = { viewModel.currentDestination.value = AppDestination.SETTINGS }
-                )
+                ArcTooltip(tooltipText = "Ara ve komutları aç") {
+                    ArcActionButton(onClick = { viewModel.isCommandPaletteOpen.value = true }, size = ArcButtonSize.Sm) {
+                        Icon(Icons.Default.Search, contentDescription = "Ara")
+                    }
+                }
+                ArcTooltip(
+                    tooltipText = if (currentDestination == AppDestination.SETTINGS)
+                        "Önceki sekmeye dön" else "Ayarlar"
+                ) {
+                    ArcActionButton(
+                        onClick = {
+                            if (currentDestination == AppDestination.SETTINGS) onBackFromSettings()
+                            else viewModel.currentDestination.value = AppDestination.SETTINGS
+                        },
+                        size = ArcButtonSize.Sm
+                    ) {
+                        Icon(
+                            if (currentDestination == AppDestination.SETTINGS) Icons.Default.ArrowBack
+                            else Icons.Default.Settings,
+                            contentDescription = if (currentDestination == AppDestination.SETTINGS)
+                                "Önceki sekmeye dön" else "Ayarlar"
+                        )
+                    }
+                }
             }
         }
     )

@@ -56,11 +56,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 enum class AppDestination(val label: String, val iconName: String) {
-    WORKSPACE("Değerlendirme", "Grading"),
-    CLASSROOMS("Sınıflar & Öğrenciler", "School"),
+    WORKSPACE("Puanlama", "Grading"),
+    CLASSROOMS("Sınıflar", "School"),
     OCR_IMPORT("Fotoğraftan Aktarım", "DocumentScanner"),
     GROUP_WORK("Grup Çalışmaları", "Group"),
-    REPORTS("Raporlar & Analiz", "BarChart"),
+    REPORTS("Raporlar", "BarChart"),
     SETTINGS("Ayarlar", "Settings")
 }
 
