@@ -43,7 +43,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -367,9 +366,7 @@ fun <T> ArcSortableDataTable(
     modifier: Modifier = Modifier,
     onRowClick: ((T) -> Unit)? = null,
     pageSize: Int? = null,
-    rowKey: ((T) -> Any)? = null,
-    // Embed a paginated roster in a parent vertical scroll without a second scroll viewport.
-    expandRowsInParentScroll: Boolean = false
+    rowKey: ((T) -> Any)? = null
 ) {
     var sortColumnIndex by remember { mutableStateOf<Int?>(null) }
     var sortAscending by remember { mutableStateOf(true) }
@@ -447,27 +444,29 @@ fun <T> ArcSortableDataTable(
 
             Divider(color = ArcTheme.colors.borderSubtle)
 
-            // Only render rows eagerly when the *parent* owns vertical scrolling.
-            // The paginated mode keeps this bounded to one page of students.
-            if (expandRowsInParentScroll) {
-                require(pageSize != null && pageSize > 0) {
-                    "Parent-scroll table mode requires a positive pageSize."
-                }
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    visibleItems.forEach { item ->
-                        key(rowKey?.invoke(item) ?: item) {
-                            ArcSortableTableRow(item, columns, onRowClick)
+            // Items Rows
+            LazyColumn(modifier = Modifier.fillMaxWidth().then(if (pageSize != null) Modifier.weight(1f) else Modifier)) {
+                items(visibleItems, key = rowKey) { item ->
+                    Surface(
+                        color = Color.Transparent,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (onRowClick != null) Modifier.clickable { onRowClick(item) } else Modifier)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            columns.forEach { col ->
+                                Box(modifier = Modifier.weight(col.weight)) {
+                                    col.content(item)
+                                }
+                            }
                         }
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth()
-                        .then(if (pageSize != null) Modifier.weight(1f) else Modifier)
-                ) {
-                    items(visibleItems, key = rowKey) { item ->
-                        ArcSortableTableRow(item, columns, onRowClick)
-                    }
+                    Divider(color = ArcTheme.colors.borderSubtle.copy(alpha = 0.5f))
                 }
             }
             if (pageSize != null && pageSize > 0 && pageCount > 1) {
@@ -485,32 +484,4 @@ fun <T> ArcSortableDataTable(
             }
         }
     }
-}
-
-@Composable
-private fun <T> ArcSortableTableRow(
-    item: T,
-    columns: List<ArcTableColumn<T>>,
-    onRowClick: ((T) -> Unit)?
-) {
-    Surface(
-        color = Color.Transparent,
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onRowClick != null) Modifier.clickable { onRowClick(item) } else Modifier)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            columns.forEach { col ->
-                Box(modifier = Modifier.weight(col.weight)) {
-                    col.content(item)
-                }
-            }
-        }
-    }
-    Divider(color = ArcTheme.colors.borderSubtle.copy(alpha = 0.5f))
 }
