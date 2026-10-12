@@ -87,6 +87,7 @@ import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
 import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
 import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.CriterionEntity
+import com.knigdelioglu.puanla.data.local.StudentGroupGrade
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
 import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
@@ -116,6 +117,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
+    val studentGroupGrades by viewModel.currentStudentGroupGrades.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
     val scope = rememberCoroutineScope()
     val undoSelected: () -> Unit = { scope.launch { viewModel.undoLastAction() } }
@@ -185,6 +187,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                         criteria = criteria,
                         currentAssessment = currentAssessment,
                         currentScores = currentScores,
+                        groupGrades = studentGroupGrades,
                         levels = levels.filter { it.criterionId == activeCriterion?.id },
                         autoAdvanceQuickScore = autoAdvanceQuickScore,
                         quickGrading = quickGrading,
@@ -221,6 +224,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 activeCriterion = activeCriterion,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
+                groupGrades = studentGroupGrades,
                 levels = levels,
                 searchQuery = searchQuery,
                 onSearchChange = { searchQuery = it },
@@ -497,6 +501,7 @@ private fun ScoringControlPane(
     criteria: List<CriterionEntity>,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
+    groupGrades: List<StudentGroupGrade>,
     levels: List<CriterionLevelEntity>,
     autoAdvanceQuickScore: Boolean,
     quickGrading: QuickGradingPreference,
@@ -577,7 +582,49 @@ private fun ScoringControlPane(
                             fontWeight = FontWeight.SemiBold,
                             color = colors.warning
                         )
-                        ArcBadge(text = "Eksik Değerlendirme", variant = ArcBadgeVariant.Warning)
+                        ArcBadge(text = "Eksik bireysel değerlendirme", variant = ArcBadgeVariant.Warning)
+                    }
+                }
+            }
+
+            if (groupGrades.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    shape = ArcTheme.shapes.control,
+                    border = BorderStroke(1.dp, colors.borderSubtle),
+                    color = colors.surfaceRaised
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text("Grup değerlendirmesinden aktarılan notlar",
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                        // Keep scoring controls visible even after many group sessions.
+                        groupGrades.take(2).forEach { entry ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(entry.sessionTitle, fontSize = 12.sp, color = colors.foreground)
+                                    Text(entry.groupTitle, fontSize = 11.sp, color = colors.textSecondary)
+                                }
+                                Text(
+                                    if (entry.isCompleted) entry.definitiveTotal?.toString() ?: "Eksik"
+                                    else "Eksik",
+                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    color = if (entry.isCompleted) colors.success else colors.warning
+                                )
+                            }
+                        }
+                        if (groupGrades.size > 2) {
+                            Text("Diğer ${groupGrades.size - 2} grup oturumu Grup modunda görülebilir.",
+                                fontSize = 11.sp, color = colors.textSecondary)
+                        }
+                        Text("Bu notlar bireysel rubrik puanlarını değiştirmez.",
+                            fontSize = 11.sp, color = colors.textSecondary)
                     }
                 }
             }
@@ -854,6 +901,7 @@ private fun CompactScoringLayout(
     activeCriterion: CriterionEntity?,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
+    groupGrades: List<StudentGroupGrade>,
     levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
@@ -910,6 +958,7 @@ private fun CompactScoringLayout(
                 criteria = criteria,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
+                groupGrades = groupGrades,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
                 quickGrading = quickGrading,

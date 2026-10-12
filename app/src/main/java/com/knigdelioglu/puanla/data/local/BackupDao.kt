@@ -16,10 +16,18 @@ interface BackupDao {
     @Query("SELECT * FROM assessments") suspend fun assessments(): List<AssessmentEntity>
     @Query("SELECT * FROM criterion_scores") suspend fun scores(): List<CriterionScoreEntity>
     @Query("SELECT * FROM group_tasks") suspend fun groups(): List<GroupTaskEntity>
+    @Query("SELECT * FROM group_assessment_sessions") suspend fun groupSessions(): List<GroupAssessmentSessionEntity>
+    @Query("SELECT * FROM group_assessments") suspend fun groupAssessments(): List<GroupAssessmentEntity>
+    @Query("SELECT * FROM group_criterion_scores") suspend fun groupScores(): List<GroupCriterionScoreEntity>
+    @Query("SELECT * FROM group_member_results") suspend fun groupMemberResults(): List<GroupMemberResultEntity>
     @Query("SELECT * FROM audit_logs") suspend fun auditLogs(): List<AuditLogEntity>
 
     @Query("DELETE FROM criterion_scores") suspend fun clearScores()
     @Query("DELETE FROM assessments") suspend fun clearAssessments()
+    @Query("DELETE FROM group_member_results") suspend fun clearGroupMemberResults()
+    @Query("DELETE FROM group_criterion_scores") suspend fun clearGroupScores()
+    @Query("DELETE FROM group_assessments") suspend fun clearGroupAssessments()
+    @Query("DELETE FROM group_assessment_sessions") suspend fun clearGroupSessions()
     @Query("DELETE FROM group_tasks") suspend fun clearGroups()
     @Query("DELETE FROM criterion_levels") suspend fun clearLevels()
     @Query("DELETE FROM criteria") suspend fun clearCriteria()
@@ -36,5 +44,9 @@ interface BackupDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putAssessments(rows: List<AssessmentEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putScores(rows: List<CriterionScoreEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroups(rows: List<GroupTaskEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroupSessions(rows: List<GroupAssessmentSessionEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroupAssessments(rows: List<GroupAssessmentEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroupScores(rows: List<GroupCriterionScoreEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroupMemberResults(rows: List<GroupMemberResultEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putLogs(rows: List<AuditLogEntity>)
 }

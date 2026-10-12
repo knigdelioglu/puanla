@@ -1,5 +1,6 @@
 package com.knigdelioglu.puanla.data.repository
 
+import com.knigdelioglu.puanla.data.local.*
 import com.knigdelioglu.puanla.data.local.AssessmentEntity
 import com.knigdelioglu.puanla.data.local.AuditLogEntity
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
@@ -98,7 +99,11 @@ class PuanlaRepository(
         return entity
     }
 
-    suspend fun deleteClassroom(classroom: ClassroomEntity) {
+    suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
+            groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty()) {
+            "Bu sınıfta grup veya grup değerlendirme oturumu var. Önce bu kayıtları düzenleyin."
+        }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
             AuditLogEntity(
@@ -221,6 +226,9 @@ class PuanlaRepository(
     }
 
     suspend fun deleteStudent(student: StudentEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countResultsForStudent(student.id) == 0) {
+            "Bu öğrencinin grup değerlendirme notu var. Önce not geçmişini güvenli biçimde arşivleyin."
+        }
         studentDao.deleteStudent(student)
         auditLogDao.insertLog(AuditLogEntity(
             id = UUID.randomUUID().toString(), action = "STUDENT_DELETED",
@@ -343,14 +351,17 @@ class PuanlaRepository(
     }
 
     // Group Tasks
-    fun getGroupTasksFlow(classroomId: String, rubricId: String): Flow<List<GroupTaskEntity>> =
-        groupTaskDao.getGroupTasksFlow(classroomId, rubricId)
+    fun getGroupTasksFlow(classroomId: String): Flow<List<GroupTaskEntity>> =
+        groupTaskDao.getGroupTasksFlow(classroomId)
 
     suspend fun saveGroupTask(task: GroupTaskEntity) {
         groupTaskDao.insertOrUpdateGroupTask(task)
     }
 
-    suspend fun deleteGroupTask(task: GroupTaskEntity) {
+    suspend fun deleteGroupTask(task: GroupTaskEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countAssessmentsForGroup(task.id) == 0) {
+            "Bu grubun değerlendirme geçmişi var. Not kaybını önlemek için silinemez."
+        }
         groupTaskDao.deleteGroupTask(task)
     }
 
@@ -399,6 +410,106 @@ class PuanlaRepository(
         CsvExportFormatter.generate(criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) }, studentRows)
     }
 
+
+    /** Sessions are independent of editable classroom groups, and scoped to a rubric. */
+    fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>> =
+        db.groupAssessmentDao().getStudentGroupGradesFlow(studentId, rubricId)
+
+    fun getGroupSessionsFlow(classroomId: String, rubricId: String): Flow<List<GroupAssessmentSessionEntity>> =
+        db.groupAssessmentDao().getSessionsFlow(classroomId, rubricId)
+
+    fun getGroupAssessmentsFlow(sessionId: String): Flow<List<GroupAssessmentEntity>> =
+        db.groupAssessmentDao().getAssessmentsFlow(sessionId)
+
+    suspend fun getGroupScores(assessmentId: String): List<GroupCriterionScoreEntity> =
+        db.groupAssessmentDao().getScores(assessmentId)
+
+    suspend fun getGroupMemberResults(assessmentId: String): List<GroupMemberResultEntity> =
+        db.groupAssessmentDao().getMemberResults(assessmentId)
+
+    suspend fun createGroupSession(classroomId: String, rubricId: String, title: String): GroupAssessmentSessionEntity =
+        db.withTransaction {
+            val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf yok." }
+            val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik yok." }
+            require(rubric.grade == classroom.grade && rubric.id !in RubricSeeder.unverifiedLegacyIds)
+            require(title.isNotBlank())
+            GroupAssessmentSessionEntity(
+                id = UUID.randomUUID().toString(), classroomId = classroomId,
+                rubricId = rubricId, title = title.trim()
+            ).also { db.groupAssessmentDao().insertSession(it) }
+        }
+
+    /**
+     * Atomic source + member projections. All rubric criteria must be scored before a
+     * member receives a definitive grade. 0 and unscored (null) are distinct.
+     */
+    suspend fun scoreGroup(
+        sessionId: String, groupId: String, criterionId: String, points: Int?
+    ): GroupAssessmentEntity = db.withTransaction {
+        val dao = db.groupAssessmentDao()
+        val session = requireNotNull(dao.getSession(sessionId)) { "Oturum yok." }
+        val group = requireNotNull(groupTaskDao.getGroupTaskById(groupId)) { "Grup yok." }
+        require(group.classroomId == session.classroomId) { "Grup sınıfı farklı." }
+        val rubric = requireNotNull(rubricDao.getRubricById(session.rubricId))
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds)
+        val criterion = requireNotNull(rubricDao.getCriterionById(criterionId))
+        require(criterion.rubricId == session.rubricId && (points == null || points in 0..criterion.maxPoints)) {
+            "Geçersiz ölçüt puanı."
+        }
+        var evaluation = dao.getAssessment(sessionId, groupId)
+        if (evaluation == null) {
+            val memberArray = JSONArray(group.memberStudentIdsJson)
+            val memberIds = (0 until memberArray.length()).map { memberArray.getString(it) }
+            require(memberIds.isNotEmpty() && memberIds.distinct().size == memberIds.size) { "Üyeler geçersiz." }
+            for (id in memberIds) {
+                require(studentDao.getStudentById(id)?.classroomId == session.classroomId) {
+                    "Grup üyeleri sınıfa ait değil."
+                }
+            }
+            val previouslyScored = dao.getAssessments(sessionId).flatMap { previous ->
+                val array = JSONArray(previous.memberStudentIdsJson)
+                (0 until array.length()).map { array.getString(it) }
+            }.toSet()
+            require(memberIds.none { it in previouslyScored }) { "Öğrenci aynı oturumda başka grupta." }
+            evaluation = GroupAssessmentEntity(
+                id = UUID.randomUUID().toString(), sessionId = sessionId, groupId = groupId,
+                groupTitleSnapshot = group.title,
+                memberStudentIdsJson = JSONArray(memberIds).toString()
+            )
+            dao.upsertAssessment(evaluation)
+            dao.upsertMemberResults(memberIds.map { studentId ->
+                GroupMemberResultEntity(
+                    id = evaluation.id + "_" + studentId,
+                    groupAssessmentId = evaluation.id, studentId = studentId
+                )
+            })
+        }
+        val current = requireNotNull(evaluation)
+        val previous = dao.getScores(current.id).firstOrNull { it.criterionId == criterionId }
+        dao.upsertScore(GroupCriterionScoreEntity(
+            id = previous?.id ?: current.id + "_" + criterionId,
+            groupAssessmentId = current.id, criterionId = criterionId, points = points,
+            evidenceNote = previous?.evidenceNote
+        ))
+        val criteria = rubricDao.getCriteriaForRubric(session.rubricId)
+        val scores = dao.getScores(current.id).associate { it.criterionId to it.points }
+        val summary = summarizeScores(criteria.map { CriterionScore(it.maxPoints, scores[it.id]) })
+        val updated = current.copy(
+            isCompleted = summary.completed, definitiveTotal = summary.definitiveTotal,
+            scoredCount = summary.scoredCount, lastModifiedAt = System.currentTimeMillis()
+        )
+        dao.upsertAssessment(updated)
+        dao.upsertMemberResults(dao.getMemberResults(current.id).map {
+            it.copy(isCompleted = updated.isCompleted, definitiveTotal = updated.definitiveTotal)
+        })
+        auditLogDao.insertLog(AuditLogEntity(
+            id = UUID.randomUUID().toString(), action = "GROUP_CRITERION_SCORE_CHANGED",
+            details = "Oturum " + session.id + ", grup " + group.id + ", ölçüt " + criterionId +
+                ": " + (previous?.points?.toString() ?: "Boş") + " → " + (points?.toString() ?: "Boş")
+        ))
+        updated
+    }
+
     // Full JSON backup/restore: every table, prevalidation and a single Room transaction.
     // Never treat a partially restored roster as a successful full backup.
     private val backupJson = Json { encodeDefaults = true; explicitNulls = true; ignoreUnknownKeys = false }
@@ -414,7 +525,11 @@ class PuanlaRepository(
             assessments = dao.assessments(),
             scores = dao.scores(),
             groups = dao.groups(),
-            auditLogs = dao.auditLogs()
+            auditLogs = dao.auditLogs(),
+            groupSessions = dao.groupSessions(),
+            groupAssessments = dao.groupAssessments(),
+            groupScores = dao.groupScores(),
+            groupMemberResults = dao.groupMemberResults()
         ).also { it.validate() })
     }
 
@@ -427,6 +542,10 @@ class PuanlaRepository(
                 val dao = db.backupDao()
                 dao.clearScores()
                 dao.clearAssessments()
+                dao.clearGroupMemberResults()
+                dao.clearGroupScores()
+                dao.clearGroupAssessments()
+                dao.clearGroupSessions()
                 dao.clearGroups()
                 dao.clearLevels()
                 dao.clearCriteria()
@@ -442,6 +561,10 @@ class PuanlaRepository(
                 dao.putAssessments(snapshot.assessments)
                 dao.putScores(snapshot.scores)
                 dao.putGroups(snapshot.groups)
+                dao.putGroupSessions(snapshot.groupSessions)
+                dao.putGroupAssessments(snapshot.groupAssessments)
+                dao.putGroupScores(snapshot.groupScores)
+                dao.putGroupMemberResults(snapshot.groupMemberResults)
                 dao.putLogs(snapshot.auditLogs)
             }
             Result.success(snapshot.students.size)
