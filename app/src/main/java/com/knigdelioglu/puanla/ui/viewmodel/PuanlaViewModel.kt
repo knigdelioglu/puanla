@@ -428,9 +428,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                             }
                         }
                     })
-                    showToast("${student.fullName}: $criterionTitle — ${points ?: "Puan kaldırıldı"}") {
-                        viewModelScope.launch { undoAction(undoId) }
-                    }
+                    // Successful score writes are quiet. Undo remains available
+                    // from the persistent scoring toolbar via undoStack.
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
