@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,6 +95,10 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     var showStatusFilters by remember { mutableStateOf(false) }
 
     val gradeChips = listOf("Tümü", "9. Sınıf", "10. Sınıf", "11. Sınıf", "12. Sınıf")
+    // Reserve a substantial, bounded roster viewport even in tablet landscape.
+    // The page itself can scroll above it, while Arc's lazy table stays virtualized.
+    val rosterTableHeight = (LocalConfiguration.current.screenHeightDp * 0.85f)
+        .dp.coerceAtLeast(520.dp)
 
     val filteredClassrooms = remember(classrooms, selectedGradeFilter) {
         if (selectedGradeFilter == 0) classrooms
@@ -421,10 +426,9 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     ArcSortableDataTable(
                         items = filteredStudents,
                         columns = columns,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().height(rosterTableHeight),
                         pageSize = 25,
-                        rowKey = { it.id },
-                        expandRowsInParentScroll = true
+                        rowKey = { it.id }
                     )
                 }
             }
