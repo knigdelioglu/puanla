@@ -12,6 +12,10 @@ import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
 import com.knigdelioglu.puanla.data.local.CriterionScoreEntity
 import com.knigdelioglu.puanla.data.local.GroupTaskEntity
+import com.knigdelioglu.puanla.data.local.GroupAssessmentSessionEntity
+import com.knigdelioglu.puanla.data.local.GroupAssessmentEntity
+import com.knigdelioglu.puanla.data.local.GroupCriterionScoreEntity
+import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
 import com.knigdelioglu.puanla.data.local.PuanlaDatabase
 import com.knigdelioglu.puanla.data.local.RubricEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
@@ -174,6 +178,13 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Group tasks
     val groupTasks = MutableStateFlow<List<GroupTaskEntity>>(emptyList())
+    val selectedGroup = MutableStateFlow<GroupTaskEntity?>(null)
+    val groupSessions = MutableStateFlow<List<GroupAssessmentSessionEntity>>(emptyList())
+    val selectedGroupSession = MutableStateFlow<GroupAssessmentSessionEntity?>(null)
+    val groupAssessments = MutableStateFlow<List<GroupAssessmentEntity>>(emptyList())
+    val currentGroupAssessment = MutableStateFlow<GroupAssessmentEntity?>(null)
+    val currentGroupScores = MutableStateFlow<Map<String, GroupCriterionScoreEntity>>(emptyMap())
+    val currentGroupMembers = MutableStateFlow<List<GroupMemberResultEntity>>(emptyList())
 
     // Audit logs
     val recentLogs: StateFlow<List<AuditLogEntity>> = repository.getRecentLogsFlow(50)
@@ -218,6 +229,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
     private var groupFlowJob: Job? = null
+    private var groupSessionFlowJob: Job? = null
+    private var groupAssessmentFlowJob: Job? = null
+    private var currentGroupScoreJob: Job? = null
     private var currentAssessmentJob: Job? = null
 
     // OCR Import State
@@ -260,6 +274,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     loadStudentsForClassroom(classroom.id)
                     loadGroupTasks()
+                    loadGroupSessions()
                     loadClassAssessments()
                 } else {
                     students.value = emptyList()
@@ -275,7 +290,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     criteria.value = repository.getCriteriaForRubric(rubric.id)
                     levels.value = db.rubricDao().getLevelsForRubric(rubric.id)
                     loadCurrentAssessment()
-                    loadGroupTasks()
+                    loadGroupSessions()
                     loadClassAssessments()
                 } else {
                     criteria.value = emptyList()
@@ -284,6 +299,16 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     currentScores.value = emptyMap()
                 }
             }
+        }
+
+        viewModelScope.launch {
+            selectedGroupSession.collect {
+                loadGroupAssessments()
+                loadCurrentGroupAssessment()
+            }
+        }
+        viewModelScope.launch {
+            selectedGroup.collect { loadCurrentGroupAssessment() }
         }
 
         // React to selectedStudent change
@@ -739,54 +764,142 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Group work
+
+    // Group roster is classroom-owned; its legacy rubricId is never used as a filter.
     private fun loadGroupTasks() {
         groupFlowJob?.cancel()
         groupTasks.value = emptyList()
-        val c = selectedClassroom.value ?: return
-        val r = selectedRubric.value ?: return
+        selectedGroup.value = null
+        val classroom = selectedClassroom.value ?: return
         groupFlowJob = viewModelScope.launch {
-            repository.getGroupTasksFlow(c.id, r.id).collect { list ->
-                if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id) {
+            repository.getGroupTasksFlow(classroom.id).collect { list ->
+                if (selectedClassroom.value?.id == classroom.id) {
                     groupTasks.value = list
+                    if (selectedGroup.value?.id !in list.map { it.id }) {
+                        selectedGroup.value = list.firstOrNull()
+                    }
                 }
+            }
+        }
+    }
+
+    fun selectGroup(group: GroupTaskEntity) {
+        if (group.classroomId == selectedClassroom.value?.id) selectedGroup.value = group
+    }
+
+    private fun loadGroupSessions() {
+        groupSessionFlowJob?.cancel()
+        groupSessions.value = emptyList()
+        selectedGroupSession.value = null
+        val classroom = selectedClassroom.value ?: return
+        val rubric = selectedRubric.value ?: return
+        groupSessionFlowJob = viewModelScope.launch {
+            repository.getGroupSessionsFlow(classroom.id, rubric.id).collect { list ->
+                if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
+                    groupSessions.value = list
+                    if (selectedGroupSession.value?.id !in list.map { it.id }) {
+                        selectedGroupSession.value = list.firstOrNull()
+                    }
+                }
+            }
+        }
+    }
+
+    fun selectGroupSession(session: GroupAssessmentSessionEntity) {
+        if (session.classroomId == selectedClassroom.value?.id &&
+            session.rubricId == selectedRubric.value?.id) selectedGroupSession.value = session
+    }
+
+    fun createGroupSession(title: String) {
+        val classroom = selectedClassroom.value ?: return
+        val rubric = selectedRubric.value ?: return
+        launchMutation {
+            try {
+                val created = repository.createGroupSession(classroom.id, rubric.id, title)
+                if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
+                    selectedGroupSession.value = created
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Oturum oluşturulamadı: " + e.message) }
+        }
+    }
+
+    private fun loadGroupAssessments() {
+        groupAssessmentFlowJob?.cancel()
+        groupAssessments.value = emptyList()
+        val session = selectedGroupSession.value ?: return
+        groupAssessmentFlowJob = viewModelScope.launch {
+            repository.getGroupAssessmentsFlow(session.id).collect { assessments ->
+                if (selectedGroupSession.value?.id == session.id) {
+                    groupAssessments.value = assessments
+                    loadCurrentGroupAssessment()
+                }
+            }
+        }
+    }
+
+    private fun loadCurrentGroupAssessment() {
+        currentGroupScoreJob?.cancel()
+        currentGroupAssessment.value = null
+        currentGroupScores.value = emptyMap()
+        currentGroupMembers.value = emptyList()
+        val session = selectedGroupSession.value ?: return
+        val group = selectedGroup.value ?: return
+        currentGroupScoreJob = viewModelScope.launch {
+            val found = groupAssessments.value.firstOrNull { it.sessionId == session.id && it.groupId == group.id }
+            val scores = found?.let { repository.getGroupScores(it.id) }.orEmpty()
+            val members = found?.let { repository.getGroupMemberResults(it.id) }.orEmpty()
+            if (selectedGroupSession.value?.id == session.id && selectedGroup.value?.id == group.id) {
+                currentGroupAssessment.value = found
+                currentGroupScores.value = scores.associateBy { it.criterionId }
+                currentGroupMembers.value = members
             }
         }
     }
 
     fun addGroupTask(title: String, memberIds: List<String>) {
-        val c = selectedClassroom.value ?: return
-        val r = selectedRubric.value ?: return
+        val classroom = selectedClassroom.value ?: return
         launchMutation {
-            val defaultChecklist = JSONArray().apply {
-                repository.getGroupPreparationChecklist(r.id).forEach { item ->
-                    put(JSONObject().put("title", item).put("checked", false))
-                }
-            }.toString()
+            try {
+                require(memberIds.isNotEmpty() && memberIds.distinct().size == memberIds.size)
+                require(memberIds.all { id -> repository.getStudentsForClassroom(classroom.id).any { it.id == id } })
+                val task = GroupTaskEntity(
+                    id = UUID.randomUUID().toString(), classroomId = classroom.id,
+                    rubricId = "", title = title.trim(),
+                    memberStudentIdsJson = JSONArray(memberIds).toString(), checklistJson = "[]"
+                )
+                require(task.title.isNotBlank())
+                repository.saveGroupTask(task)
+                if (selectedClassroom.value?.id == classroom.id) selectedGroup.value = task
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup oluşturulamadı: " + e.message) }
+        }
+    }
 
-            val memberIdsJson = JSONArray(memberIds).toString()
-            val task = GroupTaskEntity(
-                id = UUID.randomUUID().toString(),
-                classroomId = c.id,
-                rubricId = r.id,
-                title = title,
-                memberStudentIdsJson = memberIdsJson,
-                checklistJson = defaultChecklist
-            )
-            repository.saveGroupTask(task)
-            showToast("Grup oluşturuldu: $title")
+    fun setGroupScore(criterionId: String, points: Int?) {
+        val group = selectedGroup.value ?: return
+        val session = selectedGroupSession.value ?: return
+        val rubric = selectedRubric.value ?: return
+        if (session.rubricId != rubric.id) return
+        val lock = scoreMutex(group.id, session.id, criterionId)
+        launchMutation {
+            try {
+                lock.withLock {
+                    repository.scoreGroup(session.id, group.id, criterionId, points)
+                    if (selectedGroup.value?.id == group.id && selectedGroupSession.value?.id == session.id) {
+                        loadCurrentGroupAssessment()
+                    }
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup puanı kaydedilemedi: " + e.message) }
         }
     }
 
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
         launchMutation {
-            try {
-                repository.toggleGroupChecklistItem(task.id, itemIndex)
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (e: Exception) {
-                showToast("Grup görevi güncellenemedi: ${e.message}")
-            }
+            try { repository.toggleGroupChecklistItem(task.id, itemIndex) }
+            catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup görevi güncellenemedi: " + e.message) }
         }
     }
 
