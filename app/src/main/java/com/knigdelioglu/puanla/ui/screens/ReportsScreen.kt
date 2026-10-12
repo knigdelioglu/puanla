@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -54,6 +55,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
+import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
+import com.knigdelioglu.puanla.domain.export.PdfReportWriter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
 import com.knigdelioglu.arc.compose.datavis.ArcBarData
 import com.knigdelioglu.arc.compose.datavis.ArcDonutChart
@@ -91,6 +94,16 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val pdfPreferences = remember(context) {
+        context.getSharedPreferences("report_pdf_details", android.content.Context.MODE_PRIVATE)
+    }
+    var pdfCourse by remember { mutableStateOf(pdfPreferences.getString("course", "") ?: "") }
+    var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
+    var showPdfDialog by remember { mutableStateOf(false) }
+    var pdfGenerating by remember { mutableStateOf(false) }
+    var pendingPdfSnapshot by remember { mutableStateOf<PdfReportSnapshot?>(null) }
+    var pendingPdfCourse by remember { mutableStateOf("") }
+    var pendingPdfTeacher by remember { mutableStateOf("") }
     var csvActionsOpen by remember { mutableStateOf(false) }
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
@@ -119,6 +132,33 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             } catch (e: Exception) {
                 viewModel.showToast("CSV kaydedilemedi: ${e.message}")
             }
+        }
+    }
+
+    val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val snapshot = pendingPdfSnapshot
+        if (uri != null && snapshot != null) scope.launch {
+            pdfGenerating = true
+            try {
+                withContext(Dispatchers.IO) {
+                    val stream = requireNotNull(context.contentResolver.openOutputStream(uri)) {
+                        "PDF dosyası açılamadı."
+                    }
+                    stream.use {
+                        PdfReportWriter.write(snapshot, pendingPdfCourse, pendingPdfTeacher, it)
+                    }
+                }
+                viewModel.showToast("Ölçüt bazlı PDF raporu kaydedildi.")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                viewModel.showToast("PDF kaydedilemedi: ${e.message}")
+            } finally {
+                pdfGenerating = false
+                pendingPdfSnapshot = null
+            }
+        } else {
+            pendingPdfSnapshot = null
         }
     }
 
@@ -233,7 +273,15 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 )
             }
 
-            Box {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                ArcButton(
+                    text = "PDF Raporu",
+                    onClick = { showPdfDialog = true },
+                    enabled = selectedClassroom != null && selectedRubric != null && !pdfGenerating,
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Md
+                )
+                Box {
                 ArcSplitButton(
                     onPrimaryClick = {
                     if (!csvGenerating) scope.launch {
@@ -279,6 +327,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                             }
                         }
                     )
+                }
                 }
             }
         }
@@ -511,6 +560,94 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         ArcButton(text = "Kapat", onClick = { comparisonOpen = false }, variant = ArcButtonVariant.Ghost)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPdfDialog) {
+        Dialog(onDismissRequest = { if (!pdfGenerating) showPdfDialog = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth(0.9f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Ölçüt Bazlı PDF Raporu", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                    Text(
+                        "Seçili sınıfın güncel bireysel puanları, ölçüt açıklamaları, sınıf özeti ve imza alanı yer alır. " +
+                            "Tarih filtresinden bağımsız olarak tüm sınıfın güncel kayıtları kullanılır. Grup notları karıştırılmaz.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    OutlinedTextField(
+                        value = pdfCourse,
+                        onValueChange = { pdfCourse = it },
+                        label = { Text("Ders adı") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = pdfTeacher,
+                        onValueChange = { pdfTeacher = it },
+                        label = { Text("Öğretmenin adı soyadı") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "Bu bilgiler sonraki PDF çıktıları için cihazda saklanır. " +
+                            "İmza çizgisi çıktı üzerinde elle imzalanabilir.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ArcButton(
+                            text = "Vazgeç",
+                            onClick = { showPdfDialog = false },
+                            variant = ArcButtonVariant.Ghost,
+                            enabled = !pdfGenerating
+                        )
+                        ArcButton(
+                            text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Kaydet",
+                            onClick = {
+                                if (!pdfGenerating) scope.launch {
+                                    pdfGenerating = true
+                                    try {
+                                        val snapshot = withContext(Dispatchers.IO) {
+                                            viewModel.generatePdfSnapshot()
+                                        }
+                                        require(snapshot.criteria.isNotEmpty()) { "Rubrikte ölçüt bulunamadı." }
+                                        pendingPdfSnapshot = snapshot
+                                        pendingPdfCourse = pdfCourse.trim()
+                                        pendingPdfTeacher = pdfTeacher.trim()
+                                        pdfPreferences.edit()
+                                            .putString("course", pendingPdfCourse)
+                                            .putString("teacher", pendingPdfTeacher)
+                                            .apply()
+                                        showPdfDialog = false
+                                        savePdf.launch("puanla-${snapshot.classroomName}-${LocalDate.now()}.pdf")
+                                    } catch (cancel: CancellationException) {
+                                        throw cancel
+                                    } catch (e: Exception) {
+                                        pendingPdfSnapshot = null
+                                        viewModel.showToast("PDF hazırlanamadı: ${e.message}")
+                                    } finally {
+                                        pdfGenerating = false
+                                    }
+                                }
+                            },
+                            enabled = !pdfGenerating && pdfCourse.isNotBlank() && pdfTeacher.isNotBlank(),
+                            variant = ArcButtonVariant.Primary
+                        )
                     }
                 }
             }
