@@ -581,141 +581,114 @@ private fun ScoringControlPane(
                     val points = currentScore?.points
                     val maxPoints = criterion.maxPoints
 
-                    var showCriterionHelp by remember(student.id, criterion.id) { mutableStateOf(false) }
+                    val hasNextCriterion =
+                        criteria.indexOfFirst { it.id == criterion.id } in 0 until criteria.lastIndex
+                    var showPrecision by remember(student.id, criterion.id) { mutableStateOf(false) }
+
                     ArcCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
                                     text = "${criterion.orderIndex + 1}. ${criterion.title}",
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.foreground
+                                    color = colors.foreground,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 ArcBadge(
-                                    text = if (points != null) "$points Puan" else "Puanlanmadı",
-                                    variant = if (points != null) ArcBadgeVariant.Accent else ArcBadgeVariant.Default
-                                )
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Box {
-                                ArcButton(
-                                    text = "Ölçüt hakkında",
-                                    onClick = { showCriterionHelp = !showCriterionHelp },
-                                    variant = ArcButtonVariant.Ghost,
-                                    size = ArcButtonSize.Sm
-                                )
-                                ArcPopover(
-                                    isOpen = showCriterionHelp,
-                                    onDismiss = { showCriterionHelp = false }
-                                ) {
-                                    Column(
-                                        modifier = Modifier.width(260.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(criterion.title, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            criterion.description.ifBlank { "Ölçüt yönergesi verilmemiş." },
-                                            color = colors.textSecondary
-                                        )
-                                        Text("Azami puan: $maxPoints", color = colors.foreground)
-                                    }
-                                }
-                            }
-                            val guidance = buildList {
-                                if (criterion.description.isNotBlank()) {
-                                    add("Ölçüt yönergesi" to criterion.description)
-                                }
-                                if (levels.isNotEmpty()) {
-                                    add("Puan düzeylerinin açıklamaları" to levels.joinToString("\n") {
-                                        "${it.points} puan: ${it.description}"
-                                    })
-                                }
-                            }
-                            if (guidance.isNotEmpty()) {
-                                ArcAccordion(items = guidance, modifier = Modifier.fillMaxWidth())
-                            } else {
-                                Text(
-                                    text = "Bu ölçüt için açıklama eklenmemiş.",
-                                    fontSize = 13.sp,
-                                    color = colors.textSecondary
+                                    text = points?.let { "$it / $maxPoints" } ?: "Puanlanmadı",
+                                    variant = if (points != null) ArcBadgeVariant.Success else ArcBadgeVariant.Default
                                 )
                             }
 
-                            Spacer(Modifier.height(18.dp))
-
-                            // Preview is local; persist exactly once on release (never per pointer pixel).
-                            var sliderPreview by remember(student.id, criterion.id) {
-                                mutableFloatStateOf((points ?: 0).toFloat())
-                            }
-                            LaunchedEffect(student.id, criterion.id, points) {
-                                sliderPreview = (points ?: 0).toFloat()
-                            }
-                            ArcElasticSlider(
-                                value = sliderPreview,
-                                onValueChange = { sliderPreview = it },
-                                onValueCommit = { released ->
-                                    onScore(released.roundToInt(), currentScore?.evidenceNote)
-                                },
-                                step = 1f,
-                                valueRange = 0f..maxPoints.toFloat(),
-                                label = "Ölçüt Puanı",
-                                formatValue = { "${it.roundToInt()} / $maxPoints" }
+                            Spacer(Modifier.height(14.dp))
+                            QuickScoreControls(
+                                maxPoints = maxPoints,
+                                points = points,
+                                levels = levels,
+                                autoAdvance = autoAdvanceQuickScore,
+                                onAutoAdvanceChange = onAutoAdvanceQuickScoreChange,
+                                hasNextCriterion = hasNextCriterion,
+                                onNextCriterion = onNextCriterion,
+                                onChooseScore = { chosen ->
+                                    // setScore owns the original student/rubric/criterion IDs.
+                                    // Navigation only changes the selected criterion after dispatch.
+                                    onScore(chosen, currentScore?.evidenceNote)
+                                    if (autoAdvanceQuickScore && hasNextCriterion) onNextCriterion()
+                                }
                             )
 
-                            Spacer(Modifier.height(16.dp))
-
-                            // Qualitative Levels Segmented Control (if levels exist)
-                            if (levels.isNotEmpty()) {
-                                Text(
-                                    text = "Hızlı Nitelik Seçimi:",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.textSecondary
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                val levelLabels = levels.map { "${it.points}P" }
-                                val selectedLevelIndex = levels.indexOfFirst { it.points == points }
-                                ArcSegmentedControl(
-                                    items = levelLabels,
-                                    selectedIndex = selectedLevelIndex,
-                                    onSelectIndex = { idx ->
-                                        val chosenLvl = levels.getOrNull(idx)
-                                        if (chosenLvl != null) {
-                                            onScore(chosenLvl.points, currentScore?.evidenceNote)
-                                        }
-                                    }
-                                )
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-
-                            // Precision Number Field & Reset Action
+                            Spacer(Modifier.height(10.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                ArcButton(
+                                    text = if (showPrecision) "Hassas ayarı gizle" else "Hassas puan",
+                                    onClick = { showPrecision = !showPrecision },
+                                    size = ArcButtonSize.Sm,
+                                    variant = ArcButtonVariant.Outline,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ArcButton(
+                                    text = "Puanı kaldır",
+                                    onClick = onClearScore,
+                                    enabled = points != null,
+                                    size = ArcButtonSize.Sm,
+                                    variant = ArcButtonVariant.Ghost
+                                )
+                            }
+
+                            if (showPrecision) {
+                                Spacer(Modifier.height(12.dp))
+                                // Preview is local. Room is updated only on slider release.
+                                var sliderPreview by remember(student.id, criterion.id) {
+                                    mutableFloatStateOf((points ?: 0).toFloat())
+                                }
+                                LaunchedEffect(student.id, criterion.id, points) {
+                                    sliderPreview = (points ?: 0).toFloat()
+                                }
+                                if (maxPoints > 0) {
+                                    ArcElasticSlider(
+                                        value = sliderPreview,
+                                        onValueChange = { sliderPreview = it },
+                                        onValueCommit = { onScore(it.roundToInt(), currentScore?.evidenceNote) },
+                                        step = 1f,
+                                        valueRange = 0f..maxPoints.toFloat(),
+                                        label = "Hassas puan",
+                                        formatValue = { "${it.roundToInt()} / $maxPoints" }
+                                    )
+                                }
                                 key(student.id, criterion.id) {
                                     ArcNumberField(
                                         value = points,
                                         onValueChange = { onScore(it, currentScore?.evidenceNote) },
                                         min = 0,
                                         max = maxPoints,
-                                        label = "Hassas Tam Sayı"
+                                        label = "Tam sayı"
                                     )
                                 }
-                                ArcButton(
-                                    text = "Puanı Kaldır",
-                                    onClick = onClearScore,
-                                    variant = ArcButtonVariant.Ghost,
-                                    size = ArcButtonSize.Sm
-                                )
                             }
                         }
+                    }
+
+                    val guidance = buildList {
+                        if (criterion.description.isNotBlank()) {
+                            add("Ölçüt yönergesi" to criterion.description)
+                        }
+                        if (levels.isNotEmpty()) {
+                            add("Puan düzeylerinin açıklamaları" to levels.joinToString("\n") {
+                                "${it.points} puan: ${it.description}"
+                            })
+                        }
+                    }
+                    if (guidance.isNotEmpty()) {
+                        ArcAccordion(items = guidance, modifier = Modifier.fillMaxWidth())
                     }
 
                     // Evidence / Observation Note
