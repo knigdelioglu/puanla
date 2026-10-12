@@ -30,6 +30,8 @@ import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
 import com.knigdelioglu.puanla.ui.preferences.AppearancePreferenceRules
 import com.knigdelioglu.puanla.ui.preferences.MotionPreference
+import com.knigdelioglu.puanla.ui.preferences.QuickGradeAppearance
+import com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +95,32 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val accent = MutableStateFlow(AppearancePreferenceRules.accentFromStoredValue(arcPrefs.getString("accent", null)))
     val commandPaletteShortcut = MutableStateFlow(arcPrefs.getString("command_palette_shortcut", "Ctrl+K") ?: "Ctrl+K")
     val commandPaletteShortcutIsCustom = MutableStateFlow(arcPrefs.contains("command_palette_shortcut"))
+    val quickGradingPreference = MutableStateFlow(
+        QuickGradingPreference(
+            qualitativeEnabled = arcPrefs.getBoolean("qualitative_quick_grading", false),
+            levelCount = arcPrefs.getInt("qualitative_grading_levels", 4)
+                .takeIf { it == 3 || it == 4 } ?: 4,
+            appearance = QuickGradeAppearance.fromStored(
+                arcPrefs.getString("qualitative_grading_appearance", null)
+            )
+        )
+    )
+
+    fun setQualitativeQuickGrading(enabled: Boolean) {
+        quickGradingPreference.value = quickGradingPreference.value.copy(qualitativeEnabled = enabled)
+        arcPrefs.edit().putBoolean("qualitative_quick_grading", enabled).apply()
+    }
+
+    fun setQuickGradingLevelCount(count: Int) {
+        require(count == 3 || count == 4)
+        quickGradingPreference.value = quickGradingPreference.value.copy(levelCount = count)
+        arcPrefs.edit().putInt("qualitative_grading_levels", count).apply()
+    }
+
+    fun setQuickGradingAppearance(appearance: QuickGradeAppearance) {
+        quickGradingPreference.value = quickGradingPreference.value.copy(appearance = appearance)
+        arcPrefs.edit().putString("qualitative_grading_appearance", appearance.name).apply()
+    }
 
     fun setDarkMode(enabled: Boolean?) {
         darkMode.value = enabled
