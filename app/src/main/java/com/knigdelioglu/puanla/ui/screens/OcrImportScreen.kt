@@ -50,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -341,7 +342,7 @@ private fun OcrStepVerification(
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp).testTag("ocrVerificationScroll"),
         state = rememberLazyListState(),
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -532,6 +533,7 @@ private fun OcrStepVerification(
                 val isIncluded = cand.isApproved
 
                 ArcCard(
+                    modifier = Modifier.fillMaxWidth().testTag("ocrStudent-${cand.id}"),
                     color = if (isIncluded) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surfaceMuted,
                     border = BorderStroke(
                         1.dp,
