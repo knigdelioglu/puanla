@@ -98,4 +98,47 @@ class OcrPositionedParserTest {
         )
         assertTrue(OcrRosterParser.parsePositionedWords(words).isEmpty())
     }
+
+    @Test fun overlappingMlKitReadingsProduceOnlyOneAmbiguousCandidate() {
+        val words = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("NO", 162, 10, 18, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("ADI", 240, 10, 30, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("245", 128, 65, 30, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("AYŞE", 242, 65, 39, 16, recognizedLineIndex = 1),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16, recognizedLineIndex = 1),
+            // The engine described the same pixels twice using another recognized line.
+            OcrPositionedWord("999", 129, 66, 30, 16, recognizedLineIndex = 2),
+            OcrPositionedWord("aesye", 243, 66, 39, 16, recognizedLineIndex = 2),
+            OcrPositionedWord("yklmnz", 397, 66, 60, 16, recognizedLineIndex = 2)
+        )
+        val students = OcrRosterParser.parsePositionedWords(words)
+        assertEquals(1, students.size)
+        assertEquals("245", students.single().studentNumber)
+        assertEquals("AYŞE", students.single().firstName)
+        assertEquals("YILMAZ", students.single().lastName)
+        assertTrue(students.single().isAmbiguous)
+        assertNotNull(students.single().sourceTop)
+    }
+
+    @Test fun adjacentPhysicalRowsNeverMerge() {
+        val header = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16)
+        )
+        val studentWords = listOf(
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 39, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16),
+            OcrPositionedWord("246", 128, 95, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 95, 39, 16),
+            OcrPositionedWord("YILDIRIM", 396, 95, 72, 16)
+        )
+        val students = OcrRosterParser.parsePositionedWords(header + studentWords)
+        assertEquals(2, students.size)
+        assertEquals(listOf("245", "246"), students.map { it.studentNumber })
+    }
 }
