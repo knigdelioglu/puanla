@@ -50,6 +50,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.controls.ArcShortcutRecorder
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
@@ -63,6 +64,8 @@ import com.knigdelioglu.arc.compose.foundation.ArcAccent
 import com.knigdelioglu.arc.compose.navigation.ArcScrollArea
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import com.knigdelioglu.puanla.ui.preferences.MotionPreference
+import com.knigdelioglu.puanla.ui.preferences.QuickGradeAppearance
+import com.knigdelioglu.puanla.ui.preferences.qualitativeQuickOptions
 import com.knigdelioglu.puanla.domain.report.auditTimelineRecords
 import com.knigdelioglu.puanla.domain.backup.BackupImport
 import com.knigdelioglu.puanla.domain.backup.BackupPreview
@@ -88,6 +91,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
     val reduceMotion by viewModel.reduceMotion.collectAsState()
     val accent by viewModel.accent.collectAsState()
     val commandPaletteShortcut by viewModel.commandPaletteShortcut.collectAsState()
+    val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
     val assessmentActivity by viewModel.assessmentActivity.collectAsState()
     val assessmentActivityLabels by viewModel.assessmentActivityLabels.collectAsState()
@@ -236,6 +240,103 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                         selectedIndex = motionOptions.indexOf(reduceMotion),
                         onSelectIndex = { index -> motionOptions.getOrNull(index)?.let(viewModel::setReducedMotion) },
                         modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "Hızlı Puanlama",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = ArcTheme.colors.foreground
+        )
+
+        ArcCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Niteliksel hızlı puanlama",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ArcTheme.colors.foreground
+                        )
+                        Text(
+                            "Açıkken puan yerine İyi, Yeterli gibi seçenekler kullanılır. " +
+                                "Kapalıyken sayısal hızlı puanlama korunur.",
+                            fontSize = 12.sp,
+                            color = ArcTheme.colors.textSecondary
+                        )
+                    }
+                    ArcSwitch(
+                        checked = quickGrading.qualitativeEnabled,
+                        onCheckedChange = viewModel::setQualitativeQuickGrading
+                    )
+                }
+
+                if (quickGrading.qualitativeEnabled) {
+                    Divider(color = ArcTheme.colors.borderSubtle)
+                    Text(
+                        "Düzey sayısı",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ArcTheme.colors.foreground
+                    )
+                    ArcSegmentedControl(
+                        items = listOf("3 düzey", "4 düzey"),
+                        selectedIndex = if (quickGrading.levelCount == 3) 0 else 1,
+                        onSelectIndex = { viewModel.setQuickGradingLevelCount(if (it == 0) 3 else 4) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text(
+                        "Seçeneklerin görünümü",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ArcTheme.colors.foreground
+                    )
+                    ArcSelect(
+                        selectedItem = quickGrading.appearance,
+                        items = QuickGradeAppearance.entries.toList(),
+                        onItemSelected = viewModel::setQuickGradingAppearance,
+                        placeholder = "Yazı, yıldız veya yüz ifadesi",
+                        labelProvider = { it.label }
+                    )
+
+                    val preview = qualitativeQuickOptions(
+                        maxPoints = 20,
+                        levelCount = quickGrading.levelCount,
+                        appearance = quickGrading.appearance
+                    )
+                    Text(
+                        "Örnek: azami 20 puanlık ölçüt",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ArcTheme.colors.foreground
+                    )
+                    preview.forEach { option ->
+                        Text(
+                            text = "${option.title(quickGrading.appearance)} → ${option.points} / 20",
+                            fontSize = 13.sp,
+                            color = ArcTheme.colors.textSecondary
+                        )
+                    }
+                    Text(
+                        "Bu düzeyler uygulamanın hızlı puanlama kısayollarıdır; " +
+                            "rubrikte tanımlanmış resmî düzeyler değildir. " +
+                            "En düşük seçenek 0, en yüksek seçenek tam puandır; " +
+                            "ara seçenekler ölçütün azami puanına göre eşit aralıklı hesaplanır. " +
+                            "0 puan, puanlanmadı anlamına gelmez.",
+                        fontSize = 12.sp,
+                        color = ArcTheme.colors.textSecondary
                     )
                 }
             }
