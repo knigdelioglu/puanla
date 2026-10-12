@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +71,7 @@ import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
+import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAvatar
@@ -84,6 +86,8 @@ import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
 import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
+import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -105,6 +109,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
 
     var searchQuery by remember { mutableStateOf("") }
     var activeCriterionIndex by remember { mutableIntStateOf(0) }
+    var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(selectedRubric?.id) { activeCriterionIndex = 0 }
 
     val filteredStudents = remember(students, searchQuery) {
         if (searchQuery.isBlank()) students
@@ -166,6 +172,11 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                         currentAssessment = currentAssessment,
                         currentScores = currentScores,
                         levels = levels.filter { it.criterionId == activeCriterion?.id },
+                        autoAdvanceQuickScore = autoAdvanceQuickScore,
+                        onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
+                        onNextCriterion = {
+                            if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
+                        },
                         onScore = { points, note ->
                             activeCriterion?.let { crit ->
                                 viewModel.setScore(crit.id, points, note)
@@ -217,6 +228,11 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 },
                 onPrevStudent = { viewModel.previousStudent() },
                 onNextStudent = { viewModel.nextStudent() },
+                autoAdvanceQuickScore = autoAdvanceQuickScore,
+                onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
+                onNextCriterion = {
+                    if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
+                },
                 onUndo = undoSelected
             )
         }
@@ -465,7 +481,10 @@ private fun ScoringControlPane(
     criteria: List<CriterionEntity>,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
-    levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
+    levels: List<CriterionLevelEntity>,
+    autoAdvanceQuickScore: Boolean,
+    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
+    onNextCriterion: () -> Unit,
     onScore: (Int?, String?) -> Unit,
     onClearScore: () -> Unit,
     onNoteChange: (String) -> Unit,
@@ -777,6 +796,9 @@ private fun CompactScoringLayout(
     onNoteChange: (String) -> Unit,
     onPrevStudent: () -> Unit,
     onNextStudent: () -> Unit,
+    autoAdvanceQuickScore: Boolean,
+    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
+    onNextCriterion: () -> Unit,
     onUndo: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
@@ -820,6 +842,9 @@ private fun CompactScoringLayout(
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
+                autoAdvanceQuickScore = autoAdvanceQuickScore,
+                onAutoAdvanceQuickScoreChange = onAutoAdvanceQuickScoreChange,
+                onNextCriterion = onNextCriterion,
                 onScore = onScore,
                 onClearScore = onClearScore,
                 onNoteChange = onNoteChange,
