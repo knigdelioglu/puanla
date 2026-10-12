@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -378,9 +379,9 @@ internal fun CriteriaExplorerPane(
             } else {
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     val spacing = 6.dp
-                    val minimumItemHeight = 56.dp
+                    val minimumItemHeight = 56.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
                     // Show every criterion at once on tablets when the available height permits.
-                    // More criteria, increased font size, or smaller windows retain scrolling.
+                    // Large system fonts and smaller windows fall back to scrolling.
                     val fitsAtOnce = maxHeight >= minimumItemHeight * criteria.size +
                         spacing * (criteria.size - 1)
 
