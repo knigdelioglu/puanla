@@ -124,14 +124,18 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             )
         }
 
-        if (classroom == null || rubric == null) {
+        if (classroom == null) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 ArcEmptyState(
-                    title = "Sınıf veya rubrik seçilmedi",
-                    description = "Üst çubuktan sınıfı ve değerlendirilecek rubriği seçin."
+                    title = "Sınıf seçilmedi",
+                    description = "Grup oluşturmak için üst çubuktan sınıf seçin."
                 )
             }
-        } else if (showPreparation) {
+        } else if (showPreparation || rubric == null) {
+            if (rubric == null) {
+                Text("Grup oluşturabilirsiniz. Puanlama için üst çubuktan rubrik seçin.",
+                    color = ArcTheme.colors.textSecondary, fontSize = 13.sp)
+            }
             if (groups.isEmpty()) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     ArcEmptyState(title = "Henüz grup yok", description = "Yeni Grup ile öğrencileri gruplandırın.")
