@@ -59,4 +59,43 @@ class BackupSnapshotTest {
         )))
         assertThrows(IllegalArgumentException::class.java) { damaged.validate() }
     }
+    @Test fun legacyVersionOneBackupCanBeImportedWithoutGroupAssessmentFields() {
+        val original = basicSnapshot().copy(version = 1)
+        val json = Json { encodeDefaults = true; explicitNulls = true }
+        val encoded = json.encodeToString(original)
+        val objectWithoutNewKeys = Json.parseToJsonElement(encoded).let { it as kotlinx.serialization.json.JsonObject }
+            .filterKeys { it !in setOf("groupSessions", "groupAssessments", "groupScores", "groupMemberResults") }
+        val restored = json.decodeFromString<BackupSnapshot>(
+            kotlinx.serialization.json.JsonObject(objectWithoutNewKeys).toString()
+        )
+        restored.validate()
+        assertEquals(1, restored.version)
+        assertTrue(restored.groupSessions.isEmpty())
+        assertEquals(original.assessments, restored.assessments)
+    }
+
+    @Test fun groupGradeBackupRejectsInconsistentMemberGrades() {
+        val original = basicSnapshot()
+        val group = GroupTaskEntity("g1", "c1", "", "Grup 1", "[\\"s1\\"]", "[]")
+        val session = GroupAssessmentSessionEntity("session1", "c1", "r1", "Drama")
+        val evaluation = GroupAssessmentEntity(
+            id = "eval1", sessionId = session.id, groupId = group.id,
+            groupTitleSnapshot = group.title, memberStudentIdsJson = group.memberStudentIdsJson,
+            isCompleted = true, definitiveTotal = 8, scoredCount = 1
+        )
+        val score = GroupCriterionScoreEntity("groupScore1", evaluation.id, "k1", 8)
+        val studentGrade = GroupMemberResultEntity("member1", evaluation.id, "s1", 8, true)
+        val valid = original.copy(
+            groups = listOf(group),
+            groupSessions = listOf(session),
+            groupAssessments = listOf(evaluation),
+            groupScores = listOf(score),
+            groupMemberResults = listOf(studentGrade)
+        )
+        valid.validate()
+        assertThrows(IllegalArgumentException::class.java) {
+            valid.copy(groupMemberResults = listOf(studentGrade.copy(definitiveTotal = 7))).validate()
+        }
+    }
+
 }

@@ -775,7 +775,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             repository.getGroupTasksFlow(classroom.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id) {
                     groupTasks.value = list
-                    if (selectedGroup.value?.id !in list.map { it.id }) {
+                    if (list.none { it.id == selectedGroup.value?.id }) {
                         selectedGroup.value = list.firstOrNull()
                     }
                 }
@@ -797,7 +797,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             repository.getGroupSessionsFlow(classroom.id, rubric.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
                     groupSessions.value = list
-                    if (selectedGroupSession.value?.id !in list.map { it.id }) {
+                    if (list.none { it.id == selectedGroupSession.value?.id }) {
                         selectedGroupSession.value = list.firstOrNull()
                     }
                 }
@@ -862,7 +862,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         launchMutation {
             try {
                 require(memberIds.isNotEmpty() && memberIds.distinct().size == memberIds.size)
-                require(memberIds.all { id -> repository.getStudentsForClassroom(classroom.id).any { it.id == id } })
+                val validStudentIds = repository.getStudentsForClassroom(classroom.id).map { it.id }.toSet()
+                require(memberIds.all { it in validStudentIds })
                 val task = GroupTaskEntity(
                     id = UUID.randomUUID().toString(), classroomId = classroom.id,
                     rubricId = "", title = title.trim(),

@@ -54,6 +54,7 @@ import com.knigdelioglu.puanla.data.local.GroupAssessmentSessionEntity
 import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
 import com.knigdelioglu.puanla.data.local.GroupCriterionScoreEntity
 import com.knigdelioglu.puanla.data.local.CriterionEntity
+import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
 import com.knigdelioglu.arc.compose.display.ArcAvatarGroup
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
@@ -206,6 +207,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                     criterion = activeCriterion, criteria = criteria,
                                     scores = scores, students = students, memberResults = memberResults,
                                     quickGrading = quickGrading,
+                                    levels = levels.filter { it.criterionId == activeCriterion?.id },
                                     autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
                                     onScore = { points ->
                                         activeCriterion?.let { criterion ->
@@ -252,6 +254,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 criterion = activeCriterion, criteria = criteria,
                                 scores = scores, students = students, memberResults = memberResults,
                                 quickGrading = quickGrading,
+                                levels = levels.filter { it.criterionId == activeCriterion?.id },
                                 autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
                                 onScore = { points ->
                                     activeCriterion?.let { criterion ->
@@ -358,6 +361,7 @@ private fun GroupScoringPane(
     students: List<StudentEntity>,
     memberResults: List<GroupMemberResultEntity>,
     quickGrading: com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference,
+    levels: List<CriterionLevelEntity>,
     autoAdvance: Boolean,
     onAutoAdvance: (Boolean) -> Unit,
     onScore: (Int) -> Unit,
@@ -400,7 +404,7 @@ private fun GroupScoringPane(
                     QuickScoreControls(
                         maxPoints = criterion.maxPoints,
                         points = scores[criterion.id]?.points,
-                        levels = emptyList(),
+                        levels = levels,
                         autoAdvance = autoAdvance,
                         onAutoAdvanceChange = onAutoAdvance,
                         hasNextCriterion = criteria.indexOfFirst { it.id == criterion.id } < criteria.lastIndex,
