@@ -319,7 +319,8 @@ private fun OcrStepScanning(isScanning: Boolean, error: String?) {
 @Composable
 private fun OcrStepVerification(
     candidates: List<OcrStudentRow>,
-    viewModel: PuanlaViewModel
+    viewModel: PuanlaViewModel,
+    header: @Composable () -> Unit
 ) {
     var focusReview by remember { mutableStateOf(false) }
     val currentStudents by viewModel.students.collectAsState()
@@ -339,8 +340,16 @@ private fun OcrStepVerification(
     val selectedSourceRowConflicts = duplicateValidation.sourceRowConflicts.size
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item(key = "ocr-import-header") { header() }
+        item(key = "ocr-review-controls") {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
@@ -511,11 +520,15 @@ private fun OcrStepVerification(
             Spacer(Modifier.height(10.dp))
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            itemsIndexed(candidates) { index, cand ->
+            }
+        }
+
+        // A single lazy vertical list makes the whole header and warnings scroll
+        // out of the way while composing student cards on demand.
+        itemsIndexed(
+            items = candidates,
+            key = { _, candidate -> candidate.id }
+        ) { index, cand ->
                 val isIncluded = cand.isApproved
 
                 ArcCard(
@@ -637,7 +650,6 @@ private fun OcrStepVerification(
                     }
                 }
             }
-        }
     }
 }
 
