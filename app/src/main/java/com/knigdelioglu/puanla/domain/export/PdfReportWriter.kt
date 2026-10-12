@@ -3,13 +3,13 @@ package com.knigdelioglu.puanla.domain.export
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import java.io.OutputStream
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.min
 
 /**
  * Print-friendly landscape A4 PDF. Uses Android's built-in PDF engine, so no
@@ -174,6 +174,24 @@ object PdfReportWriter {
             )
             writeText(canvas, "$count öğrenci", MARGIN + 535, y + 12f, 10f, navy)
         }
+
+        // Completion ring mirrors the dashboard while remaining ink-friendly.
+        val ringBounds = RectF(651f, 252f, 771f, 372f)
+        val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 14f
+            strokeCap = Paint.Cap.ROUND
+            color = line
+        }
+        canvas.drawArc(ringBounds, -90f, 360f, false, ringPaint)
+        val completedRate = if (s.registered == 0) 0f else s.completed.toFloat() / s.registered
+        if (completedRate > 0f) {
+            ringPaint.color = accent
+            canvas.drawArc(ringBounds, -90f, completedRate * 360f, false, ringPaint)
+        }
+        writeText(canvas, "${(completedRate * 100).toInt()}%", 688f, 316f, 19f, navy, bold, 75f)
+        writeText(canvas, "tamamlandı", 681f, 334f, 9f, muted, regular, 91f)
+        writeText(canvas, "Kısmi: ${s.partial}  •  Boş: ${s.notStarted}", 645f, 402f, 10f, muted, regular, 163f)
 
         rounded(canvas, MARGIN, 422f, RIGHT, 498f, pale)
         writeText(canvas, "Değerlendirme Özeti", MARGIN + 12, 444f, 12f, navy, bold)
