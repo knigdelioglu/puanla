@@ -76,7 +76,7 @@ class BackupSnapshotTest {
 
     @Test fun groupGradeBackupRejectsInconsistentMemberGrades() {
         val original = basicSnapshot()
-        val group = GroupTaskEntity("g1", "c1", "", "Grup 1", "[\\"s1\\"]", "[]")
+        val group = GroupTaskEntity("g1", "c1", "", "Grup 1", "[\"s1\"]", "[]")
         val session = GroupAssessmentSessionEntity("session1", "c1", "r1", "Drama")
         val evaluation = GroupAssessmentEntity(
             id = "eval1", sessionId = session.id, groupId = group.id,
