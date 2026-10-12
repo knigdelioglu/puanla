@@ -582,7 +582,7 @@ private fun ScoringControlPane(
                             fontWeight = FontWeight.SemiBold,
                             color = colors.warning
                         )
-                        ArcBadge(text = "Eksik Değerlendirme", variant = ArcBadgeVariant.Warning)
+                        ArcBadge(text = "Eksik bireysel değerlendirme", variant = ArcBadgeVariant.Warning)
                     }
                 }
             }
@@ -600,7 +600,8 @@ private fun ScoringControlPane(
                     ) {
                         Text("Grup değerlendirmesinden aktarılan notlar",
                             fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
-                        groupGrades.forEach { entry ->
+                        // Keep scoring controls visible even after many group sessions.
+                        groupGrades.take(2).forEach { entry ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -617,6 +618,10 @@ private fun ScoringControlPane(
                                     color = if (entry.isCompleted) colors.success else colors.warning
                                 )
                             }
+                        }
+                        if (groupGrades.size > 2) {
+                            Text("Diğer ${groupGrades.size - 2} grup oturumu Grup modunda görülebilir.",
+                                fontSize = 11.sp, color = colors.textSecondary)
                         }
                         Text("Bu notlar bireysel rubrik puanlarını değiştirmez.",
                             fontSize = 11.sp, color = colors.textSecondary)
