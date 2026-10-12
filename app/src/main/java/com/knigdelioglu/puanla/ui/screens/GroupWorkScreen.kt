@@ -44,6 +44,17 @@ import com.knigdelioglu.arc.compose.controls.ArcMultiSelect
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.weight
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberSaveable
+import com.knigdelioglu.arc.compose.controls.ArcSelect
+import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
+import com.knigdelioglu.puanla.data.local.GroupAssessmentEntity
+import com.knigdelioglu.puanla.data.local.GroupAssessmentSessionEntity
+import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
+import com.knigdelioglu.puanla.data.local.GroupCriterionScoreEntity
+import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.arc.compose.display.ArcAvatarGroup
 import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
@@ -59,98 +70,370 @@ import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import org.json.JSONArray
 
+
+/**
+ * The existing Puanlama > Grup mode shares rubric and score controls with individual
+ * grading, but owns separate session/group state and never rewrites individual grades.
+ */
 @Composable
 fun GroupWorkScreen(viewModel: PuanlaViewModel) {
-    val selectedClassroom by viewModel.selectedClassroom.collectAsState()
-    val selectedRubric by viewModel.selectedRubric.collectAsState()
+    val classroom by viewModel.selectedClassroom.collectAsState()
+    val rubric by viewModel.selectedRubric.collectAsState()
     val students by viewModel.students.collectAsState()
-    val groupTasks by viewModel.groupTasks.collectAsState()
+    val groups by viewModel.groupTasks.collectAsState()
+    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    val sessions by viewModel.groupSessions.collectAsState()
+    val session by viewModel.selectedGroupSession.collectAsState()
+    val groupAssessments by viewModel.groupAssessments.collectAsState()
+    val assessment by viewModel.currentGroupAssessment.collectAsState()
+    val scores by viewModel.currentGroupScores.collectAsState()
+    val memberResults by viewModel.currentGroupMembers.collectAsState()
+    val criteria by viewModel.criteria.collectAsState()
+    val levels by viewModel.levels.collectAsState()
+    val quickGrading by viewModel.quickGradingPreference.collectAsState()
 
-    var isCreateGroupDialogOpen by remember { mutableStateOf(false) }
+    var createGroup by remember { mutableStateOf(false) }
+    var createSession by remember { mutableStateOf(false) }
+    var showPreparation by remember { mutableStateOf(false) }
+    var activeCriterionIndex by remember(selectedGroup?.id, session?.id, rubric?.id) { mutableIntStateOf(0) }
+    var autoAdvance by rememberSaveable { mutableStateOf(true) }
+    val activeCriterion = criteria.getOrNull(activeCriterionIndex) ?: criteria.firstOrNull()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        modifier = Modifier.fillMaxSize().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "Grup Çalışmaları & Hazırlık Takibi",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ArcTheme.colors.foreground
+            Text(
+                "Grup değerlendirmesi",
+                fontWeight = FontWeight.Bold, fontSize = 18.sp,
+                color = ArcTheme.colors.foreground, modifier = Modifier.weight(1f)
+            )
+            ArcButton(
+                text = if (showPreparation) "Puanlamaya dön" else "Hazırlık",
+                onClick = { showPreparation = !showPreparation },
+                size = ArcButtonSize.Sm, variant = ArcButtonVariant.Outline
+            )
+            ArcButton(
+                text = "Yeni Grup", onClick = { createGroup = true },
+                size = ArcButtonSize.Sm, enabled = classroom != null
+            )
+        }
+
+        if (classroom == null || rubric == null) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                ArcEmptyState(
+                    title = "Sınıf veya rubrik seçilmedi",
+                    description = "Üst çubuktan sınıfı ve değerlendirilecek rubriği seçin."
                 )
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (selectedClassroom != null) {
-                    ArcBadge(
-                        text = "${selectedClassroom?.name} Sınıfı",
-                        variant = ArcBadgeVariant.Accent
+        } else if (showPreparation) {
+            if (groups.isEmpty()) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    ArcEmptyState(title = "Henüz grup yok", description = "Yeni Grup ile öğrencileri gruplandırın.")
+                }
+            } else {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(groups, key = { it.id }) { group ->
+                        GroupTaskCard(
+                            task = group, students = students,
+                            onToggleChecklist = { idx -> viewModel.toggleChecklistItem(group, idx) }
+                        )
+                    }
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (sessions.isNotEmpty()) {
+                    ArcSelect(
+                        selectedItem = session,
+                        items = sessions,
+                        onItemSelected = { viewModel.selectGroupSession(it) },
+                        labelProvider = { it.title },
+                        placeholder = "Oturum seçin",
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Text(
+                        "Bu rubrikle henüz değerlendirme oturumu yok.",
+                        modifier = Modifier.weight(1f), fontSize = 13.sp,
+                        color = ArcTheme.colors.textSecondary
                     )
                 }
                 ArcButton(
-                    text = "Yeni Grup Oluştur",
-                    onClick = { isCreateGroupDialogOpen = true },
-                    variant = ArcButtonVariant.Primary,
-                    size = ArcButtonSize.Md,
-                    enabled = selectedClassroom != null
+                    text = "Yeni Oturum", onClick = { createSession = true },
+                    size = ArcButtonSize.Sm, variant = ArcButtonVariant.Primary
                 )
             }
-        }
 
-        Divider(color = ArcTheme.colors.borderSubtle)
-
-        if (selectedClassroom == null) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Sınıf Seçilmedi",
-                    description = "Grup çalışmalarını yönetmek için üst menüden bir sınıf seçin."
-                )
-            }
-            return@Column
-        }
-
-        if (groupTasks.isEmpty()) {
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Grup Çalışması Bulunmuyor",
-                    description = "Bu sınıfta henüz bir grup projesi oluşturulmamış. 'Yeni Grup Oluştur' butonuna tıklayarak ilk grubu kurabilirsiniz."
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                items(groupTasks) { task ->
-                    GroupTaskCard(
-                        task = task,
-                        students = students,
-                        onToggleChecklist = { idx ->
-                            viewModel.toggleChecklistItem(task, idx)
-                        }
+            if (groups.isEmpty() || session == null) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    ArcEmptyState(
+                        title = if (groups.isEmpty()) "Grup oluşturun" else "Oturum oluşturun",
+                        description = "Rubrik bağımsız grupları ve bir değerlendirme oturumunu seçerek başlayın."
                     )
+                }
+            } else {
+                BoxWithConstraints(Modifier.weight(1f)) {
+                    if (maxWidth >= 900.dp) {
+                        ArcResizablePanels(
+                            modifier = Modifier.fillMaxSize(),
+                            initialWeights = listOf(0.28f, 0.38f, 0.34f),
+                            minWeights = listOf(0.20f, 0.25f, 0.25f),
+                            firstPane = {
+                                GroupRosterPane(groups, selectedGroup, groupAssessments) {
+                                    viewModel.selectGroup(it)
+                                }
+                            },
+                            secondPane = {
+                                CriteriaExplorerPane(
+                                    criteria = criteria, activeCriterion = activeCriterion,
+                                    onSelectCriterion = {
+                                        activeCriterionIndex = criteria.indexOfFirst { c -> c.id == it.id }.coerceAtLeast(0)
+                                    }
+                                )
+                            },
+                            thirdPane = {
+                                GroupScoringPane(
+                                    group = selectedGroup, assessment = assessment,
+                                    criterion = activeCriterion, criteria = criteria,
+                                    scores = scores, students = students, memberResults = memberResults,
+                                    quickGrading = quickGrading,
+                                    autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
+                                    onScore = { points ->
+                                        activeCriterion?.let { criterion ->
+                                            viewModel.setGroupScore(criterion.id, points)
+                                            if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                                        }
+                                    },
+                                    onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
+                                    onNext = {
+                                        if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                                    },
+                                    onNextGroup = {
+                                        val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                        groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                                    }
+                                )
+                            }
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            ArcSelect(
+                                selectedItem = selectedGroup,
+                                items = groups,
+                                onItemSelected = { viewModel.selectGroup(it) },
+                                labelProvider = { it.title },
+                                placeholder = "Grup seç",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            ArcSelect(
+                                selectedItem = activeCriterion,
+                                items = criteria,
+                                onItemSelected = { item ->
+                                    activeCriterionIndex = criteria.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
+                                },
+                                labelProvider = { it.title },
+                                placeholder = "Ölçüt seç",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            GroupScoringPane(
+                                group = selectedGroup, assessment = assessment,
+                                criterion = activeCriterion, criteria = criteria,
+                                scores = scores, students = students, memberResults = memberResults,
+                                quickGrading = quickGrading,
+                                autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
+                                onScore = { points ->
+                                    activeCriterion?.let { criterion ->
+                                        viewModel.setGroupScore(criterion.id, points)
+                                        if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                                    }
+                                },
+                                onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
+                                onNext = {
+                                    if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                                },
+                                onNextGroup = {
+                                    val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                    groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
-    if (isCreateGroupDialogOpen) {
+    if (createGroup) {
         CreateGroupDialog(
             students = students,
-            onDismiss = { isCreateGroupDialogOpen = false },
+            onDismiss = { createGroup = false },
             onConfirm = { title, memberIds ->
                 viewModel.addGroupTask(title, memberIds)
-                isCreateGroupDialogOpen = false
+                createGroup = false
             }
+        )
+    }
+    if (createSession) {
+        var title by remember { mutableStateOf("") }
+        Dialog(onDismissRequest = { createSession = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel, color = ArcTheme.colors.surfaceRaised,
+                modifier = Modifier.width(440.dp)
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Yeni grup değerlendirmesi", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    ArcInput(value = title, onValueChange = { title = it },
+                        label = "Oturum adı", placeholder = "Örn. Drama - 12 Ekim")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ArcButton(text = "Vazgeç", onClick = { createSession = false },
+                            variant = ArcButtonVariant.Ghost)
+                        ArcButton(text = "Oluştur", enabled = title.isNotBlank(), onClick = {
+                            viewModel.createGroupSession(title)
+                            createSession = false
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupRosterPane(
+    groups: List<GroupTaskEntity>,
+    selected: GroupTaskEntity?,
+    assessments: List<GroupAssessmentEntity>,
+    onSelect: (GroupTaskEntity) -> Unit
+) {
+    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Gruplar", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            items(groups, key = { it.id }) { group ->
+                val evaluation = assessments.firstOrNull { it.groupId == group.id }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(group) },
+                    shape = ArcTheme.shapes.control,
+                    color = if (selected?.id == group.id) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surface,
+                    border = BorderStroke(
+                        if (selected?.id == group.id) 2.dp else 1.dp,
+                        if (selected?.id == group.id) ArcTheme.colors.accent else ArcTheme.colors.borderSubtle
+                    )
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(group.title, color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
+                        Text(
+                            when {
+                                evaluation?.isCompleted == true -> "Tamamlandı • " + evaluation.definitiveTotal + " puan"
+                                evaluation != null -> "Kısmi • " + evaluation.scoredCount + " ölçüt"
+                                else -> "Başlanmadı"
+                            },
+                            fontSize = 12.sp, color = ArcTheme.colors.textSecondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupScoringPane(
+    group: GroupTaskEntity?,
+    assessment: GroupAssessmentEntity?,
+    criterion: CriterionEntity?,
+    criteria: List<CriterionEntity>,
+    scores: Map<String, GroupCriterionScoreEntity>,
+    students: List<StudentEntity>,
+    memberResults: List<GroupMemberResultEntity>,
+    quickGrading: com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference,
+    autoAdvance: Boolean,
+    onAutoAdvance: (Boolean) -> Unit,
+    onScore: (Int) -> Unit,
+    onClear: () -> Unit,
+    onNext: () -> Unit,
+    onNextGroup: () -> Unit
+) {
+    if (group == null) {
+        ArcEmptyState(title = "Grup seçilmedi", description = "Soldan değerlendireceğiniz grubu seçin.")
+        return
+    }
+    val snapshot = assessment?.memberStudentIdsJson ?: group.memberStudentIdsJson
+    val ids = remember(snapshot) {
+        try {
+            val array = JSONArray(snapshot)
+            (0 until array.length()).map { array.getString(it) }
+        } catch (_: Exception) { emptyList() }
+    }
+    val names = remember(students) { students.associateBy { it.id } }
+    val total = assessment?.definitiveTotal
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(group.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+        Text(
+            if (assessment?.isCompleted == true) "Grup puanı: " + total + " / 100"
+            else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
+            color = ArcTheme.colors.textSecondary
+        )
+        if (criterion != null) {
+            ArcCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text(criterion.title, color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
+                    ArcBadge(
+                        text = (scores[criterion.id]?.points?.toString() ?: "Puanlanmadı") +
+                            " / " + criterion.maxPoints,
+                        variant = ArcBadgeVariant.Accent
+                    )
+                    QuickScoreControls(
+                        maxPoints = criterion.maxPoints,
+                        points = scores[criterion.id]?.points,
+                        levels = emptyList(),
+                        autoAdvance = autoAdvance,
+                        onAutoAdvanceChange = onAutoAdvance,
+                        hasNextCriterion = criteria.indexOfFirst { it.id == criterion.id } < criteria.lastIndex,
+                        onNextCriterion = onNext,
+                        onChooseScore = onScore,
+                        quickGrading = quickGrading
+                    )
+                    ArcButton(
+                        text = "Puanı kaldır", onClick = onClear,
+                        enabled = scores[criterion.id]?.points != null,
+                        variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm
+                    )
+                }
+            }
+        }
+        Text("Üyelere aktarılan puanlar", fontWeight = FontWeight.SemiBold,
+            color = ArcTheme.colors.foreground, fontSize = 13.sp)
+        ids.forEach { id ->
+            val student = names[id]
+            val grade = memberResults.firstOrNull { it.studentId == id }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(student?.fullName ?: "Öğrenci", fontSize = 12.sp, color = ArcTheme.colors.foreground)
+                Text(
+                    if (grade?.isCompleted == true) grade.definitiveTotal.toString()
+                    else "Eksik",
+                    color = ArcTheme.colors.textSecondary, fontSize = 12.sp
+                )
+            }
+        }
+        ArcButton(
+            text = "Sonraki Grup", onClick = onNextGroup,
+            variant = ArcButtonVariant.Outline, modifier = Modifier.fillMaxWidth()
         )
     }
 }
