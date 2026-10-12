@@ -186,6 +186,17 @@ interface GroupTaskDao {
 
 @Dao
 interface GroupAssessmentDao {
+    @Query("SELECT COUNT(*) FROM group_member_results WHERE studentId = :studentId")
+    suspend fun countResultsForStudent(studentId: String): Int
+    @Query("SELECT COUNT(*) FROM group_assessments WHERE groupId = :groupId")
+    suspend fun countAssessmentsForGroup(groupId: String): Int
+    @Query("""
+        SELECT COUNT(*) FROM group_assessments ga
+        JOIN group_assessment_sessions s ON s.id = ga.sessionId
+        WHERE s.classroomId = :classroomId
+    """)
+    suspend fun countAssessmentsForClassroom(classroomId: String): Int
+
     @Query("""
         SELECT m.studentId AS studentId, s.id AS sessionId, s.title AS sessionTitle,
                a.groupTitleSnapshot AS groupTitle, m.definitiveTotal AS definitiveTotal,

@@ -46,6 +46,18 @@ class GroupModeScoringTest {
             val full = repo.scoreGroup(first.id, group.id, "c2", 70)
             assertEquals(80, full.definitiveTotal)
             assertTrue(repo.getGroupMemberResults(full.id).all { it.isCompleted && it.definitiveTotal == 80 })
+            assertEquals(listOf(80), repo.getStudentGroupGradesFlow(s1.id, "rubric1")
+                .first().map { it.definitiveTotal })
+            assertEquals("12 Ekim Draması", repo.getStudentGroupGradesFlow(s1.id, "rubric1")
+                .first().single().sessionTitle)
+            try {
+                repo.deleteStudent(s1)
+                fail("Group graded student deletion should be blocked")
+            } catch (_: IllegalArgumentException) { }
+            try {
+                repo.deleteGroupTask(group)
+                fail("Graded group deletion should be blocked")
+            } catch (_: IllegalArgumentException) { }
 
             val corrected = repo.scoreGroup(first.id, group.id, "c1", 8)
             assertEquals(78, corrected.definitiveTotal)

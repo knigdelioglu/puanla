@@ -99,7 +99,10 @@ class PuanlaRepository(
         return entity
     }
 
-    suspend fun deleteClassroom(classroom: ClassroomEntity) {
+    suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countAssessmentsForClassroom(classroom.id) == 0) {
+            "Bu sınıfın grup değerlendirmeleri var. Not geçmişini korumak için silme engellendi."
+        }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
             AuditLogEntity(
@@ -222,6 +225,9 @@ class PuanlaRepository(
     }
 
     suspend fun deleteStudent(student: StudentEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countResultsForStudent(student.id) == 0) {
+            "Bu öğrencinin grup değerlendirme notu var. Önce not geçmişini güvenli biçimde arşivleyin."
+        }
         studentDao.deleteStudent(student)
         auditLogDao.insertLog(AuditLogEntity(
             id = UUID.randomUUID().toString(), action = "STUDENT_DELETED",
@@ -351,7 +357,10 @@ class PuanlaRepository(
         groupTaskDao.insertOrUpdateGroupTask(task)
     }
 
-    suspend fun deleteGroupTask(task: GroupTaskEntity) {
+    suspend fun deleteGroupTask(task: GroupTaskEntity) = db.withTransaction {
+        require(db.groupAssessmentDao().countAssessmentsForGroup(task.id) == 0) {
+            "Bu grubun değerlendirme geçmişi var. Not kaybını önlemek için silinemez."
+        }
         groupTaskDao.deleteGroupTask(task)
     }
 
