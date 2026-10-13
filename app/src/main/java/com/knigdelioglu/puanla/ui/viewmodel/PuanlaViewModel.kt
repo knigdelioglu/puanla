@@ -235,6 +235,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val key = "$studentId/$rubricId/$criterionId"
         return scoreLocks[(key.hashCode() and Int.MAX_VALUE) % scoreLocks.size]
     }
+    private var lastStudentSelectionContext: String? = null
+    private fun lastRunStudentKey(classroomId: String, runId: String) =
+        "last_student_${classroomId}_${runId}"
+
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
     private var groupFlowJob: Job? = null
@@ -357,6 +361,21 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             selectedRun.collectLatest { run ->
+                val classroom = selectedClassroom.value
+                if (run == null) {
+                    lastStudentSelectionContext = null
+                } else if (classroom != null && run.rubricId == selectedRubric.value?.id) {
+                    val contextKey = "${classroom.id}/${run.id}"
+                    if (lastStudentSelectionContext != contextKey) {
+                        lastStudentSelectionContext = contextKey
+                        val preferredId = arcPrefs.getString(lastRunStudentKey(classroom.id, run.id), null)
+                        // Every session has its own resume position; a new
+                        // session starts with the first student.
+                        val target = students.value.firstOrNull { it.id == preferredId }
+                            ?: students.value.firstOrNull()
+                        if (target != null && target.id != selectedStudent.value?.id) selectStudent(target)
+                    }
+                }
                 val rubric = selectedRubric.value
                 if (run != null && rubric != null && run.rubricId == rubric.id) {
                     criteria.value = repository.getCriteriaForRun(run)
@@ -472,7 +491,13 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         selectedStudent.value = student
-        if (student != null) arcPrefs.edit().putString("last_student_${student.classroomId}", student.id).apply()
+        if (student != null) {
+            val editor = arcPrefs.edit().putString("last_student_${student.classroomId}", student.id)
+            selectedRun.value?.takeIf { run -> run.rubricId == selectedRubric.value?.id }?.let { run ->
+                editor.putString(lastRunStudentKey(student.classroomId, run.id), student.id)
+            }
+            editor.apply()
+        }
     }
 
     private fun loadStudentsForClassroom(classroomId: String) {
@@ -486,9 +511,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 if (selectedClassroom.value?.id != classroomId) return@collect
                 students.value = list
                 if (selectedStudent.value == null || list.none { it.id == selectedStudent.value?.id }) {
-                    val restored = list.firstOrNull {
-                        it.id == arcPrefs.getString("last_student_$classroomId", null)
-                    } ?: list.firstOrNull()
+                    val runId = selectedRun.value?.id
+                    val preferredId = runId?.let { arcPrefs.getString(lastRunStudentKey(classroomId, it), null) }
+                        ?: arcPrefs.getString("last_student_$classroomId", null)
+                    val restored = list.firstOrNull { it.id == preferredId } ?: list.firstOrNull()
                     selectStudent(restored)
                 }
             }
