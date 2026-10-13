@@ -251,4 +251,52 @@ class OcrPositionedParserTest {
         assertEquals("ÇELİK", rows[2].lastName)
     }
 
+
+    @Test fun nameAndSurnameCellRegionsStayWithinSeparatePhysicalRows() {
+        val header = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16)
+        )
+        val students = (0 until 5).flatMap { index ->
+            val y = 65 + 29 * index
+            listOf(
+                OcrPositionedWord((245 + index).toString(), 128, y, 30, 16),
+                OcrPositionedWord("AD$index", 242, y, 40, 16),
+                OcrPositionedWord("SOYAD$index", 396, y, 70, 16)
+            )
+        }
+        val rows = OcrRosterParser.parsePositionedWords(header + students)
+        assertEquals(5, rows.size)
+        rows.forEach { row ->
+            val first = row.firstNameCell!!
+            val last = row.lastNameCell!!
+            assertTrue(first.right <= last.left)
+            assertTrue(first.bottom > first.top)
+            assertTrue(last.bottom > last.top)
+            assertNull(row.firstNameSuggestion)
+            assertNull(row.lastNameSuggestion)
+        }
+        rows.zipWithNext { a, b ->
+            assertTrue(a.firstNameCell!!.bottom <= b.firstNameCell!!.top)
+            assertTrue(a.lastNameCell!!.bottom <= b.lastNameCell!!.top)
+        }
+    }
+
+    @Test fun combinedNameColumnNeverCreatesUnsafeSurnameRetryCrop() {
+        val words = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 288, 65, 60, 16)
+        )
+        val row = OcrRosterParser.parsePositionedWords(words).single()
+        assertTrue(row.isAmbiguous)
+        assertNull(row.firstNameCell)
+        assertNull(row.lastNameCell)
+    }
+
 }
