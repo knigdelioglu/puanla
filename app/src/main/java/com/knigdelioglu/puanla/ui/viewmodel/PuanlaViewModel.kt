@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.knigdelioglu.puanla.data.local.AssessmentEntity
+import com.knigdelioglu.puanla.data.local.AssessmentRunEntity
 import com.knigdelioglu.puanla.data.local.AuditLogEntity
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
 import com.knigdelioglu.puanla.data.local.CriterionEntity
@@ -47,6 +48,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -163,6 +166,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val selectedRubric = MutableStateFlow<RubricEntity?>(null)
+    val assessmentRuns = MutableStateFlow<List<AssessmentRunEntity>>(emptyList())
+    val selectedRun = MutableStateFlow<AssessmentRunEntity?>(null)
 
     val students = MutableStateFlow<List<StudentEntity>>(emptyList())
     val selectedStudent = MutableStateFlow<StudentEntity?>(null)
@@ -254,7 +259,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
             classrooms.collect { list ->
                 if (selectedClassroom.value == null && list.isNotEmpty()) {
-                    selectedClassroom.value = list.first()
+                    selectedClassroom.value = list.firstOrNull {
+                        it.id == arcPrefs.getString("last_classroom", null)
+                    } ?: list.first()
                 }
             }
         }
@@ -315,6 +322,41 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             selectedGroup.collect { loadCurrentGroupAssessment() }
         }
 
+        // Run selection belongs to the (classroom, rubric) pair.
+        // collectLatest cancels old subscriptions when either selection changes.
+        viewModelScope.launch {
+            combine(selectedClassroom, selectedRubric) { classroom, rubric -> classroom to rubric }
+                .collectLatest { (classroom, rubric) ->
+                    if (classroom == null || rubric == null) {
+                        assessmentRuns.value = emptyList()
+                        selectedRun.value = null
+                    } else {
+                        repository.observeRunsForClassroom(classroom.id, rubric.id).collectLatest { list ->
+                            assessmentRuns.value = list
+                            val current = selectedRun.value
+                            val preferred = arcPrefs.getString("last_run_${classroom.id}_${rubric.id}", null)
+                            selectedRun.value = list.firstOrNull { it.id == current?.id }
+                                ?: list.firstOrNull { it.id == preferred }
+                                ?: list.firstOrNull { it.status == "ACTIVE" }
+                                ?: list.firstOrNull()
+                        }
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            selectedRun.collectLatest { run ->
+                val rubric = selectedRubric.value
+                if (run != null && rubric != null && run.rubricId == rubric.id) {
+                    criteria.value = repository.getCriteriaForRun(run)
+                } else if (rubric != null) {
+                    criteria.value = repository.getCriteriaForRubric(rubric.id)
+                }
+                loadCurrentAssessment()
+                loadClassAssessments()
+            }
+        }
+
         // React to selectedStudent change
         viewModelScope.launch {
             selectedStudent.collect {
@@ -325,6 +367,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectClassroom(classroom: ClassroomEntity) {
+        arcPrefs.edit().putString("last_classroom", classroom.id).apply()
         selectedClassroom.value = classroom
         if (selectedRubric.value?.grade != classroom.grade) {
             selectedRubric.value = rubrics.value.firstOrNull { it.grade == classroom.grade }
@@ -340,12 +383,56 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         selectedRubric.value = rubric
     }
 
+    fun selectRun(run: AssessmentRunEntity) {
+        if (selectedRubric.value?.id != run.rubricId || run !in assessmentRuns.value) return
+        selectedRun.value = run
+        selectedClassroom.value?.let { classroom ->
+            arcPrefs.edit().putString("last_run_${classroom.id}_${run.rubricId}", run.id).apply()
+        }
+    }
+
+    fun createRun(title: String, classroomIds: List<String>) {
+        val rubric = selectedRubric.value ?: return
+        launchMutation {
+            try {
+                val created = repository.createAssessmentRun(rubric.id, title, classroomIds)
+                if (selectedClassroom.value?.id in classroomIds) {
+                    arcPrefs.edit().putString(
+                        "last_run_${selectedClassroom.value?.id}_${rubric.id}", created.id
+                    ).apply()
+                    selectedRun.value = created
+                }
+                showToast("Değerlendirme oluşturuldu.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Değerlendirme oluşturulamadı: ${e.message}") }
+        }
+    }
+
+    fun addClassroomsToRun(run: AssessmentRunEntity, classroomIds: List<String>) {
+        launchMutation {
+            try {
+                repository.addClassroomsToRun(run.id, classroomIds)
+                showToast("Sınıflar değerlendirmeye eklendi.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Sınıf eklenemedi: ${e.message}") }
+        }
+    }
+
+    fun setRunArchived(run: AssessmentRunEntity, archived: Boolean) {
+        launchMutation {
+            try { repository.archiveRun(run.id, archived) }
+            catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Değerlendirme güncellenemedi: ${e.message}") }
+        }
+    }
+
     fun selectStudent(student: StudentEntity?) {
         if (student != null && student.classroomId != selectedClassroom.value?.id) {
             showToast("Öğrenci farklı sınıfa ait.")
             return
         }
         selectedStudent.value = student
+        if (student != null) arcPrefs.edit().putString("last_student_${student.classroomId}", student.id).apply()
     }
 
     private fun loadStudentsForClassroom(classroomId: String) {
@@ -359,7 +446,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 if (selectedClassroom.value?.id != classroomId) return@collect
                 students.value = list
                 if (selectedStudent.value == null || list.none { it.id == selectedStudent.value?.id }) {
-                    selectedStudent.value = list.firstOrNull()
+                    selectedStudent.value = list.firstOrNull {
+                        it.id == arcPrefs.getString("last_student_$classroomId", null)
+                    } ?: list.firstOrNull()
                 }
             }
         }
@@ -370,9 +459,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         classAssessments.value = emptyList()
         val c = selectedClassroom.value ?: return
         val r = selectedRubric.value ?: return
+        val run = selectedRun.value ?: return
+        if (run.rubricId != r.id) return
         assessmentFlowJob = viewModelScope.launch {
-            repository.getAssessmentsFlow(c.id, r.id).collect { list ->
-                if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id) {
+            repository.getRunAssessmentsFlow(c.id, run.id).collect { list ->
+                if (selectedClassroom.value?.id == c.id && selectedRubric.value?.id == r.id &&
+                    selectedRun.value?.id == run.id) {
                     classAssessments.value = list
                 }
             }
