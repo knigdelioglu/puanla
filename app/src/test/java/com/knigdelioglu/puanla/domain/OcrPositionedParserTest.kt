@@ -299,4 +299,27 @@ class OcrPositionedParserTest {
         assertNull(row.lastNameCell)
     }
 
+    @Test fun numberedRowWithUnreadableBothNamesIsKeptForReview() {
+        val words = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16),
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16),
+            OcrPositionedWord("246", 128, 95, 30, 16),
+            OcrPositionedWord("247", 128, 125, 30, 16),
+            OcrPositionedWord("ELİF", 242, 125, 40, 16),
+            OcrPositionedWord("ÇELİK", 396, 125, 58, 16)
+        )
+        val rows = OcrRosterParser.parsePositionedWords(words)
+        assertEquals(3, rows.size)
+        assertEquals("246", rows[1].studentNumber)
+        assertEquals("", rows[1].firstName)
+        assertEquals("", rows[1].lastName)
+        assertTrue(rows[1].isAmbiguous)
+        assertFalse(rows[1].isApproved)
+    }
+
 }
