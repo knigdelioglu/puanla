@@ -1,36 +1,40 @@
-# Compose Design System → Puanla otomatik güncelleme
+# Compose Design System → Puanla: sürümlü AAR entegrasyonu
 
-## Sözleşme
+## Etkin bağımlılık
 
-Puanla `implementation(project(":design-system"))` ile kardeş Compose Design System kaynak modülünü kullanır. Kopya bileşen yoktur. Ancak artık sürüm seçimi `.github/compose-design-system.sha` içindeki **40 karakterlik commit SHA** ile sabittir. Böylece günlük Puanla derlemesi upstream `main` hareket etti diye değişmez.
+Puanla, Compose Design System'i artık **yayımlanmış ve sabitlenmiş Maven AAR** olarak tüketir:
 
-- `push`/`pull_request`: sabitlenmiş SHA ile derleme, birim testleri, APK üretimi ve Android emülatör testleri. `main` push APK'sı ancak tüm kontroller geçerse Releases'a çıkar.
-- Compose deposunda `main` push'u başarılı **Android** CI'yı tamamlayınca `Notify Puanla of verified Compose updates` iş akışı bildirim gönderebilir.
-- Puanla `repository_dispatch`, `workflow_dispatch` ve **her saat 19. dakikada** zamanlanmış kontrolle upstream `main` SHA'sına bakar. Bildirim için token olmasa da zamanlanmış kontrol çalışır (GitHub schedule gecikebilir).
-- Yeni SHA, Compose deposunun **Android push CI** çalışması başarıyla sonuçlandıysa aday olur. Puanla birim/derleme/emülatör testleri de geçerse pin dosyası `main` dalına bot commit'iyle güncellenir ve **o doğrulanmış kombinasyonun** APK'sı Releases'a çıkar.
-- Hata, eksik CI kanıtı veya derleme/test sorunu olursa pin değişmez, APK yayımlanmaz. Puanla `main` ilerlediyse eski uygulama commit'ini içeren aday APK da yayımlanmaz; sonraki kontrol yeni kodla tekrar dener.
+- Maven koordinatı: `com.knigdelioglu:compose-design-system:0.1.1`
+- Kaynak: `https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/`
+- Sürüm: `gradle.properties` içindeki `composeDesignSystemVersion=0.1.1`
+- Mod: `composeUsePublishedByDefault=true`
+- Dağıtım: AAR + POM + `.module` dosyaları birlikte yayımlanır. Gradle'ın transitive Compose bağımlılıkları metadata üzerinden çözülür.
 
-## Bir kereye mahsus hızlı bildirim kurulumu (isteğe bağlı)
+Normal geliştirici derlemeleri **komşu `compose-design-system` dizinini gerektirmez**. `settings.gradle.kts`, Maven kullanımında `:design-system` modülünü projeye katmaz. Böylece Compose deposunun `main` dalındaki henüz yayımlanmamış değişiklikler Puanla'yı istem dışı güncellemez.
 
-GitHub'da **Compose Design System → Settings → Secrets and variables → Actions** altında `PUANLA_DISPATCH_TOKEN` deposu sırrı tanımlayın. İnce kapsamlı GitHub kişisel erişim token'ı yalnız `knigdelioglu/puanla` deposunda **Contents: read/write** iznine sahip olmalıdır (repository dispatch). İki depo public olduğu için yalnız kaynak checkout için token gerekmez. Token olmadan da saatlik otomatik eşitleme aktiftir.
+## CI ve sürüm yükseltmeleri
 
-Ayrıca Puanla deposunda **Settings → Actions → General → Workflow permissions** altında `Read and write permissions` seçeneğine ve varsayılan `GITHUB_TOKEN` ile içerik yazmaya izin verilmelidir. Dal koruması bot push'una engelse terfiyi sağlayacak izin veya farklı PR-onay akışı gerekir. Botun PR, ürün/domain şeması veya OCR verisi yazma hakkı yoktur; yalnız `.github/compose-design-system.sha` sabitini ilerletir.
+`.github/workflows/android.yml`:
 
-## Güvenlik ve sınırlar
+- `push`, `pull_request`: Puanla'nın seçtiği **sabit AAR sürümünü** çözümler; `:app:dependencyInsight` ile tüketilen gerçek Maven koordinatını denetler.
+- Android birim testleri, debug ve release derlemesi, emülatör UI testleri başarılıysa yalnız `main` push'unda debug APK yayımlar.
+- `workflow_dispatch` → `compose_published_version`: farklı bir yayımlanmış Maven sürümü için **tek seferlik** uyumluluk testi; `gradle.properties` veya uygulama sürümünü otomatik değiştirmez.
+- Yeni upstream kaynak commit'leri veya yeni Maven sürümleri **kendiliğinden ana dala alınmaz**. Yeni sürüme geçiş, `gradle.properties` değişikliği ve başarılı CI üzerinden kontrollü yapılır.
 
-Kaynak derlemenin ref'i **Git commit SHA** olarak checkout edilir, canlı `main` değil. Bu hem tekrarlanabilirlik hem rollback sağlar. Compose'un yeni bileşenleri Puanla ekranına otomatik bağlanmaz; yalnız zaten kullanılan ortak API davranışı otomatik güncellenir. API kırılmalarında adaptasyon gerekir. Başarılı bir CI gerçek tablet üzerinde tüm kabul testlerinin yerine geçmez. Önizleme APK'ları debug imzalıdır; üretim için ayrı imzalı yayın kanalı tercih edilmelidir.
+**Neden eski saatlik eşitleme kapatıldı?** Önceki sistem `.github/compose-design-system.sha` commit'ini yeni Compose `main` commit'lerine ilerletiyordu. Sürümlenmiş Maven dağıtımına geçince bu mekanizma hem işlevsiz hem de hangi Compose kodunun dağıtıldığı konusunda yanıltıcı olacaktı. CI artık yalnız sabit ve yayımlanmış AAR sürümünü kullanır.
 
-### Elle çalıştırma
+## Geri alma (yalnız gerektiğinde)
 
-Puanla → **Actions → Android CI → Run workflow**: yeni upstream commit'ini hemen kontrol eder. Pin sabitse hiçbir şey yayımlamaz. Hatalar Android CI iş akışının `resolve`, `verify` ve `promote-compose` işlerinde görünür.
+Kaynak tabanlı önceki mekanizma bir acil durum yedeği olarak tutulur:
 
-### Geri alma
+- Puanla → **Actions → Android CI → Run workflow** → `compose_legacy_sources=true`
+- İş akışı yalnız `.github/compose-design-system.sha` dosyasındaki doğrulanmış commit'i checkout eder ve `-PcomposeUsePublishedByDefault=false` ile derler.
+- Aynı çağrıda hem `compose_legacy_sources` hem `compose_published_version` belirtilmesi reddedilir.
+- Yerelde aynı işlem:
+  `./gradlew test :app:assembleDebug -PcomposeUsePublishedByDefault=false -PcomposeDesignSystemDir=/path/to/compose-design-system/design-system`
 
-Doğrulanmış eski SHA'yı `.github/compose-design-system.sha` dosyasına yazarak Puanla'nın eski Compose koduyla tekrar derlenmesini sağlayabilirsiniz. Ancak bir sonraki otomatik senkron, yeni upstream SHA'yı tekrar test edip başarı halinde benimseyebilir; kalıcı durdurma için zamanlanmış/dispatch tetikleyicilerini geçici olarak kapatın.
+Geri dönüş işlemi, Maven AAR sürümünü değiştirmez ve otomatik release yayımlamaz. Kalıcı geri dönüş istenirse `gradle.properties` değeri ayrıca değerlendirilmelidir.
 
+## Test sınırları
 
-## Henüz yayımlanmamış Maven AAR için korumalı geçiş
-
-`composeDesignSystemVersion=0.1.0`, gelecekte doğrulanacak sürümü belirtir; **yayımlanmış bir AAR değildir**. `composeUsePublishedByDefault=false` olduğu sürece Puanla, doğrulanmış `.github/compose-design-system.sha` kaynak sürümünü ve mevcut CI/promosyon akışını kullanmaya devam eder.
-
-AAR, Compose deposunda erişilebilir bir Maven sürümü olarak yayımlandıktan, Puanla birim ve emülatör testlerinde doğrulandıktan sonra `composeUsePublishedByDefault=true` değişikliği ayrı PR ile yapılmalıdır. Yayınlanmamış sürümü zorunlu tutmak uygulamayı derlenemez duruma getirir. Geçişten önce kaynak tabanlı güvenli geri dönüş korunur.
+CI başarıları uygulamanın bütün tablet etkileşimlerini veya gerçek sınıf fotoğraflarıyla OCR doğruluğunu garanti etmez. CI APK'ları **debug imzalıdır** ve imza sertifikaları farklı koşularda değişebilir. Eski kurulum üstüne yerinde güncelleme yapmadan önce veri yedeği alın. Kalıcı imzalama için bkz. [Issue #26](https://github.com/knigdelioglu/puanla/issues/26).
