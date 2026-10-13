@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -54,6 +55,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
+import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
+import com.knigdelioglu.puanla.domain.export.PdfReportWriter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
 import com.knigdelioglu.arc.compose.datavis.ArcBarData
 import com.knigdelioglu.arc.compose.datavis.ArcDonutChart
@@ -85,12 +88,26 @@ import java.util.Locale
 fun ReportsScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
+    val selectedRun by viewModel.selectedRun.collectAsState()
     val students by viewModel.students.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val pdfPreferences = remember(context) {
+        context.getSharedPreferences("report_pdf_details", android.content.Context.MODE_PRIVATE)
+    }
+    var pdfCourse by remember { mutableStateOf(pdfPreferences.getString("course", "") ?: "") }
+    var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
+    var showPdfDialog by remember { mutableStateOf(false) }
+    var pdfGenerating by remember { mutableStateOf(false) }
+    var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
+    var pdfAllClasses by remember { mutableStateOf(false) }
+    var pdfSummaryOnly by remember { mutableStateOf(false) }
+    var pendingSummaryOnly by remember { mutableStateOf(false) }
+    var pendingPdfCourse by remember { mutableStateOf("") }
+    var pendingPdfTeacher by remember { mutableStateOf("") }
     var csvActionsOpen by remember { mutableStateOf(false) }
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
@@ -98,13 +115,13 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var showDateFilter by remember { mutableStateOf(false) }
     var calendarTarget by remember { mutableStateOf<String?>(null) }
     var comparisonOpen by remember { mutableStateOf(false) }
-    var firstComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
-    var secondComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
+    var firstComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf<String?>(null) }
+    var secondComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf<String?>(null) }
     var comparisonRows by remember { mutableStateOf<List<List<String>>>(emptyList()) }
     var comparisonLoading by remember { mutableStateOf(false) }
     var comparisonError by remember { mutableStateOf(false) }
-    var filterStart by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
-    var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
+    var filterStart by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf("") }
+    var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf("") }
     val filterActive = filterStart.isNotEmpty() || filterEnd.isNotEmpty()
     val filterValid = AssessmentDateFilter.isValidRange(filterStart, filterEnd)
     val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -119,6 +136,33 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             } catch (e: Exception) {
                 viewModel.showToast("CSV kaydedilemedi: ${e.message}")
             }
+        }
+    }
+
+    val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val snapshots = pendingPdfSnapshots
+        if (uri != null && snapshots.isNotEmpty()) scope.launch {
+            pdfGenerating = true
+            try {
+                withContext(Dispatchers.IO) {
+                    val stream = requireNotNull(context.contentResolver.openOutputStream(uri)) {
+                        "PDF dosyası açılamadı."
+                    }
+                    stream.use {
+                        PdfReportWriter.writeAll(snapshots, pendingPdfCourse, pendingPdfTeacher, it, pendingSummaryOnly)
+                    }
+                }
+                viewModel.showToast("Ölçüt bazlı PDF raporu kaydedildi.")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (e: Exception) {
+                viewModel.showToast("PDF kaydedilemedi: ${e.message}")
+            } finally {
+                pdfGenerating = false
+                pendingPdfSnapshots = emptyList()
+            }
+        } else {
+            pendingPdfSnapshots = emptyList()
         }
     }
 
@@ -165,17 +209,17 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val firstComparisonStudent = students.firstOrNull { it.id == firstComparisonStudentId }
     val secondComparisonStudent = students.firstOrNull { it.id == secondComparisonStudentId }
 
-    LaunchedEffect(comparisonOpen, firstComparisonStudentId, secondComparisonStudentId, selectedRubric?.id) {
+    LaunchedEffect(comparisonOpen, firstComparisonStudentId, secondComparisonStudentId, selectedRubric?.id, selectedRun?.id) {
         val rubric = selectedRubric
         val firstId = firstComparisonStudentId
         val secondId = secondComparisonStudentId
-        if (comparisonOpen && rubric != null && firstId != null && secondId != null && firstId != secondId) {
+        if (comparisonOpen && rubric != null && selectedRun != null && firstId != null && secondId != null && firstId != secondId) {
             comparisonLoading = true
             comparisonError = false
             comparisonRows = try {
-                val criteria = viewModel.repository.getCriteriaForRubric(rubric.id)
-                val firstScores = viewModel.repository.getCriterionScoresForStudent(firstId, rubric.id)
-                val secondScores = viewModel.repository.getCriterionScoresForStudent(secondId, rubric.id)
+                val criteria = viewModel.repository.getCriteriaForRun(requireNotNull(selectedRun))
+                val firstScores = viewModel.repository.getRunCriterionScoresForStudent(firstId, requireNotNull(selectedRun).id)
+                val secondScores = viewModel.repository.getRunCriterionScoresForStudent(secondId, requireNotNull(selectedRun).id)
                 studentComparisonRows(criteria, firstScores, secondScores)
             } catch (cancel: CancellationException) {
                 throw cancel
@@ -227,13 +271,21 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     color = colors.foreground
                 )
                 Text(
-                    text = "${selectedClassroom?.name ?: "Sınıf"} • ${selectedRubric?.title ?: "Rubrik"}",
+                    text = "${selectedClassroom?.name ?: "Sınıf"} • ${selectedRun?.title ?: "Değerlendirme seçilmedi"}",
                     fontSize = 14.sp,
                     color = colors.textSecondary
                 )
             }
 
-            Box {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                ArcButton(
+                    text = "PDF Raporu",
+                    onClick = { showPdfDialog = true },
+                    enabled = selectedClassroom != null && selectedRun != null && !pdfGenerating,
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Md
+                )
+                Box {
                 ArcSplitButton(
                     onPrimaryClick = {
                     if (!csvGenerating) scope.launch {
@@ -251,7 +303,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     }
                 },
                     onMenuClick = { csvActionsOpen = true },
-                    enabled = selectedClassroom != null && selectedRubric != null && !csvGenerating,
+                    enabled = selectedClassroom != null && selectedRun != null && !csvGenerating,
                     variant = ArcButtonVariant.Primary,
                     size = ArcButtonSize.Md,
                     primaryContent = { Text("CSV Dışa Aktar") }
@@ -280,14 +332,15 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         }
                     )
                 }
+                }
             }
         }
 
-        if (selectedClassroom == null || selectedRubric == null) {
+        if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
             Box(modifier = Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) {
                 ArcEmptyState(
-                    title = "Sınıf veya Rubrik Seçilmedi",
-                    description = "Raporları incelemek için önce bir sınıf ve rubrik seçiniz."
+                    title = "Değerlendirme Seçilmedi",
+                    description = "Sınıf ve rubriği seçin, ardından üstteki Değerlendirmeler menüsünden raporlamak istediğiniz oturumu açın."
                 )
             }
             return@Column
@@ -371,7 +424,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 title = if (filterValid) "Tarihe göre filtrelendi" else "Geçersiz tarih aralığı",
                 message = if (filterValid) {
                     "Yalnızca son değişikliği bu tarihlerde yapılan değerlendirmeler gösteriliyor. " +
-                        "Bu geçmiş tarihteki notların anlık görüntüsü değildir. CSV dışa aktarma ise tüm sınıfın güncel sonuçlarını içerir."
+                        "Bu geçmiş tarihteki notların anlık görüntüsü değildir. PDF ve CSV seçili oturumun güncel sonuçlarını içerir."
                 } else "Bitiş tarihi başlangıçtan önce olamaz. Aralığı düzeltin veya filtreyi sıfırlayın.",
                 type = if (filterValid) ArcAlertType.Info else ArcAlertType.Warning
             )
@@ -511,6 +564,117 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         ArcButton(text = "Kapat", onClick = { comparisonOpen = false }, variant = ArcButtonVariant.Ghost)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPdfDialog) {
+        Dialog(onDismissRequest = { if (!pdfGenerating) showPdfDialog = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth(0.9f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Ölçüt Bazlı PDF Raporu", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                    Text(
+                        "Seçili sınıfın güncel bireysel puanları, ölçüt açıklamaları, sınıf özeti ve imza alanı yer alır. " +
+                            "Tarih filtresinden bağımsız olarak seçili değerlendirme ve sınıfın puanları kullanılır. Grup notları karıştırılmaz.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    OutlinedTextField(
+                        value = pdfCourse,
+                        onValueChange = { pdfCourse = it },
+                        label = { Text("Ders adı") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = pdfTeacher,
+                        onValueChange = { pdfTeacher = it },
+                        label = { Text("Öğretmenin adı soyadı") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = pdfAllClasses,
+                            onCheckedChange = { pdfAllClasses = it }
+                        )
+                        Text(
+                            "Bu değerlendirmedeki bütün sınıflar",
+                            color = colors.foreground
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = pdfSummaryOnly,
+                            onCheckedChange = { pdfSummaryOnly = it }
+                        )
+                        Text(
+                            "Yalnızca özet ve grafikler (ölçüt tablosu olmadan)",
+                            color = colors.foreground
+                        )
+                    }
+                    Text(
+                        "Bu bilgiler sonraki PDF çıktıları için cihazda saklanır. " +
+                            "İmza çizgisi çıktı üzerinde elle imzalanabilir.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ArcButton(
+                            text = "Vazgeç",
+                            onClick = { showPdfDialog = false },
+                            variant = ArcButtonVariant.Ghost,
+                            enabled = !pdfGenerating
+                        )
+                        ArcButton(
+                            text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Kaydet",
+                            onClick = {
+                                if (!pdfGenerating) scope.launch {
+                                    pdfGenerating = true
+                                    try {
+                                        val snapshots = withContext(Dispatchers.IO) {
+                                            viewModel.generatePdfSnapshots(pdfAllClasses)
+                                        }
+                                        require(snapshots.isNotEmpty() && snapshots.all { it.criteria.isNotEmpty() }) {
+                                            "Rubrikte ölçüt bulunamadı."
+                                        }
+                                        pendingPdfSnapshots = snapshots
+                                        pendingSummaryOnly = pdfSummaryOnly
+                                        pendingPdfCourse = pdfCourse.trim()
+                                        pendingPdfTeacher = pdfTeacher.trim()
+                                        pdfPreferences.edit()
+                                            .putString("course", pendingPdfCourse)
+                                            .putString("teacher", pendingPdfTeacher)
+                                            .apply()
+                                        showPdfDialog = false
+                                        savePdf.launch("puanla-${if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${selectedRun?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                    } catch (cancel: CancellationException) {
+                                        throw cancel
+                                    } catch (e: Exception) {
+                                        pendingPdfSnapshots = emptyList()
+                                        viewModel.showToast("PDF hazırlanamadı: ${e.message}")
+                                    } finally {
+                                        pdfGenerating = false
+                                    }
+                                }
+                            },
+                            enabled = !pdfGenerating && pdfCourse.isNotBlank() && pdfTeacher.isNotBlank(),
+                            variant = ArcButtonVariant.Primary
+                        )
                     }
                 }
             }

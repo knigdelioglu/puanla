@@ -104,13 +104,15 @@ interface RubricDao {
     @Query("SELECT * FROM criterion_levels WHERE criterionId IN (SELECT id FROM criteria WHERE rubricId = :rubricId) ORDER BY orderIndex ASC")
     suspend fun getLevelsForRubric(rubricId: String): List<CriterionLevelEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE deletes the old row and can cascade-delete all past marks.
+    // UPDATE-on-conflict keeps FK relationships and assessment history.
+    @Upsert
     suspend fun insertRubric(rubric: RubricEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertRubricIfAbsent(rubric: RubricEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertCriteria(criteria: List<CriterionEntity>)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
@@ -120,8 +122,93 @@ interface RubricDao {
     suspend fun insertLevels(levels: List<CriterionLevelEntity>)
 }
 
+data class RunClassroomProgress(
+    val classroomId: String,
+    val classroomName: String,
+    val total: Int,
+    val completed: Int,
+    val partial: Int
+)
+
+@Dao
+interface AssessmentRunDao {
+    @Query("SELECT * FROM assessment_runs WHERE criteriaSnapshotJson = ''")
+    suspend fun runsMissingCriterionSnapshots(): List<AssessmentRunEntity>
+
+    @Query("SELECT * FROM assessment_runs ORDER BY createdAt DESC, id DESC")
+    fun observeAll(): Flow<List<AssessmentRunEntity>>
+
+    @Query("SELECT * FROM assessment_runs WHERE id = :id LIMIT 1")
+    suspend fun get(id: String): AssessmentRunEntity?
+
+    @Query("SELECT * FROM assessment_runs WHERE id = :id LIMIT 1")
+    fun observe(id: String): Flow<AssessmentRunEntity?>
+
+    @Query("SELECT * FROM assessment_runs WHERE rubricId = :rubricId AND id IN (SELECT runId FROM run_classrooms WHERE classroomId = :classroomId) ORDER BY createdAt DESC, id DESC")
+    suspend fun getForClassroom(classroomId: String, rubricId: String): List<AssessmentRunEntity>
+
+    @Query("SELECT * FROM assessment_runs WHERE rubricId = :rubricId AND id IN (SELECT runId FROM run_classrooms WHERE classroomId = :classroomId) ORDER BY createdAt DESC, id DESC")
+    fun observeForClassroom(classroomId: String, rubricId: String): Flow<List<AssessmentRunEntity>>
+
+    @Query("""
+        SELECT c.id AS classroomId, c.name AS classroomName,
+            (SELECT COUNT(*) FROM students s WHERE s.classroomId = c.id) AS total,
+            (SELECT COUNT(*) FROM assessments a
+                WHERE a.runId = :runId AND a.classroomId = c.id AND a.isCompleted = 1) AS completed,
+            (SELECT COUNT(*) FROM assessments a
+                WHERE a.runId = :runId AND a.classroomId = c.id
+                    AND a.isCompleted = 0 AND a.scoredCount > 0) AS partial
+        FROM run_classrooms rc
+        JOIN classrooms c ON c.id = rc.classroomId
+        WHERE rc.runId = :runId
+        ORDER BY c.grade ASC, c.section ASC
+    """)
+    fun observeProgress(runId: String): Flow<List<RunClassroomProgress>>
+
+    @Query("SELECT COUNT(*) FROM run_classrooms WHERE classroomId = :classroomId")
+    suspend fun countAssignmentsForClassroom(classroomId: String): Int
+
+    @Query("""
+        SELECT rc.* FROM run_classrooms rc
+        JOIN classrooms c ON c.id = rc.classroomId
+        WHERE rc.runId = :runId
+        ORDER BY c.grade ASC, c.section ASC
+    """)
+    suspend fun getAssignments(runId: String): List<RunClassroomEntity>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM run_classrooms WHERE runId = :runId AND classroomId = :classroomId)")
+    suspend fun containsClassroom(runId: String, classroomId: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(run: AssessmentRunEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(run: AssessmentRunEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun assign(assignments: List<RunClassroomEntity>)
+
+    @Update
+    suspend fun update(run: AssessmentRunEntity)
+}
+
 @Dao
 interface AssessmentDao {
+    @Query("SELECT * FROM assessments WHERE classroomId = :classroomId AND runId = :runId")
+    fun observeForRun(classroomId: String, runId: String): Flow<List<AssessmentEntity>>
+
+    @Query("SELECT * FROM assessments WHERE classroomId = :classroomId AND runId = :runId")
+    suspend fun getForRun(classroomId: String, runId: String): List<AssessmentEntity>
+
+    @Query("SELECT * FROM assessments WHERE id = :id LIMIT 1")
+    suspend fun getAssessmentById(id: String): AssessmentEntity?
+
+    @Query("SELECT * FROM assessments WHERE studentId = :studentId AND runId = :runId LIMIT 1")
+    suspend fun getStudentInRun(studentId: String, runId: String): AssessmentEntity?
+
+    @Query("SELECT * FROM assessments WHERE studentId = :studentId AND runId = :runId LIMIT 1")
+    fun observeStudentInRun(studentId: String, runId: String): Flow<AssessmentEntity?>
+
     @Query("SELECT * FROM assessments WHERE classroomId = :classroomId AND rubricId = :rubricId")
     fun getAssessmentsFlow(classroomId: String, rubricId: String): Flow<List<AssessmentEntity>>
 

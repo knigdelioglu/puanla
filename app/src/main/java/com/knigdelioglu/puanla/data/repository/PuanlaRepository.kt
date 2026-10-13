@@ -18,6 +18,7 @@ import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.domain.export.CsvCriterion
 import com.knigdelioglu.puanla.domain.export.CsvStudent
 import com.knigdelioglu.puanla.domain.export.CsvExportFormatter
+import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.summarizeScores
 import androidx.room.withTransaction
@@ -47,6 +48,7 @@ class PuanlaRepository(
     private val studentDao = db.studentDao()
     private val rubricDao = db.rubricDao()
     private val assessmentDao = db.assessmentDao()
+    private val runDao = db.assessmentRunDao()
     private val groupTaskDao = db.groupTaskDao()
     private val auditLogDao = db.auditLogDao()
 
@@ -66,6 +68,13 @@ class PuanlaRepository(
                 if (rubricDao.getRubricById(definition.id) == null) {
                     rubricDao.insertRubricIfAbsent(definition.toEntity())
                     rubricDao.insertCriteriaFromApprovedSource(definition.toCriterionEntities())
+                }
+            }
+            // Freeze migrated v2 attempts before any future template edits.
+            runDao.runsMissingCriterionSnapshots().forEach { run ->
+                val savedCriteria = rubricDao.getCriteriaForRubric(run.rubricId)
+                if (savedCriteria.isNotEmpty()) {
+                    runDao.update(run.copy(criteriaSnapshotJson = Json.encodeToString(savedCriteria)))
                 }
             }
         }
@@ -100,9 +109,12 @@ class PuanlaRepository(
     }
 
     suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
-        require(db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
-            groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty()) {
-            "Bu sınıfta grup veya grup değerlendirme oturumu var. Önce bu kayıtları düzenleyin."
+        require(
+            db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
+                groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty() &&
+                runDao.countAssignmentsForClassroom(classroom.id) == 0
+        ) {
+            "Bu sınıfa bağlı değerlendirme veya grup kaydı var. Not kaybını önlemek için sınıf silinemez."
         }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
@@ -252,6 +264,89 @@ class PuanlaRepository(
     fun getCriteriaForRubricFlow(rubricId: String): Flow<List<CriterionEntity>> =
         rubricDao.getCriteriaForRubricFlow(rubricId)
 
+    // Distinct evaluation runs reuse the source rubric but never share marks.
+    fun observeRunsForClassroom(classroomId: String, rubricId: String): Flow<List<AssessmentRunEntity>> =
+        runDao.observeForClassroom(classroomId, rubricId)
+
+    fun observeRuns(): Flow<List<AssessmentRunEntity>> = runDao.observeAll()
+
+    fun observeRunProgress(runId: String): Flow<List<RunClassroomProgress>> = runDao.observeProgress(runId)
+
+    suspend fun getRun(runId: String): AssessmentRunEntity? = runDao.get(runId)
+
+    suspend fun getRunClassrooms(runId: String): List<RunClassroomEntity> = runDao.getAssignments(runId)
+
+    suspend fun getCriteriaForRun(run: AssessmentRunEntity): List<CriterionEntity> {
+        return if (run.criteriaSnapshotJson.isBlank()) {
+            rubricDao.getCriteriaForRubric(run.rubricId)
+        } else {
+            Json.decodeFromString<List<CriterionEntity>>(run.criteriaSnapshotJson)
+        }
+    }
+
+    suspend fun createAssessmentRun(
+        rubricId: String, title: String, classroomIds: List<String>
+    ): AssessmentRunEntity = db.withTransaction {
+        require(title.trim().isNotEmpty()) { "Değerlendirme adı boş olamaz." }
+        val ids = classroomIds.distinct()
+        require(ids.isNotEmpty()) { "En az bir sınıf seçin." }
+        val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds) { "Doğrulanmamış rubrik kullanılamaz." }
+        require(ids.all { id -> classroomDao.getClassroomById(id)?.grade == rubric.grade }) {
+            "Sınıflar rubrik düzeyine uygun değil."
+        }
+        val criteria = rubricDao.getCriteriaForRubric(rubricId)
+        require(criteria.isNotEmpty()) { "Rubrikte ölçüt bulunamadı." }
+        val run = AssessmentRunEntity(
+            id = UUID.randomUUID().toString(),
+            rubricId = rubricId,
+            title = title.trim(),
+            criteriaSnapshotJson = Json.encodeToString(criteria)
+        )
+        runDao.insert(run)
+        runDao.assign(ids.map { RunClassroomEntity(UUID.randomUUID().toString(), run.id, it) })
+        run
+    }
+
+    suspend fun addClassroomsToRun(runId: String, classroomIds: List<String>) = db.withTransaction {
+        val run = requireNotNull(runDao.get(runId)) { "Değerlendirme bulunamadı." }
+        require(run.status == "ACTIVE") { "Arşivlenmiş değerlendirme düzenlenemez." }
+        val rubric = requireNotNull(rubricDao.getRubricById(run.rubricId))
+        val ids = classroomIds.distinct()
+        require(ids.all { id -> classroomDao.getClassroomById(id)?.grade == rubric.grade }) {
+            "Sınıf rubrik düzeyine uygun değil."
+        }
+        runDao.assign(ids.map { RunClassroomEntity(UUID.randomUUID().toString(), runId, it) })
+    }
+
+    suspend fun archiveRun(runId: String, archived: Boolean) = db.withTransaction {
+        val run = requireNotNull(runDao.get(runId))
+        runDao.update(run.copy(status = if (archived) "ARCHIVED" else "ACTIVE"))
+    }
+
+    private suspend fun ensureLegacyRun(classroomId: String, rubricId: String): String {
+        val id = "legacy_${classroomId}_${rubricId}"
+        val historicalCriteria = rubricDao.getCriteriaForRubric(rubricId)
+        runDao.insertIfAbsent(AssessmentRunEntity(
+            id, rubricId, "Önceki değerlendirme",
+            criteriaSnapshotJson = Json.encodeToString(historicalCriteria),
+            status = "ACTIVE", createdAt = 0
+        ))
+        runDao.assign(listOf(RunClassroomEntity("assign_$id", id, classroomId)))
+        return id
+    }
+
+    fun getRunAssessmentsFlow(classroomId: String, runId: String): Flow<List<AssessmentEntity>> =
+        assessmentDao.observeForRun(classroomId, runId)
+
+    suspend fun getRunAssessmentForStudent(studentId: String, runId: String): AssessmentEntity? =
+        assessmentDao.getStudentInRun(studentId, runId)
+
+    suspend fun getRunCriterionScoresForStudent(studentId: String, runId: String): Map<String, Int?> {
+        val assessment = assessmentDao.getStudentInRun(studentId, runId) ?: return emptyMap()
+        return assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
+    }
+
     // Assessments & Scoring
     fun getAssessmentsFlow(classroomId: String, rubricId: String): Flow<List<AssessmentEntity>> =
         assessmentDao.getAssessmentsFlow(classroomId, rubricId)
@@ -284,7 +379,8 @@ class PuanlaRepository(
         rubricId: String,
         criterionId: String,
         scorePoints: Int?,
-        evidenceNote: String? = null
+        evidenceNote: String? = null,
+        runId: String? = null
     ): CriterionScoreEntity? = db.withTransaction {
         val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
         val student = requireNotNull(studentDao.getStudentById(studentId)) { "Öğrenci bulunamadı." }
@@ -294,14 +390,26 @@ class PuanlaRepository(
         require(rubric.grade == classroom.grade) { "Rubrik sınıf düzeyine uygun değil." }
         val criterion = requireNotNull(rubricDao.getCriterionById(criterionId)) { "Ölçüt bulunamadı." }
         require(criterion.rubricId == rubric.id) { "Ölçüt başka rubriğe ait." }
-        require(scorePoints == null || scorePoints in 0..criterion.maxPoints) { "Puan geçerli ölçüt aralığı dışında." }
-
-        val existing = assessmentDao.getAssessmentForStudent(studentId, rubricId)
+        val actualRunId = runId ?: ensureLegacyRun(classroomId, rubricId)
+        val run = requireNotNull(runDao.get(actualRunId)) { "Değerlendirme oturumu bulunamadı." }
+        require(run.rubricId == rubricId && runDao.containsClassroom(actualRunId, classroomId)) {
+            "Bu sınıf değerlendirmeye bağlı değil."
+        }
+        require(run.status == "ACTIVE") { "Arşivlenmiş değerlendirme düzenlenemez." }
+        val frozenCriteria = getCriteriaForRun(run)
+        val frozenCriterion = requireNotNull(frozenCriteria.firstOrNull { it.id == criterionId }) {
+            "Ölçüt bu değerlendirmeye ait değil."
+        }
+        require(scorePoints == null || scorePoints in 0..frozenCriterion.maxPoints) {
+            "Puan geçerli ölçüt aralığında değil."
+        }
+        val existing = assessmentDao.getStudentInRun(studentId, actualRunId)
         val assessment = existing ?: AssessmentEntity(
-            id = "assess_${studentId}_${rubricId}",
+            id = "assess_${studentId}_${actualRunId}",
             classroomId = classroomId,
             studentId = studentId,
-            rubricId = rubricId
+            rubricId = rubricId,
+            runId = actualRunId
         )
         require(assessment.classroomId == classroomId) { "Değerlendirme başka sınıfa ait." }
         if (existing == null) assessmentDao.insertOrUpdateAssessment(assessment)
@@ -317,7 +425,7 @@ class PuanlaRepository(
                 scoredAt = System.currentTimeMillis()
             )
         )
-        val criteria = rubricDao.getCriteriaForRubric(rubricId)
+        val criteria = frozenCriteria
         val scoreMap = assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
         val summary = summarizeScores(criteria.map { CriterionScore(it.maxPoints, scoreMap[it.id]) })
         assessmentDao.insertOrUpdateAssessment(
@@ -331,24 +439,40 @@ class PuanlaRepository(
         if (previous?.points != scorePoints) {
             auditLogDao.insertLog(AuditLogEntity(
                 id = UUID.randomUUID().toString(), action = "CRITERION_SCORE_CHANGED",
-                details = "${classroom.name}, no ${student.studentNumber}, ${criterion.title}: " +
+                details = "${classroom.name}, no ${student.studentNumber}, ${frozenCriterion.title}: " +
                     "${previous?.points?.toString() ?: "Boş"} → ${scorePoints?.toString() ?: "Boş"}"
             ))
         }
         previous
     }
 
-    suspend fun clearAssessmentScores(assessmentId: String, studentId: String, rubricId: String) {
+    /**
+     * Clear only the requested assessment; a student may have several attempts
+     * with the same rubric. Archived attempts are immutable.
+     */
+    suspend fun clearAssessmentScores(assessmentId: String, studentId: String, rubricId: String) =
         db.withTransaction {
-            val assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId)
-            require(assessment?.id == assessmentId) { "Değerlendirme kimliği uyuşmuyor." }
-            assessmentDao.clearScoresForAssessment(assessmentId)
+            val assessment = requireNotNull(assessmentDao.getAssessmentById(assessmentId)) {
+                "Değerlendirme bulunamadı."
+            }
+            require(assessment.studentId == studentId && assessment.rubricId == rubricId) {
+                "Değerlendirme kimliği uyuşmuyor."
+            }
+            val run = requireNotNull(runDao.get(assessment.runId)) { "Değerlendirme oturumu yok." }
+            require(run.status == "ACTIVE" && run.rubricId == rubricId) {
+                "Arşivlenmiş değerlendirme değiştirilemez."
+            }
+            require(runDao.containsClassroom(run.id, assessment.classroomId)) {
+                "Oturum ve sınıf ilişkisi geçersiz."
+            }
+            assessmentDao.clearScoresForAssessment(assessment.id)
             assessmentDao.insertOrUpdateAssessment(
-                assessment.copy(isCompleted = false, definitiveTotal = null, scoredCount = 0,
-                    lastModifiedAt = System.currentTimeMillis())
+                assessment.copy(
+                    isCompleted = false, definitiveTotal = null, scoredCount = 0,
+                    lastModifiedAt = System.currentTimeMillis()
+                )
             )
         }
-    }
 
     // Group Tasks
     fun getGroupTasksFlow(classroomId: String): Flow<List<GroupTaskEntity>> =
@@ -384,32 +508,63 @@ class PuanlaRepository(
      * Reads one consistent database snapshot and delegates the actual serialization
      * to the same tested writer used in CSV unit tests.
      */
-    suspend fun generateCsvExport(classroomId: String, rubricId: String): String = db.withTransaction {
+    suspend fun generateCsvExport(classroomId: String, rubricId: String, runId: String? = null): String =
+        db.withTransaction {
+            val snapshot = buildRunReport(classroomId, rubricId, runId)
+            CsvExportFormatter.generate(snapshot.criteria, snapshot.students)
+        }
+
+    suspend fun generatePdfReportSnapshot(
+        classroomId: String, rubricId: String, runId: String? = null
+    ): PdfReportSnapshot = db.withTransaction { buildRunReport(classroomId, rubricId, runId) }
+
+    private suspend fun buildRunReport(
+        classroomId: String, rubricId: String, runId: String?
+    ): PdfReportSnapshot {
         val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
         val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
-        require(rubric.id !in RubricSeeder.unverifiedLegacyIds) { "Kaynağı doğrulanmamış rubrik dışa aktarılamaz." }
-        require(rubric.grade == classroom.grade) { "Rubrik farklı sınıf düzeyine ait." }
-
-        val criteria = rubricDao.getCriteriaForRubric(rubricId)
-        val assessments = assessmentDao.getAssessments(classroomId, rubricId).associateBy { it.studentId }
-        val studentRows = studentDao.getStudentsForClassroom(classroomId).map { student ->
-            val assessment = assessments[student.id]
-            val scores = if (assessment != null) {
-                assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
-            } else emptyMap()
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds && rubric.grade == classroom.grade) {
+            "Rubrik bu sınıfa uygun değil."
+        }
+        // A missing run ID is retained for older callers, but can never
+        // silently mix repeated attempts of the same rubric.
+        val actualRunId = runId ?: runDao.getForClassroom(classroomId, rubricId).let { matches ->
+            require(matches.size <= 1) {
+                "Bu rubrikle birden fazla değerlendirme var. Çıktı için oturum seçin."
+            }
+            matches.singleOrNull()?.id
+        }
+        val run = actualRunId?.let { id ->
+            requireNotNull(runDao.get(id)) { "Değerlendirme bulunamadı." }.also {
+                require(it.rubricId == rubricId && runDao.containsClassroom(it.id, classroomId)) {
+                    "Seçilen değerlendirme bu sınıfa ait değil."
+                }
+            }
+        }
+        val criteria = run?.let { getCriteriaForRun(it) } ?: rubricDao.getCriteriaForRubric(rubricId)
+        val assessments = if (run != null) {
+            assessmentDao.getForRun(classroomId, run.id)
+        } else emptyList<AssessmentEntity>()
+        val assessmentsByStudent = assessments.associateBy { it.studentId }
+        val rows = studentDao.getStudentsForClassroom(classroomId).map { student ->
+            val assessment = assessmentsByStudent[student.id]
+            val scores = assessment?.let { recorded ->
+                assessmentDao.getScoresForAssessment(recorded.id).associate { it.criterionId to it.points }
+            }.orEmpty()
             CsvStudent(
-                number = student.studentNumber,
-                firstName = student.firstName,
-                lastName = student.lastName,
-                scores = scores,
-                definitiveTotal = assessment?.definitiveTotal,
-                isCompleted = assessment?.isCompleted == true,
-                scoredCount = assessment?.scoredCount ?: 0
+                number = student.studentNumber, firstName = student.firstName, lastName = student.lastName,
+                scores = scores, definitiveTotal = assessment?.definitiveTotal,
+                isCompleted = assessment?.isCompleted == true, scoredCount = assessment?.scoredCount ?: 0
             )
         }
-        CsvExportFormatter.generate(criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) }, studentRows)
+        return PdfReportSnapshot(
+            classroomName = classroom.name,
+            academicYear = classroom.academicYear,
+            rubricTitle = run?.let { "${it.title} · ${rubric.title}" } ?: rubric.title,
+            criteria = criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) },
+            students = rows
+        )
     }
-
 
     /** Sessions are independent of editable classroom groups, and scoped to a rubric. */
     fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>> =
@@ -517,6 +672,7 @@ class PuanlaRepository(
     suspend fun generateFullBackupJson(): String = db.withTransaction {
         val dao = db.backupDao()
         backupJson.encodeToString(BackupSnapshot(
+            version = 3,
             classrooms = dao.classrooms(),
             students = dao.students(),
             rubrics = dao.rubrics(),
@@ -529,19 +685,51 @@ class PuanlaRepository(
             groupSessions = dao.groupSessions(),
             groupAssessments = dao.groupAssessments(),
             groupScores = dao.groupScores(),
-            groupMemberResults = dao.groupMemberResults()
+            groupMemberResults = dao.groupMemberResults(),
+            runs = dao.runs(),
+            runClassrooms = dao.runClassrooms()
         ).also { it.validate() })
     }
 
     suspend fun restoreBackupFromJson(jsonString: String): Result<Int> {
         return try {
             // No writes before this completes. Unsupported old/partial formats are rejected.
-            val snapshot = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+            val imported = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+            imported.validate()
+            // v1/v2 backups have no runs; retain every mark and assign each
+            // original classroom/rubric pair to its own legacy run.
+            val snapshot = if (imported.version < 3) {
+                val grouped = imported.assessments.distinctBy { it.classroomId to it.rubricId }
+                val legacy = grouped.map {
+                    AssessmentRunEntity(
+                        id = "legacy_${it.classroomId}_${it.rubricId}",
+                        rubricId = it.rubricId,
+                        title = "Önceki değerlendirme",
+                        criteriaSnapshotJson = imported.criteria.filter { criterion ->
+                            criterion.rubricId == it.rubricId
+                        }.takeIf { it.isNotEmpty() }?.let { criteria -> Json.encodeToString(criteria) } ?: "",
+                        createdAt = 0
+                    )
+                }
+                imported.copy(
+                    version = 3,
+                    runs = legacy,
+                    runClassrooms = grouped.map {
+                        val id = "legacy_${it.classroomId}_${it.rubricId}"
+                        RunClassroomEntity("assign_$id", id, it.classroomId)
+                    },
+                    assessments = imported.assessments.map {
+                        it.copy(runId = "legacy_${it.classroomId}_${it.rubricId}")
+                    }
+                )
+            } else imported
             snapshot.validate()
             db.withTransaction {
                 val dao = db.backupDao()
                 dao.clearScores()
                 dao.clearAssessments()
+                dao.clearRunClassrooms()
+                dao.clearRuns()
                 dao.clearGroupMemberResults()
                 dao.clearGroupScores()
                 dao.clearGroupAssessments()
@@ -558,6 +746,8 @@ class PuanlaRepository(
                 dao.putStudents(snapshot.students)
                 dao.putCriteria(snapshot.criteria)
                 dao.putLevels(snapshot.levels)
+                dao.putRuns(snapshot.runs)
+                dao.putRunClassrooms(snapshot.runClassrooms)
                 dao.putAssessments(snapshot.assessments)
                 dao.putScores(snapshot.scores)
                 dao.putGroups(snapshot.groups)

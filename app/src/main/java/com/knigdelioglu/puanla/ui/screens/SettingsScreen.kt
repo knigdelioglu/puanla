@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -100,6 +101,11 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val reportPrefs = remember(context) {
+        context.getSharedPreferences("report_pdf_details", android.content.Context.MODE_PRIVATE)
+    }
+    var reportTeacherName by remember { mutableStateOf(reportPrefs.getString("teacher", "") ?: "") }
+    var reportCourseName by remember { mutableStateOf(reportPrefs.getString("course", "") ?: "") }
     var pendingBackup by remember { mutableStateOf<String?>(null) }
     var pendingPreview by remember { mutableStateOf<BackupPreview?>(null) }
     var backupSelectionSerial by remember { mutableStateOf(0) }
@@ -183,6 +189,44 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
         }
 
         Divider(color = ArcTheme.colors.borderSubtle)
+
+        Text(
+            text = "Öğretmen ve Rapor Bilgileri",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = ArcTheme.colors.foreground
+        )
+        ArcCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "PDF imza alanına otomatik eklenir. Bir kez yazmanız yeterlidir.",
+                    color = ArcTheme.colors.textSecondary
+                )
+                OutlinedTextField(
+                    value = reportTeacherName,
+                    onValueChange = {
+                        reportTeacherName = it
+                        reportPrefs.edit().putString("teacher", it).apply()
+                    },
+                    label = { Text("Öğretmenin adı soyadı") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = reportCourseName,
+                    onValueChange = {
+                        reportCourseName = it
+                        reportPrefs.edit().putString("course", it).apply()
+                    },
+                    label = { Text("Ders adı") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
 
         // Visuals and Ergonomics Section
         Text(
@@ -417,7 +461,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                         message = "Yedek tarihi: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR")).format(Date(preview.exportedAt))}. " +
                             "${preview.classrooms} sınıf, ${preview.students} öğrenci, " +
                             "${preview.rubrics} rubrik, ${preview.assessments} değerlendirme, " +
-                            "${preview.scores} ölçüt puanı ve ${preview.groups} grup. " +
+                            "${preview.scores} ölçüt puanı, ${preview.evaluationRuns} değerlendirme oturumu ve ${preview.groups} grup. " +
                             "Bu işlem cihazdaki mevcut TÜM verilerin yerine bu yedeği koyacak. " +
                             "Devam etmeden önce mevcut verilerin ayrı bir yedeğini alın.",
                         type = ArcAlertType.Warning

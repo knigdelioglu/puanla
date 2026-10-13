@@ -14,7 +14,8 @@ data class BackupPreview(
     val rubrics: Int,
     val assessments: Int,
     val scores: Int,
-    val groups: Int
+    val groups: Int,
+    val evaluationRuns: Int = 0
 )
 
 object BackupImport {
@@ -51,7 +52,8 @@ object BackupImport {
             rubrics = snapshot.rubrics.size,
             assessments = snapshot.assessments.size,
             scores = snapshot.scores.size,
-            groups = snapshot.groups.size
+            groups = snapshot.groups.size,
+            evaluationRuns = snapshot.runs.size
         )
     }
 }
