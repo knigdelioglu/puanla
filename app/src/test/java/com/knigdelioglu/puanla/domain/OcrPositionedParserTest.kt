@@ -141,4 +141,114 @@ class OcrPositionedParserTest {
         assertEquals(2, students.size)
         assertEquals(listOf("245", "246"), students.map { it.studentNumber })
     }
+
+    @Test fun misleadingMlKitLineIndicesDoNotMoveSurnamesToAdjacentStudents() {
+        val header = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("NO", 162, 10, 18, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("ADI", 240, 10, 30, 16, recognizedLineIndex = 0),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16, recognizedLineIndex = 0)
+        )
+        // A bad ML Kit line association reports every surname as belonging to the
+        // next student's text line. Pixel geometry, not this ID, must win.
+        val students = (0 until 20).flatMap { index ->
+            val y = 65 + index * 29
+            listOf(
+                OcrPositionedWord((245 + index).toString(), 128, y, 30, 16,
+                    recognizedLineIndex = index + 1),
+                OcrPositionedWord("AD$index", 242, y, 48, 16,
+                    recognizedLineIndex = index + 1),
+                OcrPositionedWord("SOYAD$index", 396, y, 70, 16,
+                    recognizedLineIndex = index + 2)
+            )
+        }
+        val rows = OcrRosterParser.parsePositionedWords(header + students)
+        assertEquals(20, rows.size)
+        rows.forEachIndexed { index, row ->
+            assertEquals((245 + index).toString(), row.studentNumber)
+            assertEquals("AD$index", row.firstName)
+            assertEquals("SOYAD$index", row.lastName)
+            assertFalse(row.isAmbiguous)
+            assertFalse(row.isApproved)
+        }
+    }
+
+    @Test fun missingSchoolNumberUsesSequenceAnchorWithoutBorrowingNeighbors() {
+        val header = listOf(
+            OcrPositionedWord("S.NO", 10, 10, 32, 16),
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16)
+        )
+        val body = listOf(
+            OcrPositionedWord("1", 20, 65, 9, 16),
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 65, 16),
+            OcrPositionedWord("2", 20, 95, 9, 16),
+            OcrPositionedWord("MEHMET", 242, 95, 60, 16),
+            OcrPositionedWord("DEMİR", 396, 95, 58, 16),
+            OcrPositionedWord("3", 20, 125, 9, 16),
+            OcrPositionedWord("247", 128, 125, 30, 16),
+            OcrPositionedWord("ELİF", 242, 125, 40, 16),
+            OcrPositionedWord("ÇELİK", 396, 125, 58, 16)
+        )
+        val rows = OcrRosterParser.parsePositionedWords(header + body)
+        assertEquals(3, rows.size)
+        assertEquals(listOf("245", "", "247"), rows.map { it.studentNumber })
+        assertEquals(listOf("YILMAZ", "DEMİR", "ÇELİK"), rows.map { it.lastName })
+        assertEquals("MEHMET", rows[1].firstName)
+        assertTrue(rows[1].isAmbiguous)
+    }
+
+    @Test fun missingBothNumberAndSequenceCreatesAmbiguousGapRow() {
+        val header = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16)
+        )
+        val body = listOf(
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 65, 16),
+            OcrPositionedWord("MEHMET", 242, 95, 60, 16),
+            OcrPositionedWord("DEMİR", 396, 95, 58, 16),
+            OcrPositionedWord("247", 128, 125, 30, 16),
+            OcrPositionedWord("ELİF", 242, 125, 40, 16),
+            OcrPositionedWord("ÇELİK", 396, 125, 58, 16)
+        )
+        val rows = OcrRosterParser.parsePositionedWords(header + body)
+        assertEquals(3, rows.size)
+        assertEquals(listOf("AYŞE", "MEHMET", "ELİF"), rows.map { it.firstName })
+        assertEquals(listOf("YILMAZ", "DEMİR", "ÇELİK"), rows.map { it.lastName })
+        assertEquals("", rows[1].studentNumber)
+        assertTrue(rows[1].isAmbiguous)
+    }
+
+    @Test fun missingSurnameIsNeverCompletedFromFollowingRow() {
+        val header = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16)
+        )
+        val body = listOf(
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16),
+            OcrPositionedWord("246", 128, 95, 30, 16),
+            OcrPositionedWord("MEHMET", 242, 95, 60, 16),
+            OcrPositionedWord("247", 128, 125, 30, 16),
+            OcrPositionedWord("ELİF", 242, 125, 40, 16),
+            OcrPositionedWord("ÇELİK", 396, 125, 58, 16)
+        )
+        val rows = OcrRosterParser.parsePositionedWords(header + body)
+        assertEquals(3, rows.size)
+        assertEquals("", rows[1].lastName)
+        assertTrue(rows[1].isAmbiguous)
+        assertEquals("ÇELİK", rows[2].lastName)
+    }
+
 }
