@@ -48,6 +48,26 @@ class EvaluationRunBackupTest {
         assertEquals(snapshot.runs, roundtrip.runs)
     }
 
+    @Test fun historicalRubricPointsAreValidatedAgainstFrozenRunSnapshot() {
+        val original = fixture()
+        val legacyCriterion = original.criteria.single()
+        val frozen = Json.encodeToString(listOf(legacyCriterion))
+        val snapshot = original.copy(
+            // An edited template must not retroactively reduce past assessment scores.
+            criteria = listOf(legacyCriterion.copy(maxPoints = 60)),
+            runs = original.runs.map { it.copy(criteriaSnapshotJson = frozen) }
+        )
+        snapshot.validate()
+        val invalid = snapshot.copy(runs = snapshot.runs.map {
+            it.copy(criteriaSnapshotJson = "not JSON")
+        })
+        assertThrows(IllegalArgumentException::class.java) { invalid.validate() }
+        val wrongLimit = snapshot.copy(runs = snapshot.runs.map {
+            it.copy(criteriaSnapshotJson = Json.encodeToString(listOf(legacyCriterion.copy(maxPoints = 50))))
+        })
+        assertThrows(IllegalArgumentException::class.java) { wrongLimit.validate() }
+    }
+
     @Test fun duplicateStudentWithinSameRunIsRejected() {
         val snapshot = fixture()
         assertThrows(IllegalArgumentException::class.java) {
