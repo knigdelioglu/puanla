@@ -88,6 +88,7 @@ import java.util.Locale
 fun ReportsScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
+    val selectedRun by viewModel.selectedRun.collectAsState()
     val students by viewModel.students.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
 
@@ -267,7 +268,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     color = colors.foreground
                 )
                 Text(
-                    text = "${selectedClassroom?.name ?: "Sınıf"} • ${selectedRubric?.title ?: "Rubrik"}",
+                    text = "${selectedClassroom?.name ?: "Sınıf"} • ${selectedRun?.title ?: "Değerlendirme seçilmedi"}",
                     fontSize = 14.sp,
                     color = colors.textSecondary
                 )
@@ -277,7 +278,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 ArcButton(
                     text = "PDF Raporu",
                     onClick = { showPdfDialog = true },
-                    enabled = selectedClassroom != null && selectedRubric != null && !pdfGenerating,
+                    enabled = selectedClassroom != null && selectedRun != null && !pdfGenerating,
                     variant = ArcButtonVariant.Outline,
                     size = ArcButtonSize.Md
                 )
@@ -299,7 +300,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     }
                 },
                     onMenuClick = { csvActionsOpen = true },
-                    enabled = selectedClassroom != null && selectedRubric != null && !csvGenerating,
+                    enabled = selectedClassroom != null && selectedRun != null && !csvGenerating,
                     variant = ArcButtonVariant.Primary,
                     size = ArcButtonSize.Md,
                     primaryContent = { Text("CSV Dışa Aktar") }
@@ -332,11 +333,11 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             }
         }
 
-        if (selectedClassroom == null || selectedRubric == null) {
+        if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
             Box(modifier = Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) {
                 ArcEmptyState(
-                    title = "Sınıf veya Rubrik Seçilmedi",
-                    description = "Raporları incelemek için önce bir sınıf ve rubrik seçiniz."
+                    title = "Değerlendirme Seçilmedi",
+                    description = "Sınıf ve rubriği seçin, ardından üstteki Değerlendirmeler menüsünden raporlamak istediğiniz oturumu açın."
                 )
             }
             return@Column
@@ -420,7 +421,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 title = if (filterValid) "Tarihe göre filtrelendi" else "Geçersiz tarih aralığı",
                 message = if (filterValid) {
                     "Yalnızca son değişikliği bu tarihlerde yapılan değerlendirmeler gösteriliyor. " +
-                        "Bu geçmiş tarihteki notların anlık görüntüsü değildir. CSV dışa aktarma ise tüm sınıfın güncel sonuçlarını içerir."
+                        "Bu geçmiş tarihteki notların anlık görüntüsü değildir. PDF ve CSV seçili oturumun güncel sonuçlarını içerir."
                 } else "Bitiş tarihi başlangıçtan önce olamaz. Aralığı düzeltin veya filtreyi sıfırlayın.",
                 type = if (filterValid) ArcAlertType.Info else ArcAlertType.Warning
             )
@@ -581,7 +582,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     Text("Ölçüt Bazlı PDF Raporu", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
                     Text(
                         "Seçili sınıfın güncel bireysel puanları, ölçüt açıklamaları, sınıf özeti ve imza alanı yer alır. " +
-                            "Tarih filtresinden bağımsız olarak tüm sınıfın güncel kayıtları kullanılır. Grup notları karıştırılmaz.",
+                            "Tarih filtresinden bağımsız olarak seçili değerlendirme ve sınıfın puanları kullanılır. Grup notları karıştırılmaz.",
                         fontSize = 12.sp,
                         color = colors.textSecondary
                     )
@@ -634,7 +635,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${snapshot.classroomName}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${snapshot.classroomName}-${selectedRun?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
