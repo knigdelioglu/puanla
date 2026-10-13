@@ -29,8 +29,16 @@ data class OcrStudentRow(
     val sourceBottom: Int? = null,
     /** Dimensions of the oriented scan bitmap that produced the source boxes. */
     val imageWidth: Int? = null,
-    val imageHeight: Int? = null
+    val imageHeight: Int? = null,
+    val firstNameCell: OcrCellRegion? = null,
+    val lastNameCell: OcrCellRegion? = null,
+    /** A secondary OCR reading is only a suggestion; it never silently replaces identity. */
+    val firstNameSuggestion: String? = null,
+    val lastNameSuggestion: String? = null
 )
+
+/** Disjoint image-space cell bounds; used for narrowly scoped second OCR passes. */
+data class OcrCellRegion(val left: Int, val top: Int, val right: Int, val bottom: Int)
 
 /** ML Kit element boundary data used for geometry-based column isolation and tests. */
 data class OcrPositionedWord(
@@ -103,12 +111,12 @@ object OcrRosterParser {
     suspend fun processBitmap(bitmap: Bitmap): List<OcrStudentRow> {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         return try {
-            val image = InputImage.fromBitmap(bitmap, 0)
-            val recognized = suspendCancellableCoroutine<Text> { cont ->
-                recognizer.process(image)
+            suspend fun recognize(source: Bitmap): Text = suspendCancellableCoroutine { cont ->
+                recognizer.process(InputImage.fromBitmap(source, 0))
                     .addOnSuccessListener { if (cont.isActive) cont.resume(it) }
                     .addOnFailureListener { if (cont.isActive) cont.resumeWith(Result.failure(it)) }
             }
+            val recognized = recognize(bitmap)
             var recognizedLineIndex = 0
             val words = recognized.textBlocks.flatMap { block ->
                 block.lines.flatMap { line ->
@@ -116,19 +124,54 @@ object OcrRosterParser {
                     line.elements.mapNotNull { element ->
                         element.boundingBox?.let { box ->
                             OcrPositionedWord(
-                                element.text,
-                                box.left,
-                                box.top,
-                                box.width(),
-                                box.height(),
+                                element.text, box.left, box.top, box.width(), box.height(),
                                 recognizedLineIndex = lineIndex
                             )
                         }
                     }
                 }
             }
-            parsePositionedWords(words).map { candidate ->
-                candidate.copy(imageWidth = bitmap.width, imageHeight = bitmap.height)
+            val candidates = parsePositionedWords(words).map {
+                it.copy(imageWidth = bitmap.width, imageHeight = bitmap.height)
+            }
+            // Only uncertain name cells are re-read. Keep the first result and
+            // the original ambiguity flag: secondary OCR must never auto-approve
+            // a pupil or borrow another physical row's words.
+            var retries = 0
+            suspend fun retry(region: OcrCellRegion?): String? {
+                if (region == null || retries >= 12) return null
+                val left = region.left.coerceIn(0, bitmap.width - 1)
+                val top = region.top.coerceIn(0, bitmap.height - 1)
+                val right = region.right.coerceIn(left + 1, bitmap.width)
+                val bottom = region.bottom.coerceIn(top + 1, bitmap.height)
+                if (right - left < 10 || bottom - top < 8) return null
+                retries++
+                val cellBitmap = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+                return try {
+                    val raw = recognize(cellBitmap).text
+                    raw.replace(Regex("\\s+"), " ").trim()
+                        .takeIf { it.any(Char::isLetter) && it.length <= 100 }
+                } catch (_: Exception) {
+                    null // A failed retry must never discard the original OCR result.
+                } finally {
+                    if (cellBitmap !== bitmap) cellBitmap.recycle()
+                }
+            }
+            candidates.map { candidate ->
+                if (!candidate.isAmbiguous) candidate else {
+                    val rereadFirst = if (candidate.firstName.isBlank()) {
+                        retry(candidate.firstNameCell)
+                    } else null
+                    val rereadLast = if (candidate.lastName.isBlank() ||
+                        candidate.ambiguityReason?.contains("hizası") == true
+                    ) {
+                        retry(candidate.lastNameCell)
+                    } else null
+                    candidate.copy(
+                        firstNameSuggestion = rereadFirst,
+                        lastNameSuggestion = rereadLast
+                    )
+                }
             }
         } finally {
             recognizer.close()
@@ -353,6 +396,21 @@ object OcrRosterParser {
                 lastName.isBlank() || !lastNameColumn
             val ambiguous = missingFields || conflictingRead || misaligned ||
                 schoolCandidates.size > 1
+            // Project the disjoint row band back to each column's local image
+            // coordinates. On a skewed page this avoids cropping a neighbor's text.
+            fun cellRegion(left: Double, right: Double, columnX: Double): OcrCellRegion? {
+                if (!lastNameColumn || !left.isFinite() || !right.isFinite() ||
+                    right <= left) return null
+                val topY = (top + slope * columnX).toInt().coerceAtLeast(0)
+                val bottomY = (bottom + slope * columnX).toInt()
+                if (bottomY <= topY) return null
+                return OcrCellRegion(left.toInt().coerceAtLeast(0), topY,
+                    right.toInt(), bottomY)
+            }
+            val lastRight = if (metadataStart.isFinite()) metadataStart
+                else surnameX!! + (surnameX - nameX)
+            val firstCell = cellRegion(schoolRight, surnameBoundary, nameX)
+            val lastCell = cellRegion(surnameBoundary, lastRight, surnameX ?: nameX)
             output.add(
                 OcrStudentRow(
                     rawIndex = output.size + 1,
@@ -371,7 +429,9 @@ object OcrRosterParser {
                     sourceLeft = rowLeft,
                     sourceTop = rowTop,
                     sourceRight = rowRight,
-                    sourceBottom = rowBottom
+                    sourceBottom = rowBottom,
+                    firstNameCell = firstCell,
+                    lastNameCell = lastCell
                 )
             )
         }
