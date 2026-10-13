@@ -102,9 +102,12 @@ class PuanlaRepository(
     }
 
     suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
-        require(db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
-            groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty()) {
-            "Bu sınıfta grup veya grup değerlendirme oturumu var. Önce bu kayıtları düzenleyin."
+        require(
+            db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
+                groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty() &&
+                runDao.countAssignmentsForClassroom(classroom.id) == 0
+        ) {
+            "Bu sınıfa bağlı değerlendirme veya grup kaydı var. Not kaybını önlemek için sınıf silinemez."
         }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
@@ -433,17 +436,33 @@ class PuanlaRepository(
         previous
     }
 
-    suspend fun clearAssessmentScores(assessmentId: String, studentId: String, rubricId: String) {
+    /**
+     * Clear only the requested assessment; a student may have several attempts
+     * with the same rubric. Archived attempts are immutable.
+     */
+    suspend fun clearAssessmentScores(assessmentId: String, studentId: String, rubricId: String) =
         db.withTransaction {
-            val assessment = assessmentDao.getAssessmentForStudent(studentId, rubricId)
-            require(assessment?.id == assessmentId) { "Değerlendirme kimliği uyuşmuyor." }
-            assessmentDao.clearScoresForAssessment(assessmentId)
+            val assessment = requireNotNull(assessmentDao.getAssessmentById(assessmentId)) {
+                "Değerlendirme bulunamadı."
+            }
+            require(assessment.studentId == studentId && assessment.rubricId == rubricId) {
+                "Değerlendirme kimliği uyuşmuyor."
+            }
+            val run = requireNotNull(runDao.get(assessment.runId)) { "Değerlendirme oturumu yok." }
+            require(run.status == "ACTIVE" && run.rubricId == rubricId) {
+                "Arşivlenmiş değerlendirme değiştirilemez."
+            }
+            require(runDao.containsClassroom(run.id, assessment.classroomId)) {
+                "Oturum ve sınıf ilişkisi geçersiz."
+            }
+            assessmentDao.clearScoresForAssessment(assessment.id)
             assessmentDao.insertOrUpdateAssessment(
-                assessment.copy(isCompleted = false, definitiveTotal = null, scoredCount = 0,
-                    lastModifiedAt = System.currentTimeMillis())
+                assessment.copy(
+                    isCompleted = false, definitiveTotal = null, scoredCount = 0,
+                    lastModifiedAt = System.currentTimeMillis()
+                )
             )
         }
-    }
 
     // Group Tasks
     fun getGroupTasksFlow(classroomId: String): Flow<List<GroupTaskEntity>> =
