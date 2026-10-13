@@ -13,6 +13,8 @@ interface BackupDao {
     @Query("SELECT * FROM rubrics") suspend fun rubrics(): List<RubricEntity>
     @Query("SELECT * FROM criteria") suspend fun criteria(): List<CriterionEntity>
     @Query("SELECT * FROM criterion_levels") suspend fun levels(): List<CriterionLevelEntity>
+    @Query("SELECT * FROM assessment_runs") suspend fun runs(): List<AssessmentRunEntity>
+    @Query("SELECT * FROM run_classrooms") suspend fun runClassrooms(): List<RunClassroomEntity>
     @Query("SELECT * FROM assessments") suspend fun assessments(): List<AssessmentEntity>
     @Query("SELECT * FROM criterion_scores") suspend fun scores(): List<CriterionScoreEntity>
     @Query("SELECT * FROM group_tasks") suspend fun groups(): List<GroupTaskEntity>
@@ -24,6 +26,8 @@ interface BackupDao {
 
     @Query("DELETE FROM criterion_scores") suspend fun clearScores()
     @Query("DELETE FROM assessments") suspend fun clearAssessments()
+    @Query("DELETE FROM run_classrooms") suspend fun clearRunClassrooms()
+    @Query("DELETE FROM assessment_runs") suspend fun clearRuns()
     @Query("DELETE FROM group_member_results") suspend fun clearGroupMemberResults()
     @Query("DELETE FROM group_criterion_scores") suspend fun clearGroupScores()
     @Query("DELETE FROM group_assessments") suspend fun clearGroupAssessments()
@@ -41,6 +45,8 @@ interface BackupDao {
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putStudents(rows: List<StudentEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putCriteria(rows: List<CriterionEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putLevels(rows: List<CriterionLevelEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putRuns(rows: List<AssessmentRunEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putRunClassrooms(rows: List<RunClassroomEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putAssessments(rows: List<AssessmentEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putScores(rows: List<CriterionScoreEntity>)
     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun putGroups(rows: List<GroupTaskEntity>)
