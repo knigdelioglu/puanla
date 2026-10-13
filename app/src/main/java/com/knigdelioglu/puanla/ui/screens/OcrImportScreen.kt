@@ -1,6 +1,13 @@
 package com.knigdelioglu.puanla.ui.screens
 
 import android.graphics.Bitmap
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.result.IntentSenderRequest
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.graphicsLayer
@@ -208,6 +215,32 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
         }
     }
     val scope = rememberCoroutineScope()
+    var scannerError by remember { mutableStateOf<String?>(null) }
+    var scannerStarting by remember { mutableStateOf(false) }
+    val scannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        scannerStarting = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val imageUri = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+                ?.pages?.firstOrNull()?.imageUri
+            if (imageUri == null) {
+                scannerError = "Belge tarayıcı fotoğraf üretmedi. Galeriden fotoğraf seçebilirsiniz."
+            } else {
+                scannerError = null
+                viewModel.ocrSelectedImageUri.value = imageUri
+                scope.launch {
+                    try {
+                        viewModel.startOcrFromBitmap(decodeOcrImage(context, imageUri))
+                    } catch (cancel: kotlinx.coroutines.CancellationException) {
+                        throw cancel
+                    } catch (error: Exception) {
+                        viewModel.reportOcrImageError("Düzeltilmiş görsel okunamadı: ${error.message}")
+                    }
+                }
+            }
+        }
+    }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             viewModel.ocrSelectedImageUri.value = uri
@@ -229,6 +262,59 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Optional Google Play Services flow. It can deskew/crop a previously
+        // photographed roster imported from the gallery, or scan a paper roster.
+        // The ordinary photo picker remains usable on unsupported devices.
+        ArcButton(
+            text = if (scannerStarting) "Belge tarayıcı açılıyor…" else "Belgeyi Tara / Perspektifi Düzelt",
+            enabled = !scannerStarting,
+            size = ArcButtonSize.Md,
+            variant = ArcButtonVariant.Secondary,
+            onClick = {
+                scannerError = null
+                val activity = generateSequence<Context>(context) { candidate ->
+                    (candidate as? ContextWrapper)?.baseContext
+                }.filterIsInstance<Activity>().firstOrNull()
+                if (activity == null) {
+                    scannerError = "Tarayıcı başlatılamadı. Fotoğraf seçme yolunu kullanabilirsiniz."
+                } else {
+                    scannerStarting = true
+                    val options = GmsDocumentScannerOptions.Builder()
+                        .setGalleryImportAllowed(true)
+                        .setPageLimit(1)
+                        .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+                        .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+                        .build()
+                    try {
+                        GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
+                            .addOnSuccessListener { sender ->
+                                try {
+                                    scannerLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                                } catch (error: Exception) {
+                                    scannerStarting = false
+                                    scannerError = "Tarayıcı açılmadı: ${error.message}"
+                                }
+                            }
+                            .addOnFailureListener { error ->
+                                scannerStarting = false
+                                scannerError = "Belge tarayıcı kullanılamıyor: ${error.message}. Galeriden fotoğraf seçebilirsiniz."
+                            }
+                    } catch (error: Exception) {
+                        scannerStarting = false
+                        scannerError = "Tarayıcı başlatılamadı: ${error.message}. Galeriden fotoğraf seçebilirsiniz."
+                    }
+                }
+            }
+        )
+        Text(
+            text = "Eğik fotoğrafı galeriden seçip kenarlarını düzeltebilirsiniz. Bu özellik Google Play Hizmetleri gerektirir; normal fotoğraf aktarımı da kullanılabilir.",
+            fontSize = 12.sp,
+            color = ArcTheme.colors.textSecondary
+        )
+        scannerError?.let {
+            ArcAlert(title = "Belge Tarayıcı", message = it, type = ArcAlertType.Warning)
+        }
+
         ArcFileDropzone(
             onSelectFile = { imagePicker.launch("image/*") },
             title = "Basılı Sınıf Listesi Fotoğrafı Seç",
