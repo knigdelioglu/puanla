@@ -48,6 +48,7 @@ class PuanlaRepository(
     private val studentDao = db.studentDao()
     private val rubricDao = db.rubricDao()
     private val assessmentDao = db.assessmentDao()
+    private val runDao = db.assessmentRunDao()
     private val groupTaskDao = db.groupTaskDao()
     private val auditLogDao = db.auditLogDao()
 
@@ -253,6 +254,82 @@ class PuanlaRepository(
     fun getCriteriaForRubricFlow(rubricId: String): Flow<List<CriterionEntity>> =
         rubricDao.getCriteriaForRubricFlow(rubricId)
 
+    // Distinct evaluation runs reuse the source rubric but never share marks.
+    fun observeRunsForClassroom(classroomId: String, rubricId: String): Flow<List<AssessmentRunEntity>> =
+        runDao.observeForClassroom(classroomId, rubricId)
+
+    fun observeRuns(): Flow<List<AssessmentRunEntity>> = runDao.observeAll()
+
+    suspend fun getRun(runId: String): AssessmentRunEntity? = runDao.get(runId)
+
+    suspend fun getRunClassrooms(runId: String): List<RunClassroomEntity> = runDao.getAssignments(runId)
+
+    suspend fun getCriteriaForRun(run: AssessmentRunEntity): List<CriterionEntity> {
+        return if (run.criteriaSnapshotJson.isBlank()) {
+            rubricDao.getCriteriaForRubric(run.rubricId)
+        } else {
+            Json.decodeFromString<List<CriterionEntity>>(run.criteriaSnapshotJson)
+        }
+    }
+
+    suspend fun createAssessmentRun(
+        rubricId: String, title: String, classroomIds: List<String>
+    ): AssessmentRunEntity = db.withTransaction {
+        require(title.trim().isNotEmpty()) { "Değerlendirme adı boş olamaz." }
+        val ids = classroomIds.distinct()
+        require(ids.isNotEmpty()) { "En az bir sınıf seçin." }
+        val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds) { "Doğrulanmamış rubrik kullanılamaz." }
+        require(ids.all { id -> classroomDao.getClassroomById(id)?.grade == rubric.grade }) {
+            "Sınıflar rubrik düzeyine uygun değil."
+        }
+        val criteria = rubricDao.getCriteriaForRubric(rubricId)
+        require(criteria.isNotEmpty()) { "Rubrikte ölçüt bulunamadı." }
+        val run = AssessmentRunEntity(
+            id = UUID.randomUUID().toString(),
+            rubricId = rubricId,
+            title = title.trim(),
+            criteriaSnapshotJson = Json.encodeToString(criteria)
+        )
+        runDao.insert(run)
+        runDao.assign(ids.map { RunClassroomEntity(UUID.randomUUID().toString(), run.id, it) })
+        run
+    }
+
+    suspend fun addClassroomsToRun(runId: String, classroomIds: List<String>) = db.withTransaction {
+        val run = requireNotNull(runDao.get(runId)) { "Değerlendirme bulunamadı." }
+        require(run.status == "ACTIVE") { "Arşivlenmiş değerlendirme düzenlenemez." }
+        val rubric = requireNotNull(rubricDao.getRubricById(run.rubricId))
+        val ids = classroomIds.distinct()
+        require(ids.all { id -> classroomDao.getClassroomById(id)?.grade == rubric.grade }) {
+            "Sınıf rubrik düzeyine uygun değil."
+        }
+        runDao.assign(ids.map { RunClassroomEntity(UUID.randomUUID().toString(), runId, it) })
+    }
+
+    suspend fun archiveRun(runId: String, archived: Boolean) = db.withTransaction {
+        val run = requireNotNull(runDao.get(runId))
+        runDao.update(run.copy(status = if (archived) "ARCHIVED" else "ACTIVE"))
+    }
+
+    private suspend fun ensureLegacyRun(classroomId: String, rubricId: String): String {
+        val id = "legacy_${classroomId}_${rubricId}"
+        runDao.insertIfAbsent(AssessmentRunEntity(id, rubricId, "Önceki değerlendirme", "", "ACTIVE", 0))
+        runDao.assign(listOf(RunClassroomEntity("assign_$id", id, classroomId)))
+        return id
+    }
+
+    fun getRunAssessmentsFlow(classroomId: String, runId: String): Flow<List<AssessmentEntity>> =
+        assessmentDao.observeForRun(classroomId, runId)
+
+    suspend fun getRunAssessmentForStudent(studentId: String, runId: String): AssessmentEntity? =
+        assessmentDao.getStudentInRun(studentId, runId)
+
+    suspend fun getRunCriterionScoresForStudent(studentId: String, runId: String): Map<String, Int?> {
+        val assessment = assessmentDao.getStudentInRun(studentId, runId) ?: return emptyMap()
+        return assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
+    }
+
     // Assessments & Scoring
     fun getAssessmentsFlow(classroomId: String, rubricId: String): Flow<List<AssessmentEntity>> =
         assessmentDao.getAssessmentsFlow(classroomId, rubricId)
@@ -285,7 +362,8 @@ class PuanlaRepository(
         rubricId: String,
         criterionId: String,
         scorePoints: Int?,
-        evidenceNote: String? = null
+        evidenceNote: String? = null,
+        runId: String? = null
     ): CriterionScoreEntity? = db.withTransaction {
         val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
         val student = requireNotNull(studentDao.getStudentById(studentId)) { "Öğrenci bulunamadı." }
@@ -297,12 +375,26 @@ class PuanlaRepository(
         require(criterion.rubricId == rubric.id) { "Ölçüt başka rubriğe ait." }
         require(scorePoints == null || scorePoints in 0..criterion.maxPoints) { "Puan geçerli ölçüt aralığı dışında." }
 
-        val existing = assessmentDao.getAssessmentForStudent(studentId, rubricId)
+        val actualRunId = runId ?: ensureLegacyRun(classroomId, rubricId)
+        val run = requireNotNull(runDao.get(actualRunId)) { "Değerlendirme oturumu bulunamadı." }
+        require(run.rubricId == rubricId && runDao.containsClassroom(actualRunId, classroomId)) {
+            "Bu sınıf değerlendirmeye bağlı değil."
+        }
+        require(run.status == "ACTIVE") { "Arşivlenmiş değerlendirme düzenlenemez." }
+        val frozenCriteria = getCriteriaForRun(run)
+        val frozenCriterion = requireNotNull(frozenCriteria.firstOrNull { it.id == criterionId }) {
+            "Ölçüt bu değerlendirmeye ait değil."
+        }
+        require(scorePoints == null || scorePoints in 0..frozenCriterion.maxPoints) {
+            "Puan geçerli ölçüt aralığında değil."
+        }
+        val existing = assessmentDao.getStudentInRun(studentId, actualRunId)
         val assessment = existing ?: AssessmentEntity(
-            id = "assess_${studentId}_${rubricId}",
+            id = "assess_${studentId}_${actualRunId}",
             classroomId = classroomId,
             studentId = studentId,
-            rubricId = rubricId
+            rubricId = rubricId,
+            runId = actualRunId
         )
         require(assessment.classroomId == classroomId) { "Değerlendirme başka sınıfa ait." }
         if (existing == null) assessmentDao.insertOrUpdateAssessment(assessment)
@@ -318,7 +410,7 @@ class PuanlaRepository(
                 scoredAt = System.currentTimeMillis()
             )
         )
-        val criteria = rubricDao.getCriteriaForRubric(rubricId)
+        val criteria = frozenCriteria
         val scoreMap = assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
         val summary = summarizeScores(criteria.map { CriterionScore(it.maxPoints, scoreMap[it.id]) })
         assessmentDao.insertOrUpdateAssessment(
