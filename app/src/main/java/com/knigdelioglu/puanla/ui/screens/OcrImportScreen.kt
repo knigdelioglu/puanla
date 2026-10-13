@@ -12,6 +12,8 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -132,7 +134,7 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
         }
 
         when (step) {
-            0 -> OcrStepPhotoSelection(viewModel)
+            0 -> OcrStepPhotoSelection(viewModel, modifier = Modifier.weight(1f))
             1 -> OcrStepScanning(isScanning, ocrError)
             3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
         }
@@ -194,7 +196,7 @@ private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): 
     OcrImageDecoder.decode(context, uri, maxDimension = 2400)
 
 @Composable
-private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
+private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val chosenPhoto by viewModel.ocrSelectedImageUri.collectAsState()
     val selectedFileInfo by produceState(initialValue = "Seçili fotoğraf" to "Görsel dosyası", key1 = chosenPhoto) {
@@ -258,7 +260,7 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
     }
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
