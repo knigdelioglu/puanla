@@ -48,6 +48,8 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     val rubrics by viewModel.rubrics.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
     var showRubricCards by remember { mutableStateOf(false) }
+    var showEvaluationRuns by remember { mutableStateOf(false) }
+    val selectedRun by viewModel.selectedRun.collectAsState()
     val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
     ArcPageHeader(
@@ -90,6 +92,19 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
                 )
                 }
 
+                if (currentDestination == AppDestination.WORKSPACE ||
+                    currentDestination == AppDestination.REPORTS
+                ) {
+                    ArcButton(
+                        text = selectedRun?.title?.let { if (it.length > 23) it.take(20) + "…" else it }
+                            ?: "Değerlendirmeler",
+                        onClick = { showEvaluationRuns = true },
+                        variant = ArcButtonVariant.Outline,
+                        size = ArcButtonSize.Sm,
+                        enabled = selectedClassroom != null && selectedRubric != null
+                    )
+                }
+
                 ArcTooltip(tooltipText = "Ara ve komutları aç") {
                     ArcActionButton(onClick = { viewModel.isCommandPaletteOpen.value = true }, size = ArcButtonSize.Sm) {
                         Icon(Icons.Default.Search, contentDescription = "Ara")
@@ -116,6 +131,11 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
                 }
             }
         }
+    )
+    EvaluationRunSheet(
+        viewModel = viewModel,
+        isOpen = showEvaluationRuns,
+        onDismiss = { showEvaluationRuns = false }
     )
     ArcBottomSheet(
         isOpen = showRubricCards,
