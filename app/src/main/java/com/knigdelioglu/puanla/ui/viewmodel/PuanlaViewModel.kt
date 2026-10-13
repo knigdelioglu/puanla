@@ -462,9 +462,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 if (selectedClassroom.value?.id != classroomId) return@collect
                 students.value = list
                 if (selectedStudent.value == null || list.none { it.id == selectedStudent.value?.id }) {
-                    selectedStudent.value = list.firstOrNull {
+                    val restored = list.firstOrNull {
                         it.id == arcPrefs.getString("last_student_$classroomId", null)
                     } ?: list.firstOrNull()
+                    selectStudent(restored)
                 }
             }
         }
@@ -649,7 +650,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val current = selectedStudent.value ?: return
         val currentIndex = list.indexOfFirst { it.id == current.id }
         if (currentIndex != -1 && currentIndex < list.size - 1) {
-            selectedStudent.value = list[currentIndex + 1]
+            selectStudent(list[currentIndex + 1])
         }
     }
 
@@ -658,7 +659,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val current = selectedStudent.value ?: return
         val currentIndex = list.indexOfFirst { it.id == current.id }
         if (currentIndex > 0) {
-            selectedStudent.value = list[currentIndex - 1]
+            selectStudent(list[currentIndex - 1])
         }
     }
 
