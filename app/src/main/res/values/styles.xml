@@ -1,6 +1,4 @@
 <resources>
-    <style name="Theme.Puanla" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
-    </style>
+    <!-- Bars are configured at runtime from the effective app theme. -->
+    <style name="Theme.Puanla" parent="android:style/Theme.Material.Light.NoActionBar" />
 </resources>
