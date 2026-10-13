@@ -408,7 +408,8 @@ object OcrRosterParser {
                     right.toInt(), bottomY)
             }
             val lastRight = if (metadataStart.isFinite()) metadataStart
-                else surnameX!! + (surnameX - nameX)
+                else if (surnameX != null) surnameX + (surnameX - nameX)
+                else surnameBoundary
             val firstCell = cellRegion(schoolRight, surnameBoundary, nameX)
             val lastCell = cellRegion(surnameBoundary, lastRight, surnameX ?: nameX)
             output.add(
