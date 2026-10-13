@@ -514,7 +514,15 @@ class PuanlaRepository(
         require(rubric.id !in RubricSeeder.unverifiedLegacyIds && rubric.grade == classroom.grade) {
             "Rubrik bu sınıfa uygun değil."
         }
-        val run = runId?.let { id ->
+        // A missing run ID is retained for older callers, but can never
+        // silently mix repeated attempts of the same rubric.
+        val actualRunId = runId ?: runDao.getForClassroom(classroomId, rubricId).let { matches ->
+            require(matches.size <= 1) {
+                "Bu rubrikle birden fazla değerlendirme var. Çıktı için oturum seçin."
+            }
+            matches.singleOrNull()?.id
+        }
+        val run = actualRunId?.let { id ->
             requireNotNull(runDao.get(id)) { "Değerlendirme bulunamadı." }.also {
                 require(it.rubricId == rubricId && runDao.containsClassroom(it.id, classroomId)) {
                     "Seçilen değerlendirme bu sınıfa ait değil."
@@ -524,11 +532,10 @@ class PuanlaRepository(
         val criteria = run?.let { getCriteriaForRun(it) } ?: rubricDao.getCriteriaForRubric(rubricId)
         val assessments = if (run != null) {
             assessmentDao.getForRun(classroomId, run.id)
-        } else {
-            assessmentDao.getAssessments(classroomId, rubricId)
-        }.associateBy { it.studentId }
+        } else emptyList<AssessmentEntity>()
+        val assessmentsByStudent = assessments.associateBy { it.studentId }
         val rows = studentDao.getStudentsForClassroom(classroomId).map { student ->
-            val assessment = assessments[student.id]
+            val assessment = assessmentsByStudent[student.id]
             val scores = assessment?.let { recorded ->
                 assessmentDao.getScoresForAssessment(recorded.id).associate { it.criterionId to it.points }
             }.orEmpty()
