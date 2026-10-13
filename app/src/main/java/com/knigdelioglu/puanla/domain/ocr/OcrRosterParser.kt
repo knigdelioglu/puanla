@@ -256,8 +256,17 @@ object OcrRosterParser {
                 .minByOrNull { it.centerX }?.centerX
         val metadataAnchor = listOfNotNull(xOf("CINSIYET"), xOf("PANSIYON", "YATILI"))
             .filter { it > nameX }.minOrNull()
-        val lastNameColumn = surnameX != null && surnameX - nameX > 70.0 &&
-            (metadataAnchor == null || surnameX < metadataAnchor)
+        // Do not assume a fixed number of pixels between the first- and
+        // last-name headers: scaled-down scans are still separate columns.
+        val nameHeader = headers.firstOrNull {
+            normalized(it.text) in setOf("ADI", "AD", "ADISOYADI")
+        }
+        val surnameHeader = headers.firstOrNull {
+            normalized(it.text) in setOf("SOYADI", "SOYAD")
+        }
+        val lastNameColumn = surnameHeader != null && nameHeader != null &&
+            surnameHeader.x >= nameHeader.x + nameHeader.width &&
+            surnameX != null && (metadataAnchor == null || surnameX < metadataAnchor)
         val metadataStart = metadataAnchor?.let {
             ((if (lastNameColumn) surnameX!! else nameX) + it) / 2.0
         } ?: Double.POSITIVE_INFINITY
@@ -366,10 +375,20 @@ object OcrRosterParser {
                 it.centerX >= schoolRight && it.centerX < surnameBoundary &&
                     it.text.any(Char::isLetter)
             }
-            val lastWords = if (lastNameColumn) rowWords.filter {
+            // Gender/boarding values are never a family name, including when
+            // their own column header was missed by OCR.
+            val metadataValues = setOf(
+                "K", "E", "KIZ", "ERKEK", "P", "G", "YATILI",
+                "PANSIYONLU", "GUNDUZLU", "KR", "YP"
+            )
+            fun looksLikeMetadata(word: OcrPositionedWord) =
+                normalized(word.text) in metadataValues
+            val surnameZone = if (lastNameColumn) rowWords.filter {
                 it.centerX >= surnameBoundary && it.centerX < metadataStart &&
                     it.text.any(Char::isLetter)
             } else emptyList()
+            val metadataInSurnameZone = surnameZone.any(::looksLikeMetadata)
+            val lastWords = surnameZone.filterNot(::looksLikeMetadata)
             val firstTokens = firstWords.map { it.text.trim() }.filter(String::isNotEmpty)
             val lastTokens = lastWords.map { it.text.trim() }.filter(String::isNotEmpty)
             val firstName = if (lastNameColumn) firstTokens.joinToString(" ")
@@ -398,7 +417,7 @@ object OcrRosterParser {
             val missingFields = school == null || firstName.isBlank() ||
                 lastName.isBlank() || !lastNameColumn
             val ambiguous = missingFields || conflictingRead || misaligned ||
-                schoolCandidates.size > 1
+                metadataInSurnameZone || schoolCandidates.size > 1
             // Project the disjoint row band back to each column's local image
             // coordinates. On a skewed page this avoids cropping a neighbor's text.
             fun cellRegion(left: Double, right: Double, columnX: Double): OcrCellRegion? {
@@ -426,6 +445,7 @@ object OcrRosterParser {
                         conflictingRead -> "Aynı görüntü bölgesinden farklı OCR okumaları geldi; fotoğrafla doğrulayın."
                         misaligned -> "Ad veya soyadın fiziksel satır hizası belirsiz; kaynak fotoğraftan doğrulayın."
                         schoolCandidates.size > 1 -> "Aynı satırda birden fazla okul numarası okundu."
+                        metadataInSurnameZone -> "Soyadı alanında cinsiyet/yatılı bilgisi algılandı; kaynaktan doğrulayın."
                         missingFields -> "Eksik numara/ad/soyad veya birleşik sütun; öğretmen doğrulamalı."
                         else -> null
                     },
