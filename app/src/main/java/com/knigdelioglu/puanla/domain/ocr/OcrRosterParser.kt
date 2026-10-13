@@ -136,14 +136,12 @@ object OcrRosterParser {
      *
      * Even when geometry looks reliable every OCR row starts UNAPPROVED.
      */
+
     fun parsePositionedWords(words: List<OcrPositionedWord>): List<OcrStudentRow> {
         if (words.isEmpty()) return emptyList()
         val filtered = filterRepeatedDetections(words)
         val uniqueWords = filtered.unique
 
-        // Turkish headings are sometimes returned without diacritics, and a
-        // photographed sheet can make separate column labels land at different
-        // raw Y coordinates. Normalize both before rebuilding table rows.
         val normalized: (String) -> String = { text ->
             text.trim().uppercase(Locale("tr", "TR"))
                 .replace('Ç', 'C').replace('Ğ', 'G').replace('İ', 'I')
@@ -165,35 +163,37 @@ object OcrRosterParser {
                 .coerceIn(-0.12, 0.12)
         } else 0.0
         fun projectedY(word: OcrPositionedWord) = word.centerY - slope * word.centerX
-
-        val lines = mutableListOf<MutableList<OcrPositionedWord>>()
-        for (word in uniqueWords.sortedWith(compareBy<OcrPositionedWord> { projectedY(it) }.thenBy { it.x })) {
-            // ML Kit already groups elements into text lines. Keep that signal so
-            // perspective/skew across a wide printed table cannot split its header
-            // into unrelated rows. The projected Y also reunites a visual row when
-            // ML Kit returns its separate columns as different lines or blocks.
-            val row = word.recognizedLineIndex?.let { lineIndex ->
-                lines.firstOrNull { group -> group.any { it.recognizedLineIndex == lineIndex } }
-            } ?: lines.minByOrNull { group -> kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word)) }
-                ?.takeIf { group ->
-                    val height = group.map { it.height }.average()
-                    kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word)) <=
-                        maxOf(6.0, height * 0.80)
-                }
-            if (row != null) {
-                row.add(word)
-            } else {
-                lines.add(mutableListOf(word))
-            }
+        fun median(values: List<Double>): Double {
+            if (values.isEmpty()) return 0.0
+            val sorted = values.sorted()
+            val middle = sorted.size / 2
+            return if (sorted.size % 2 == 0) (sorted[middle - 1] + sorted[middle]) / 2.0
+                else sorted[middle]
         }
-        lines.sortBy { row -> row.map { projectedY(it) }.average() }
-        val headerIndex = lines.indexOfFirst { row ->
-            val tokens = row.map { normalized(it.text) }
+
+        // ML Kit lines are useful for finding the header, but NOT for assigning
+        // names to students: its line indices can span different physical rows.
+        val headerLines = mutableListOf<MutableList<OcrPositionedWord>>()
+        for (word in uniqueWords.sortedWith(compareBy<OcrPositionedWord> { projectedY(it) }.thenBy { it.x })) {
+            val row = word.recognizedLineIndex?.let { lineIndex ->
+                headerLines.firstOrNull { group -> group.any { it.recognizedLineIndex == lineIndex } }
+            } ?: headerLines.minByOrNull { group ->
+                kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word))
+            }?.takeIf { group ->
+                val height = group.map { it.height }.average()
+                kotlin.math.abs(group.map { projectedY(it) }.average() - projectedY(word)) <=
+                    maxOf(6.0, height * 0.80)
+            }
+            if (row != null) row.add(word) else headerLines.add(mutableListOf(word))
+        }
+        headerLines.sortBy { group -> group.map { projectedY(it) }.average() }
+        val headerIndex = headerLines.indexOfFirst { group ->
+            val tokens = group.map { normalized(it.text) }
             tokens.any { it in setOf("ADI", "AD", "ADISOYADI") } &&
                 tokens.any { it in setOf("NO", "OGRENCI", "OGRENCINO", "NUMARASI", "OKUL") }
         }
         if (headerIndex < 0) return emptyList()
-        val headers = lines[headerIndex].sortedBy { it.x }
+        val headers = headerLines[headerIndex].sortedBy { it.x }
         fun xOf(vararg labels: String): Double? = headers.firstOrNull { word ->
             val token = normalized(word.text)
             labels.any { label -> token == label || token.startsWith(label) }
@@ -203,47 +203,151 @@ object OcrRosterParser {
             ?: return emptyList()
         val nameX = xOf("ADI", "ADISOYADI", "AD") ?: return emptyList()
         val surnameX = xOf("SOYADI", "SOYAD")
+        val sequenceX = xOf("SNO", "SIRA")
+            ?: headers.filter { normalized(it.text) == "NO" && it.centerX < numberX - 25.0 }
+                .minByOrNull { it.centerX }?.centerX
         val metadataAnchor = listOfNotNull(xOf("CINSIYET"), xOf("PANSIYON", "YATILI"))
             .filter { it > nameX }.minOrNull()
-        // Boundaries are halfway BETWEEN header centres, not the start of the
-        // following header. This keeps K/E, KR, boarding metadata out of surnames.
-        // Closely adjacent "Adı Soyadı" header words may describe ONE combined
-        // column; in that case all candidates remain ambiguous until reviewed.
         val lastNameColumn = surnameX != null && surnameX - nameX > 70.0 &&
             (metadataAnchor == null || surnameX < metadataAnchor)
         val metadataStart = metadataAnchor?.let {
             ((if (lastNameColumn) surnameX!! else nameX) + it) / 2.0
         } ?: Double.POSITIVE_INFINITY
+        val schoolLeft = sequenceX?.let { (it + numberX) / 2.0 }
+            ?: numberX - (nameX - numberX) / 2.0
         val schoolRight = (numberX + nameX) / 2.0
         val surnameBoundary = if (lastNameColumn) (nameX + surnameX!!) / 2.0 else metadataStart
+
+        val headerBottom = headers.maxOf { projectedY(it) + it.height / 2.0 }
+        val bodyWords = uniqueWords.filter { projectedY(it) > headerBottom + 2.0 }
+        if (bodyWords.isEmpty()) return emptyList()
+        val typicalHeight = median(bodyWords.map { it.height.toDouble() }.filter { it > 0.0 })
+            .coerceAtLeast(6.0)
+        val anchorMergeDistance = maxOf(3.0, typicalHeight * 0.38)
+        fun isNumber(word: OcrPositionedWord) =
+            word.text.length in 1..6 && word.text.all(Char::isDigit)
+
+        // Each school-number box anchors a PHYSICAL row. Duplicate detections of
+        // the same box collapse; school numbers never get inferred from row order.
+        data class RowSeed(val word: OcrPositionedWord, val hasNumber: Boolean)
+        val seeds = mutableListOf<RowSeed>()
+        fun addSeed(word: OcrPositionedWord, hasNumber: Boolean) {
+            val matchingIndex = seeds.indexOfFirst {
+                kotlin.math.abs(projectedY(it.word) - projectedY(word)) <= anchorMergeDistance
+            }
+            if (matchingIndex < 0) {
+                seeds.add(RowSeed(word, hasNumber))
+            } else {
+                val previous = seeds[matchingIndex]
+                if ((hasNumber && !previous.hasNumber) ||
+                    (hasNumber == previous.hasNumber &&
+                        kotlin.math.abs(word.centerX - numberX) <
+                        kotlin.math.abs(previous.word.centerX - numberX))) {
+                    seeds[matchingIndex] = RowSeed(word, hasNumber)
+                }
+            }
+        }
+        bodyWords.filter {
+            isNumber(it) && it.centerX >= schoolLeft && it.centerX < schoolRight
+        }.sortedBy(::projectedY).forEach { addSeed(it, true) }
+
+        // If one school's number is unreadable, the printed sequence column can
+        // still preserve its row. It must NOT fabricate a school number.
+        if (sequenceX != null) {
+            val sequenceRight = (sequenceX + numberX) / 2.0
+            bodyWords.filter {
+                isNumber(it) && it.centerX < sequenceRight &&
+                    kotlin.math.abs(it.centerX - sequenceX) <
+                    kotlin.math.abs(it.centerX - numberX)
+            }.sortedBy(::projectedY).forEach { addSeed(it, false) }
+        }
+
+        fun pitch(): Double {
+            val positions = seeds.map { projectedY(it.word) }.sorted()
+            val gaps = positions.zipWithNext { a, b -> b - a }
+                .filter { it > anchorMergeDistance * 1.5 }
+            return median(gaps).takeIf { it > 0.0 } ?: typicalHeight * 1.8
+        }
+
+        // A missing number AND missing printed sequence must not shift later
+        // students. Preserve an identifiable name row as an ambiguous candidate.
+        val preliminaryPitch = pitch()
+        val nameWords = bodyWords.filter {
+            it.centerX >= schoolRight && it.centerX < surnameBoundary &&
+                it.text.any(Char::isLetter)
+        }
+        val nameGroups = mutableListOf<MutableList<OcrPositionedWord>>()
+        for (word in nameWords.sortedBy(::projectedY)) {
+            val group = nameGroups.lastOrNull()?.takeIf {
+                kotlin.math.abs(projectedY(it.first()) - projectedY(word)) <=
+                    maxOf(4.0, typicalHeight * 0.65)
+            }
+            if (group == null) nameGroups.add(mutableListOf(word)) else group.add(word)
+        }
+        for (group in nameGroups) {
+            val representative = group.minByOrNull { kotlin.math.abs(it.centerX - nameX) } ?: continue
+            val y = median(group.map(::projectedY))
+            if (seeds.none { kotlin.math.abs(projectedY(it.word) - y) <=
+                    maxOf(typicalHeight * 0.8, preliminaryPitch * 0.38) }) {
+                addSeed(representative, false)
+            }
+        }
+        seeds.sortBy { projectedY(it.word) }
+        if (seeds.isEmpty()) return emptyList()
+        val rowPitch = pitch().coerceAtLeast(typicalHeight * 0.9)
+
         val output = mutableListOf<OcrStudentRow>()
-        for (row in lines.drop(headerIndex + 1)) {
-            val sorted = row.sortedBy { it.x }
-            val school = sorted.filter { it.centerX < schoolRight }.filter {
-                it.text.all(Char::isDigit) && it.text.length in 1..6
-            }.minByOrNull { kotlin.math.abs(it.centerX - numberX) }
-            val firstTokens = sorted.filter { it.centerX >= schoolRight && it.centerX < surnameBoundary }
-                .map { it.text.trim() }.filter(String::isNotEmpty)
-            val lastTokens = if (lastNameColumn)
-                sorted.filter { it.centerX >= surnameBoundary && it.centerX < metadataStart }
-                    .map { it.text.trim() }.filter(String::isNotEmpty)
-            else emptyList()
-            if (school == null && firstTokens.isEmpty() && lastTokens.isEmpty()) continue
+        for ((index, seed) in seeds.withIndex()) {
+            val center = projectedY(seed.word)
+            val previous = seeds.getOrNull(index - 1)?.let { projectedY(it.word) }
+            val next = seeds.getOrNull(index + 1)?.let { projectedY(it.word) }
+            // Midpoints form disjoint row bands: even a wrong recognizedLineIndex
+            // cannot pull a surname or first name out of a neighboring row.
+            val top = maxOf(headerBottom + 2.0,
+                previous?.let { (it + center) / 2.0 } ?: center - rowPitch * 0.5)
+            val bottom = next?.let { (center + it) / 2.0 } ?: center + rowPitch * 0.5
+            val rowWords = bodyWords.filter {
+                val y = projectedY(it)
+                y >= top && y < bottom
+            }.sortedBy { it.x }
+            val schoolCandidates = rowWords.filter {
+                isNumber(it) && it.centerX >= schoolLeft && it.centerX < schoolRight
+            }
+            val school = schoolCandidates.minByOrNull { kotlin.math.abs(it.centerX - numberX) }
+            val firstWords = rowWords.filter {
+                it.centerX >= schoolRight && it.centerX < surnameBoundary &&
+                    it.text.any(Char::isLetter)
+            }
+            val lastWords = if (lastNameColumn) rowWords.filter {
+                it.centerX >= surnameBoundary && it.centerX < metadataStart &&
+                    it.text.any(Char::isLetter)
+            } else emptyList()
+            val firstTokens = firstWords.map { it.text.trim() }.filter(String::isNotEmpty)
+            val lastTokens = lastWords.map { it.text.trim() }.filter(String::isNotEmpty)
             val firstName = if (lastNameColumn) firstTokens.joinToString(" ")
                 else firstTokens.dropLast(1).joinToString(" ")
             val lastName = if (lastNameColumn) lastTokens.joinToString(" ")
                 else firstTokens.lastOrNull().orEmpty()
-            if (firstName.isEmpty() && lastName.isEmpty()) continue
-            val rowTop = sorted.minOf { it.y }
-            val rowBottom = sorted.maxOf { it.y + it.height }
-            val rowLeft = sorted.minOf { it.x }
-            val rowRight = sorted.maxOf { it.x + it.width }
+            if (firstName.isBlank() && lastName.isBlank()) continue
+
+            val rowTop = rowWords.minOf { it.y }
+            val rowBottom = rowWords.maxOf { it.y + it.height }
+            val rowLeft = rowWords.minOf { it.x }
+            val rowRight = rowWords.maxOf { it.x + it.width }
             val conflictingRead = filtered.conflicting.any { other ->
                 other.y < rowBottom && other.y + other.height > rowTop &&
                     other.x < rowRight && other.x + other.width > rowLeft
             }
-            val missingFields = school == null || firstName.isBlank() || lastName.isBlank() || !lastNameColumn
-            val ambiguous = missingFields || conflictingRead
+            // Recognized text can be correct yet too far off the anchor line.
+            // This is a review signal, never a reason to borrow an adjacent row.
+            val alignmentLimit = maxOf(typicalHeight * 0.65, rowPitch * 0.32)
+            val misaligned = (firstWords + lastWords).any {
+                kotlin.math.abs(projectedY(it) - center) > alignmentLimit
+            }
+            val missingFields = school == null || firstName.isBlank() ||
+                lastName.isBlank() || !lastNameColumn
+            val ambiguous = missingFields || conflictingRead || misaligned ||
+                schoolCandidates.size > 1
             output.add(
                 OcrStudentRow(
                     rawIndex = output.size + 1,
@@ -253,7 +357,9 @@ object OcrRosterParser {
                     isAmbiguous = ambiguous,
                     ambiguityReason = when {
                         conflictingRead -> "Aynı görüntü bölgesinden farklı OCR okumaları geldi; fotoğrafla doğrulayın."
-                        missingFields -> "Eksik alan veya birleşik ad-soyad sütunu: öğretmen düzeltip onaylamalı."
+                        misaligned -> "Ad veya soyadın fiziksel satır hizası belirsiz; kaynak fotoğraftan doğrulayın."
+                        schoolCandidates.size > 1 -> "Aynı satırda birden fazla okul numarası okundu."
+                        missingFields -> "Eksik numara/ad/soyad veya birleşik sütun; öğretmen doğrulamalı."
                         else -> null
                     },
                     isApproved = false,
@@ -264,27 +370,7 @@ object OcrRosterParser {
                 )
             )
         }
-        // A single physical student row must never become two import candidates.
-        // Conflicting readings are retained as uncertainty rather than silently trusted.
-        val collapsed = mutableListOf<OcrStudentRow>()
-        for (candidate in output) {
-            val existingIndex = collapsed.indexOfFirst { sameSourceImageRow(it, candidate) }
-            if (existingIndex < 0) {
-                collapsed.add(candidate)
-            } else {
-                val previous = collapsed[existingIndex]
-                val priorCompleteness = listOf(previous.studentNumber, previous.firstName, previous.lastName)
-                    .count { it.isNotBlank() }
-                val nextCompleteness = listOf(candidate.studentNumber, candidate.firstName, candidate.lastName)
-                    .count { it.isNotBlank() }
-                val preferred = if (nextCompleteness > priorCompleteness) candidate else previous
-                collapsed[existingIndex] = preferred.copy(
-                    isAmbiguous = true,
-                    ambiguityReason = "Aynı fotoğraf satırı birden fazla okundu; kaynak fotoğraftan doğrulayın."
-                )
-            }
-        }
-        return collapsed.mapIndexed { index, candidate -> candidate.copy(rawIndex = index + 1) }
+        return output
     }
 
     /**
