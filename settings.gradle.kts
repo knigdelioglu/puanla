@@ -23,13 +23,9 @@ dependencyResolutionManagement {
 rootProject.name = "Puanla"
 include(":app")
 
-val composePublishedVersion = if (providers.gradleProperty("composeLegacySources").orNull == "true") {
-    null
-} else {
-    providers.gradleProperty("composePublishedVersion").orNull
-        ?: providers.gradleProperty("composeDesignSystemVersion").orNull
-            ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
-}
+val composePublishedVersion = providers.gradleProperty("composePublishedVersion").orNull
+    ?: providers.gradleProperty("composeDesignSystemVersion").orNull
+        ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
 if (composePublishedVersion != null) {
     require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?").matches(composePublishedVersion)) {
         "Geçersiz yayımlanmış Compose sürümü: $composePublishedVersion"
