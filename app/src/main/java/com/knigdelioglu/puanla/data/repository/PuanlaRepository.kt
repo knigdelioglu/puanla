@@ -636,6 +636,7 @@ class PuanlaRepository(
     suspend fun generateFullBackupJson(): String = db.withTransaction {
         val dao = db.backupDao()
         backupJson.encodeToString(BackupSnapshot(
+            version = 3,
             classrooms = dao.classrooms(),
             students = dao.students(),
             rubrics = dao.rubrics(),
