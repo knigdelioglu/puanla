@@ -1,0 +1,54 @@
+package com.knigdelioglu.puanla
+
+import androidx.room.Room
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.knigdelioglu.puanla.data.local.ClassroomEntity
+import com.knigdelioglu.puanla.data.local.CriterionEntity
+import com.knigdelioglu.puanla.data.local.PuanlaDatabase
+import com.knigdelioglu.puanla.data.local.RubricEntity
+import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.data.repository.PuanlaRepository
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class EvaluationRunRepositoryTest {
+    @Test fun repeatedRubricAndMultiClassAssignmentsKeepGradesIndependent() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java)
+            .allowMainThreadQueries().build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c1", 11, "A", "11-A", "2026-2027"))
+            db.classroomDao().insertClassroom(ClassroomEntity("c2", 11, "B", "11-B", "2026-2027"))
+            db.studentDao().insertStudent(StudentEntity("s1", "c1", "1", "Ayşe", "Çelik"))
+            db.studentDao().insertStudent(StudentEntity("s2", "c2", "1", "Mert", "Öztürk"))
+            db.rubricDao().insertRubric(RubricEntity("r", "Drama", "", 11, "Drama"))
+            db.rubricDao().insertCriteria(listOf(CriterionEntity("criterion", "r", "Sunum", "", 100, 0)))
+            val repository = PuanlaRepository(db) { "{}" }
+            val october = repository.createAssessmentRun("r", "Ekim Drama", listOf("c1", "c2"))
+            val december = repository.createAssessmentRun("r", "Aralık Drama", listOf("c1"))
+            assertEquals(2, repository.getRunClassrooms(october.id).size)
+            repository.saveCriterionScore("c1", "s1", "r", "criterion", 80, runId = october.id)
+            repository.saveCriterionScore("c2", "s2", "r", "criterion", 100, runId = october.id)
+            repository.saveCriterionScore("c1", "s1", "r", "criterion", 60, runId = december.id)
+            assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+            assertEquals(60, repository.getRunCriterionScoresForStudent("s1", december.id)["criterion"])
+            assertEquals(100, repository.getRunCriterionScoresForStudent("s2", october.id)["criterion"])
+            assertNull(repository.getRunAssessmentForStudent("s2", december.id))
+            val csv = repository.generateCsvExport("c1", "r", december.id)
+            assertTrue(csv.contains(";60;Tamamlandı"))
+            repository.archiveRun(october.id, true)
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    repository.saveCriterionScore("c1", "s1", "r", "criterion", 50, runId = october.id)
+                }
+            }
+            assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+        } finally {
+            db.close()
+        }
+    }
+}
