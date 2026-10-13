@@ -70,6 +70,13 @@ class PuanlaRepository(
                     rubricDao.insertCriteriaFromApprovedSource(definition.toCriterionEntities())
                 }
             }
+            // Freeze migrated v2 attempts before any future template edits.
+            runDao.runsMissingCriterionSnapshots().forEach { run ->
+                val savedCriteria = rubricDao.getCriteriaForRubric(run.rubricId)
+                if (savedCriteria.isNotEmpty()) {
+                    runDao.update(run.copy(criteriaSnapshotJson = Json.encodeToString(savedCriteria)))
+                }
+            }
         }
     }
 
@@ -319,7 +326,12 @@ class PuanlaRepository(
 
     private suspend fun ensureLegacyRun(classroomId: String, rubricId: String): String {
         val id = "legacy_${classroomId}_${rubricId}"
-        runDao.insertIfAbsent(AssessmentRunEntity(id, rubricId, "Önceki değerlendirme", "", "ACTIVE", 0))
+        val historicalCriteria = rubricDao.getCriteriaForRubric(rubricId)
+        runDao.insertIfAbsent(AssessmentRunEntity(
+            id, rubricId, "Önceki değerlendirme",
+            criteriaSnapshotJson = Json.encodeToString(historicalCriteria),
+            status = "ACTIVE", createdAt = 0
+        ))
         runDao.assign(listOf(RunClassroomEntity("assign_$id", id, classroomId)))
         return id
     }
@@ -693,7 +705,9 @@ class PuanlaRepository(
                         id = "legacy_${it.classroomId}_${it.rubricId}",
                         rubricId = it.rubricId,
                         title = "Önceki değerlendirme",
-                        criteriaSnapshotJson = "",
+                        criteriaSnapshotJson = imported.criteria.filter { criterion ->
+                            criterion.rubricId == it.rubricId
+                        }.takeIf { it.isNotEmpty() }?.let(Json::encodeToString) ?: "",
                         createdAt = 0
                     )
                 }
