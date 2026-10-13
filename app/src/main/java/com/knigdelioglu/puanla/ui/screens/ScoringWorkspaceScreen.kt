@@ -103,13 +103,14 @@ import kotlin.math.roundToInt
  * Changing either identity restarts grading at criterion one immediately.
  */
 @Composable
-internal fun rememberStudentCriterionIndex(studentId: String?, rubricId: String?): MutableIntState =
-    remember(studentId, rubricId) { mutableIntStateOf(0) }
+internal fun rememberStudentCriterionIndex(studentId: String?, rubricId: String?, runId: String? = null): MutableIntState =
+    remember(studentId, rubricId, runId) { mutableIntStateOf(0) }
 
 @Composable
 fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
+    val selectedRun by viewModel.selectedRun.collectAsState()
     val students by viewModel.students.collectAsState()
     val selectedStudent by viewModel.selectedStudent.collectAsState()
     val criteria by viewModel.criteria.collectAsState()
@@ -125,7 +126,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     var searchQuery by remember { mutableStateOf("") }
     // Reset to the first criterion whenever the selected student or rubric changes.
     // Keyed state prevents the previous student's last criterion flashing on screen.
-    var activeCriterionIndex by rememberStudentCriterionIndex(selectedStudent?.id, selectedRubric?.id)
+    var activeCriterionIndex by rememberStudentCriterionIndex(selectedStudent?.id, selectedRubric?.id, selectedRun?.id)
     var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
 
     val filteredStudents = remember(students, searchQuery) {
@@ -145,11 +146,24 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isWide = maxWidth >= 900.dp
 
-        if (selectedClassroom == null || selectedRubric == null) {
+        if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ArcEmptyState(
-                    title = "Sınıf veya Rubrik Seçilmedi",
-                    description = "Değerlendirmeye başlamak için üst menüden bir sınıf ve rubrik seçin."
+                    title = if (selectedClassroom == null || selectedRubric == null)
+                        "Sınıf veya Rubrik Seçilmedi" else "Değerlendirme Seçilmedi",
+                    description = if (selectedClassroom == null || selectedRubric == null)
+                        "Başlamak için sınıf ve rubrik seçin."
+                    else "Üstteki Değerlendirmeler düğmesinden yeni bir değerlendirme oluşturun ya da eskisini açın."
+                )
+            }
+            return@BoxWithConstraints
+        }
+
+        if (selectedRun?.status == "ARCHIVED") {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ArcEmptyState(
+                    title = "Arşivlenmiş Değerlendirme",
+                    description = "Sonuçlar Raporlar bölümünden incelenebilir. Puanları düzenlemek için Değerlendirmeler menüsünden arşivden çıkarın."
                 )
             }
             return@BoxWithConstraints
