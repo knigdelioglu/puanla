@@ -376,7 +376,10 @@ object OcrRosterParser {
                 else firstTokens.dropLast(1).joinToString(" ")
             val lastName = if (lastNameColumn) lastTokens.joinToString(" ")
                 else firstTokens.lastOrNull().orEmpty()
-            if (firstName.isBlank() && lastName.isBlank()) continue
+            // A numbered physical row is still a pupil candidate even when
+            // both name cells are unreadable. Silently dropping it would make
+            // the count look correct after a later-row shift.
+            if (rowWords.isEmpty()) continue
 
             val rowTop = rowWords.minOf { it.y }
             val rowBottom = rowWords.maxOf { it.y + it.height }
