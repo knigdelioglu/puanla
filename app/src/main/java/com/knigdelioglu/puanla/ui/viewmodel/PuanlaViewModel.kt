@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.knigdelioglu.puanla.data.local.AssessmentEntity
 import com.knigdelioglu.puanla.data.local.AssessmentRunEntity
+import com.knigdelioglu.puanla.data.local.RunClassroomProgress
 import com.knigdelioglu.puanla.data.local.AuditLogEntity
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
 import com.knigdelioglu.puanla.data.local.CriterionEntity
@@ -167,6 +168,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     val selectedRubric = MutableStateFlow<RubricEntity?>(null)
     val assessmentRuns = MutableStateFlow<List<AssessmentRunEntity>>(emptyList())
+    val runClassProgress = MutableStateFlow<List<RunClassroomProgress>>(emptyList())
     val selectedRun = MutableStateFlow<AssessmentRunEntity?>(null)
 
     val students = MutableStateFlow<List<StudentEntity>>(emptyList())
@@ -354,6 +356,18 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 loadCurrentAssessment()
                 loadClassAssessments()
+            }
+        }
+
+        viewModelScope.launch {
+            selectedRun.collectLatest { run ->
+                if (run == null) {
+                    runClassProgress.value = emptyList()
+                } else {
+                    repository.observeRunProgress(run.id).collectLatest { progress ->
+                        if (selectedRun.value?.id == run.id) runClassProgress.value = progress
+                    }
+                }
             }
         }
 
