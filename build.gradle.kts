@@ -10,6 +10,6 @@ plugins {
 // The shared library source lives in the sibling compose-design-system repository.
 // Keep generated outputs inside this checkout so an external read-only source tree
 // remains untouched during normal app builds.
-project(":design-system") {
-    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("design-system"))
+findProject(":design-system")?.let { sharedLibrary ->
+    sharedLibrary.layout.buildDirectory.set(layout.buildDirectory.dir("design-system"))
 }
