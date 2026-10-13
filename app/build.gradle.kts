@@ -49,7 +49,13 @@ android {
 }
 
 dependencies {
-    val publishedComposeVersion = providers.gradleProperty("composePublishedVersion").orNull
+    val publishedComposeVersion = if (providers.gradleProperty("composeLegacySources").orNull == "true") {
+        null
+    } else {
+        providers.gradleProperty("composePublishedVersion")
+            .orElse(providers.gradleProperty("composeDesignSystemVersion"))
+            .get()
+    }
     if (publishedComposeVersion != null) {
         implementation("com.knigdelioglu:compose-design-system:$publishedComposeVersion")
     } else {
