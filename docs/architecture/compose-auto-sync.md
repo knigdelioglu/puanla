@@ -27,3 +27,10 @@ Puanla → **Actions → Android CI → Run workflow**: yeni upstream commit'ini
 ### Geri alma
 
 Doğrulanmış eski SHA'yı `.github/compose-design-system.sha` dosyasına yazarak Puanla'nın eski Compose koduyla tekrar derlenmesini sağlayabilirsiniz. Ancak bir sonraki otomatik senkron, yeni upstream SHA'yı tekrar test edip başarı halinde benimseyebilir; kalıcı durdurma için zamanlanmış/dispatch tetikleyicilerini geçici olarak kapatın.
+
+
+## Henüz yayımlanmamış Maven AAR için korumalı geçiş
+
+`composeDesignSystemVersion=0.1.0`, gelecekte doğrulanacak sürümü belirtir; **yayımlanmış bir AAR değildir**. `composeUsePublishedByDefault=false` olduğu sürece Puanla, doğrulanmış `.github/compose-design-system.sha` kaynak sürümünü ve mevcut CI/promosyon akışını kullanmaya devam eder.
+
+AAR, Compose deposunda erişilebilir bir Maven sürümü olarak yayımlandıktan, Puanla birim ve emülatör testlerinde doğrulandıktan sonra `composeUsePublishedByDefault=true` değişikliği ayrı PR ile yapılmalıdır. Yayınlanmamış sürümü zorunlu tutmak uygulamayı derlenemez duruma getirir. Geçişten önce kaynak tabanlı güvenli geri dönüş korunur.

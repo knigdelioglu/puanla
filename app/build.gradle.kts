@@ -49,7 +49,10 @@ android {
 }
 
 dependencies {
+    // The verified source pin remains default until the Maven AAR is published.
     val publishedComposeVersion = providers.gradleProperty("composePublishedVersion").orNull
+        ?: providers.gradleProperty("composeDesignSystemVersion").orNull
+            ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
     if (publishedComposeVersion != null) {
         implementation("com.knigdelioglu:compose-design-system:$publishedComposeVersion")
     } else {
