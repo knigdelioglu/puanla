@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EvaluationRunRepositoryTest {
-    @Test fun repeatedRubricAndMultiClassAssignmentsKeepGradesIndependent() = runBlocking {
+    @Test fun repeatedRubricAndMultiClassAssignmentsKeepGradesIndependent() = runBlocking<Unit> {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java)
             .allowMainThreadQueries().build()
