@@ -33,6 +33,7 @@ abstract class PuanlaDatabase : RoomDatabase() {
     abstract fun studentDao(): StudentDao
     abstract fun rubricDao(): RubricDao
     abstract fun assessmentDao(): AssessmentDao
+    abstract fun assessmentRunDao(): AssessmentRunDao
     abstract fun groupTaskDao(): GroupTaskDao
     abstract fun groupAssessmentDao(): GroupAssessmentDao
     abstract fun auditLogDao(): AuditLogDao
