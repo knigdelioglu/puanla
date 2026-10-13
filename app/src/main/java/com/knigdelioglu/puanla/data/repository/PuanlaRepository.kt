@@ -477,72 +477,56 @@ class PuanlaRepository(
      * Reads one consistent database snapshot and delegates the actual serialization
      * to the same tested writer used in CSV unit tests.
      */
-    suspend fun generateCsvExport(classroomId: String, rubricId: String): String = db.withTransaction {
+    suspend fun generateCsvExport(classroomId: String, rubricId: String, runId: String? = null): String =
+        db.withTransaction {
+            val snapshot = buildRunReport(classroomId, rubricId, runId)
+            CsvExportFormatter.generate(snapshot.criteria, snapshot.students)
+        }
+
+    suspend fun generatePdfReportSnapshot(
+        classroomId: String, rubricId: String, runId: String? = null
+    ): PdfReportSnapshot = db.withTransaction { buildRunReport(classroomId, rubricId, runId) }
+
+    private suspend fun buildRunReport(
+        classroomId: String, rubricId: String, runId: String?
+    ): PdfReportSnapshot {
         val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
         val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
-        require(rubric.id !in RubricSeeder.unverifiedLegacyIds) { "Kaynağı doğrulanmamış rubrik dışa aktarılamaz." }
-        require(rubric.grade == classroom.grade) { "Rubrik farklı sınıf düzeyine ait." }
-
-        val criteria = rubricDao.getCriteriaForRubric(rubricId)
-        val assessments = assessmentDao.getAssessments(classroomId, rubricId).associateBy { it.studentId }
-        val studentRows = studentDao.getStudentsForClassroom(classroomId).map { student ->
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds && rubric.grade == classroom.grade) {
+            "Rubrik bu sınıfa uygun değil."
+        }
+        val run = runId?.let { id ->
+            requireNotNull(runDao.get(id)) { "Değerlendirme bulunamadı." }.also {
+                require(it.rubricId == rubricId && runDao.containsClassroom(it.id, classroomId)) {
+                    "Seçilen değerlendirme bu sınıfa ait değil."
+                }
+            }
+        }
+        val criteria = run?.let { getCriteriaForRun(it) } ?: rubricDao.getCriteriaForRubric(rubricId)
+        val assessments = if (run != null) {
+            assessmentDao.getForRun(classroomId, run.id)
+        } else {
+            assessmentDao.getAssessments(classroomId, rubricId)
+        }.associateBy { it.studentId }
+        val rows = studentDao.getStudentsForClassroom(classroomId).map { student ->
             val assessment = assessments[student.id]
-            val scores = if (assessment != null) {
-                assessmentDao.getScoresForAssessment(assessment.id).associate { it.criterionId to it.points }
-            } else emptyMap()
+            val scores = assessment?.let { recorded ->
+                assessmentDao.getScoresForAssessment(recorded.id).associate { it.criterionId to it.points }
+            }.orEmpty()
             CsvStudent(
-                number = student.studentNumber,
-                firstName = student.firstName,
-                lastName = student.lastName,
-                scores = scores,
-                definitiveTotal = assessment?.definitiveTotal,
-                isCompleted = assessment?.isCompleted == true,
-                scoredCount = assessment?.scoredCount ?: 0
+                number = student.studentNumber, firstName = student.firstName, lastName = student.lastName,
+                scores = scores, definitiveTotal = assessment?.definitiveTotal,
+                isCompleted = assessment?.isCompleted == true, scoredCount = assessment?.scoredCount ?: 0
             )
         }
-        CsvExportFormatter.generate(criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) }, studentRows)
+        return PdfReportSnapshot(
+            classroomName = classroom.name,
+            academicYear = classroom.academicYear,
+            rubricTitle = run?.let { "${it.title} · ${rubric.title}" } ?: rubric.title,
+            criteria = criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) },
+            students = rows
+        )
     }
-
-
-    /**
-     * Take all report data in one Room read transaction. Do not coalesce
-     * individual grades with group assessment results implicitly.
-     */
-    suspend fun generatePdfReportSnapshot(classroomId: String, rubricId: String): PdfReportSnapshot =
-        db.withTransaction {
-            val classroom = requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
-            val rubric = requireNotNull(rubricDao.getRubricById(rubricId)) { "Rubrik bulunamadı." }
-            require(rubric.id !in RubricSeeder.unverifiedLegacyIds) {
-                "Kaynağı doğrulanmamış rubrik dışa aktarılamaz."
-            }
-            require(rubric.grade == classroom.grade) { "Rubrik farklı sınıf düzeyine ait." }
-            val criteria = rubricDao.getCriteriaForRubric(rubricId)
-            val assessments = assessmentDao.getAssessments(classroomId, rubricId)
-                .associateBy { it.studentId }
-            val studentRows = studentDao.getStudentsForClassroom(classroomId).map { student ->
-                val assessment = assessments[student.id]
-                val scores = assessment?.let { recorded ->
-                    assessmentDao.getScoresForAssessment(recorded.id)
-                        .associate { it.criterionId to it.points }
-                }.orEmpty()
-                CsvStudent(
-                    number = student.studentNumber,
-                    firstName = student.firstName,
-                    lastName = student.lastName,
-                    scores = scores,
-                    definitiveTotal = assessment?.definitiveTotal,
-                    isCompleted = assessment?.isCompleted == true,
-                    scoredCount = assessment?.scoredCount ?: 0
-                )
-            }
-            PdfReportSnapshot(
-                classroomName = classroom.name,
-                academicYear = classroom.academicYear,
-                rubricTitle = rubric.title,
-                criteria = criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) },
-                students = studentRows
-            )
-        }
 
     /** Sessions are independent of editable classroom groups, and scoped to a rubric. */
     fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>> =
