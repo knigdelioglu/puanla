@@ -322,4 +322,56 @@ class OcrPositionedParserTest {
         assertFalse(rows[1].isApproved)
     }
 
+    @Test fun scaledDownPhotoStillHasSeparateAdAndSoyadColumns() {
+        val original = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16),
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16),
+            OcrPositionedWord("246", 128, 95, 30, 16),
+            OcrPositionedWord("MEHMET", 242, 95, 60, 16),
+            OcrPositionedWord("DEMİR", 396, 95, 58, 16)
+        )
+        val small = original.map { word ->
+            word.copy(
+                x = (word.x * 0.38).toInt(),
+                y = (word.y * 0.38).toInt(),
+                width = (word.width * 0.38).toInt().coerceAtLeast(1),
+                height = (word.height * 0.38).toInt().coerceAtLeast(1)
+            )
+        }
+        val rows = OcrRosterParser.parsePositionedWords(small)
+        assertEquals(2, rows.size)
+        assertEquals(listOf("AYŞE", "MEHMET"), rows.map { it.firstName })
+        assertEquals(listOf("YILMAZ", "DEMİR"), rows.map { it.lastName })
+        assertTrue(rows.all { it.lastNameCell != null })
+        assertTrue(rows.all { !it.isAmbiguous })
+    }
+
+    @Test fun absentMetadataHeaderNeverAppendsGenderOrBoardingTextToSurname() {
+        val words = listOf(
+            OcrPositionedWord("ÖĞRENCİ", 100, 10, 60, 16),
+            OcrPositionedWord("NO", 162, 10, 18, 16),
+            OcrPositionedWord("ADI", 240, 10, 30, 16),
+            OcrPositionedWord("SOYADI", 395, 10, 60, 16),
+            OcrPositionedWord("245", 128, 65, 30, 16),
+            OcrPositionedWord("AYŞE", 242, 65, 40, 16),
+            OcrPositionedWord("YILMAZ", 396, 65, 60, 16),
+            OcrPositionedWord("K", 554, 65, 12, 16),
+            OcrPositionedWord("246", 128, 95, 30, 16),
+            OcrPositionedWord("MEHMET", 242, 95, 60, 16),
+            OcrPositionedWord("DEMİR", 396, 95, 58, 16),
+            OcrPositionedWord("YATILI", 548, 95, 54, 16)
+        )
+        val rows = OcrRosterParser.parsePositionedWords(words)
+        assertEquals(2, rows.size)
+        assertEquals("YILMAZ", rows[0].lastName)
+        assertEquals("DEMİR", rows[1].lastName)
+        assertTrue(rows.all { it.isAmbiguous })
+        assertTrue(rows.none { it.isApproved })
+    }
+
 }
