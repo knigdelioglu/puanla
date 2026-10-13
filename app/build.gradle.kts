@@ -49,12 +49,14 @@ android {
 }
 
 dependencies {
+    // Until the first immutable AAR is published, use the known-good source pin.
+    // Explicit Maven smoke tests continue to work with -PcomposePublishedVersion.
     val publishedComposeVersion = if (providers.gradleProperty("composeLegacySources").orNull == "true") {
         null
     } else {
-        providers.gradleProperty("composePublishedVersion")
-            .orElse(providers.gradleProperty("composeDesignSystemVersion"))
-            .get()
+        providers.gradleProperty("composePublishedVersion").orNull
+            ?: providers.gradleProperty("composeDesignSystemVersion").orNull
+                ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
     }
     if (publishedComposeVersion != null) {
         implementation("com.knigdelioglu:compose-design-system:$publishedComposeVersion")
