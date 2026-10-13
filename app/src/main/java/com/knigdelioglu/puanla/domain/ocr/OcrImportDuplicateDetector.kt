@@ -54,9 +54,9 @@ object OcrImportDuplicateDetector {
                     } else null
                 }
                 .maxWithOrNull(
-                    compareBy<Match> { it.sameSourceRow }
-                        .thenBy { it.sameNumber }
+                    compareBy<Match> { it.sameNumber }
                         .thenBy { it.matchedCandidateIndex == null }
+                        .thenBy { it.sameSourceRow }
                         .thenBy { it.similarity }
                 )
 
@@ -72,27 +72,67 @@ object OcrImportDuplicateDetector {
         return hints
     }
 
+    /**
+     * Validates ALL identity conflicts independently.
+     *
+     * The UI intentionally shows one best duplicate hint per row. A single hint
+     * must not be used for persistence validation: a photo-row duplicate can
+     * otherwise hide a different same-number match in the saved classroom.
+     */
     fun validateSelectedCandidates(
         candidates: List<OcrStudentRow>,
         currentRoster: List<OcrRosterIdentity>
     ): OcrDuplicateValidation {
-        val hints = findPotentialDuplicates(candidates, currentRoster)
         val selectedIndices = candidates.indices.filter { candidates[it].isApproved }
-        val numberConflicts = selectedIndices.filterTo(linkedSetOf()) { index ->
-            val hint = hints[index] ?: return@filterTo false
-            hint.sameStudentNumber && (hint.matchedCandidateIndex == null ||
-                candidates[hint.matchedCandidateIndex].isApproved)
+        val numberConflicts = linkedSetOf<Int>()
+        val sourceConflicts = linkedSetOf<Int>()
+        val unconfirmedMatches = linkedSetOf<Int>()
+
+        for (index in selectedIndices) {
+            val candidate = candidates[index]
+            val number = candidate.studentNumber.trim()
+
+            // Even a candidate masked by a better source-row match cannot
+            // duplicate an already saved classroom number.
+            if (number.isNotBlank() &&
+                currentRoster.any { number == it.studentNumber.trim() }
+            ) {
+                numberConflicts.add(index)
+            }
+
+            // Do not use only a single "best" previous OCR candidate.
+            // Every selected/selected pair must be checked.
+            for (priorIndex in selectedIndices.filter { it < index }) {
+                val prior = candidates[priorIndex]
+                if (number.isNotBlank() && number == prior.studentNumber.trim()) {
+                    numberConflicts.add(index)
+                }
+                if (sameSourceImageRow(candidate, prior)) {
+                    sourceConflicts.add(index)
+                }
+            }
+
+            if (candidate.isConfirmedDistinctFromPossibleMatch) continue
+
+            // Fuzzy warnings remain conservative, including potential OCR
+            // repeats that were not individually selected for import.
+            val savedFuzzyMatch = currentRoster.any { existing ->
+                (number.isBlank() || number != existing.studentNumber.trim()) &&
+                    nameSimilarity(candidate, existing) >= NAME_SIMILARITY_THRESHOLD
+            }
+            val capturedFuzzyMatch = candidates.take(index).any { prior ->
+                val sameNumber = number.isNotBlank() && number == prior.studentNumber.trim()
+                !sameNumber && !sameSourceImageRow(candidate, prior) &&
+                    nameSimilarity(
+                        candidate,
+                        OcrRosterIdentity(prior.studentNumber, prior.firstName, prior.lastName)
+                    ) >= NAME_SIMILARITY_THRESHOLD
+            }
+            if (savedFuzzyMatch || capturedFuzzyMatch) {
+                unconfirmedMatches.add(index)
+            }
         }
-        val sourceConflicts = selectedIndices.filterTo(linkedSetOf()) { index ->
-            val hint = hints[index] ?: return@filterTo false
-            hint.sameSourceRow && hint.matchedCandidateIndex != null &&
-                candidates[hint.matchedCandidateIndex].isApproved
-        }
-        val unconfirmedMatches = selectedIndices.filterTo(linkedSetOf()) { index ->
-            val hint = hints[index]
-            hint != null && !hint.sameStudentNumber && !hint.sameSourceRow &&
-                !candidates[index].isConfirmedDistinctFromPossibleMatch
-        }
+
         return OcrDuplicateValidation(numberConflicts, unconfirmedMatches, sourceConflicts)
     }
 
