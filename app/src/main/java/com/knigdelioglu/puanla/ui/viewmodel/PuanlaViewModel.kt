@@ -630,7 +630,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                             rubricId = rubric.id, criterionId = criterionId,
                             scorePoints = previous?.points, evidenceNote = note, runId = run.id
                         )
-                        refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                        refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                     }
                 }
             } catch (cancel: CancellationException) {
