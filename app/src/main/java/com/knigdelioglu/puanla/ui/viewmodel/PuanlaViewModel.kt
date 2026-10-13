@@ -272,7 +272,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             rubrics.collect { list ->
                 val grade = selectedClassroom.value?.grade
                 if (selectedRubric.value !in list || selectedRubric.value?.grade != grade) {
-                    selectedRubric.value = list.firstOrNull { grade != null && it.grade == grade }
+                    val classroom = selectedClassroom.value
+                    val lastId = classroom?.let { arcPrefs.getString("last_rubric_${it.id}", null) }
+                    selectedRubric.value = list.firstOrNull { it.id == lastId && it.grade == grade }
+                        ?: list.firstOrNull { grade != null && it.grade == grade }
                 }
             }
         }
@@ -282,7 +285,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             selectedClassroom.collect { classroom ->
                 if (classroom != null) {
                     if (selectedRubric.value?.grade != classroom.grade) {
-                        selectedRubric.value = rubrics.value.firstOrNull { it.grade == classroom.grade }
+                        val lastId = arcPrefs.getString("last_rubric_${classroom.id}", null)
+                        selectedRubric.value = rubrics.value.firstOrNull {
+                            it.id == lastId && it.grade == classroom.grade
+                        } ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
                     }
                     loadStudentsForClassroom(classroom.id)
                     loadGroupTasks()
@@ -385,7 +391,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         arcPrefs.edit().putString("last_classroom", classroom.id).apply()
         selectedClassroom.value = classroom
         if (selectedRubric.value?.grade != classroom.grade) {
-            selectedRubric.value = rubrics.value.firstOrNull { it.grade == classroom.grade }
+            val lastId = arcPrefs.getString("last_rubric_${classroom.id}", null)
+            selectedRubric.value = rubrics.value.firstOrNull {
+                it.id == lastId && it.grade == classroom.grade
+            } ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
         }
     }
 
@@ -396,6 +405,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         if (selectedRubric.value?.id != rubric.id) selectedRun.value = null
+        selectedClassroom.value?.let { classroom ->
+            arcPrefs.edit().putString("last_rubric_${classroom.id}", rubric.id).apply()
+        }
         selectedRubric.value = rubric
     }
 
