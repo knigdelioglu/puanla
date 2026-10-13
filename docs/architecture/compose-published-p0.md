@@ -8,7 +8,7 @@ After the Compose repository publishes a real Maven version, validate it separat
 ./gradlew :app:assembleDebug test :app:assembleDebugAndroidTest -PcomposePublishedVersion=0.1.0
 ```
 
-The Maven repository is public and credential-free:
+Before a public release, test the locally staged Compose Maven repository with -PcomposePublishedVersion=0.1.0-SNAPSHOT and -PcomposePublishedRepositoryDir=/absolute/path/to/compose-design-system/build/p0-maven-repository. Once published, the public Maven repository is credential-free:
 `https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/`.
 The property switches the consuming build to `com.knigdelioglu:compose-design-system:<version>`, with POM/Gradle metadata and **without** including the shared project source. It is an explicit opt-in until acceptance tests on a real device and in CI are green.
 
