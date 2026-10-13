@@ -378,8 +378,6 @@ class PuanlaRepository(
         require(rubric.grade == classroom.grade) { "Rubrik sınıf düzeyine uygun değil." }
         val criterion = requireNotNull(rubricDao.getCriterionById(criterionId)) { "Ölçüt bulunamadı." }
         require(criterion.rubricId == rubric.id) { "Ölçüt başka rubriğe ait." }
-        require(scorePoints == null || scorePoints in 0..criterion.maxPoints) { "Puan geçerli ölçüt aralığı dışında." }
-
         val actualRunId = runId ?: ensureLegacyRun(classroomId, rubricId)
         val run = requireNotNull(runDao.get(actualRunId)) { "Değerlendirme oturumu bulunamadı." }
         require(run.rubricId == rubricId && runDao.containsClassroom(actualRunId, classroomId)) {
@@ -429,7 +427,7 @@ class PuanlaRepository(
         if (previous?.points != scorePoints) {
             auditLogDao.insertLog(AuditLogEntity(
                 id = UUID.randomUUID().toString(), action = "CRITERION_SCORE_CHANGED",
-                details = "${classroom.name}, no ${student.studentNumber}, ${criterion.title}: " +
+                details = "${classroom.name}, no ${student.studentNumber}, ${frozenCriterion.title}: " +
                     "${previous?.points?.toString() ?: "Boş"} → ${scorePoints?.toString() ?: "Boş"}"
             ))
         }
