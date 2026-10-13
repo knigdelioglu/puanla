@@ -26,7 +26,10 @@ data class OcrStudentRow(
     val sourceLeft: Int? = null,
     val sourceTop: Int? = null,
     val sourceRight: Int? = null,
-    val sourceBottom: Int? = null
+    val sourceBottom: Int? = null,
+    /** Dimensions of the oriented scan bitmap that produced the source boxes. */
+    val imageWidth: Int? = null,
+    val imageHeight: Int? = null
 )
 
 /** ML Kit element boundary data used for geometry-based column isolation and tests. */
@@ -124,7 +127,9 @@ object OcrRosterParser {
                     }
                 }
             }
-            parsePositionedWords(words)
+            parsePositionedWords(words).map { candidate ->
+                candidate.copy(imageWidth = bitmap.width, imageHeight = bitmap.height)
+            }
         } finally {
             recognizer.close()
         }
