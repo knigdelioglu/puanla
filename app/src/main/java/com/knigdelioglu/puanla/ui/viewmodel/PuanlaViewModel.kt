@@ -1058,6 +1058,19 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             repository.generatePdfReportSnapshot(classroom.id, rubric.id, run.id)
         }
 
+    suspend fun generatePdfSnapshots(allClassrooms: Boolean): List<com.knigdelioglu.puanla.domain.export.PdfReportSnapshot> =
+        mutations.snapshot {
+            val classroom = requireNotNull(selectedClassroom.value) { "Sınıf seçilmedi." }
+            val rubric = requireNotNull(selectedRubric.value) { "Rubrik seçilmedi." }
+            val run = requireNotNull(selectedRun.value) { "Değerlendirme seçilmedi." }
+            require(run.rubricId == rubric.id) { "Seçili rubrik değişmiş." }
+            val ids = if (allClassrooms) {
+                repository.getRunClassrooms(run.id).map { it.classroomId }
+            } else listOf(classroom.id)
+            require(ids.isNotEmpty()) { "Değerlendirmeye bağlı sınıf yok." }
+            ids.map { repository.generatePdfReportSnapshot(it, rubric.id, run.id) }
+        }
+
     // Backup and restore are mutually exclusive with every tracked write,
     // not just criterion scores. Snapshots wait for pending work; restore
     // cancels and joins it before performing the one-transaction replacement.
