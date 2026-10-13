@@ -614,6 +614,61 @@ private fun OcrStepVerification(
                             }
                         }
 
+                        // Secondary OCR is a proposal, never a silent identity change.
+                        if (!cand.firstNameSuggestion.isNullOrBlank() ||
+                            !cand.lastNameSuggestion.isNullOrBlank()
+                        ) {
+                            ArcAlert(
+                                title = "Hücre yeniden okundu",
+                                message = "İkinci OCR sonucu otomatik kaydedilmedi. Kaynak fotoğrafla karşılaştırın.",
+                                type = ArcAlertType.Warning
+                            )
+                            cand.firstNameSuggestion?.let { suggestion ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("Ad önerisi: $suggestion", color = ArcTheme.colors.textSecondary)
+                                    ArcButton(
+                                        text = "Adı Uygula",
+                                        size = ArcButtonSize.Sm,
+                                        variant = ArcButtonVariant.Outline,
+                                        onClick = {
+                                            viewModel.updateOcrCandidate(index, cand.copy(
+                                                firstName = suggestion,
+                                                firstNameSuggestion = null,
+                                                isApproved = false,
+                                                isConfirmedDistinctFromPossibleMatch = false
+                                            ))
+                                        }
+                                    )
+                                }
+                            }
+                            cand.lastNameSuggestion?.let { suggestion ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("Soyad önerisi: $suggestion", color = ArcTheme.colors.textSecondary)
+                                    ArcButton(
+                                        text = "Soyadı Uygula",
+                                        size = ArcButtonSize.Sm,
+                                        variant = ArcButtonVariant.Outline,
+                                        onClick = {
+                                            viewModel.updateOcrCandidate(index, cand.copy(
+                                                lastName = suggestion,
+                                                lastNameSuggestion = null,
+                                                isApproved = false,
+                                                isConfirmedDistinctFromPossibleMatch = false
+                                            ))
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
                         duplicateHints[index]?.let { hint ->
                             ArcAlert(
                                 title = if (hint.sameStudentNumber && hint.matchedCandidateIndex == null)
