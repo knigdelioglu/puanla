@@ -485,6 +485,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun lastCriterionIndex(studentId: String, runId: String): Int =
+        arcPrefs.getInt("criterion_${runId}_${studentId}", 0).coerceAtLeast(0)
+
+    fun rememberCriterionIndex(studentId: String, runId: String, index: Int) {
+        if (selectedStudent.value?.id != studentId || selectedRun.value?.id != runId) return
+        arcPrefs.edit().putInt("criterion_${runId}_${studentId}", index.coerceAtLeast(0)).apply()
+    }
+
     fun selectStudent(student: StudentEntity?) {
         if (student != null && student.classroomId != selectedClassroom.value?.id) {
             showToast("Öğrenci farklı sınıfa ait.")
