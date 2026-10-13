@@ -381,6 +381,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectClassroom(classroom: ClassroomEntity) {
+        if (selectedClassroom.value?.id != classroom.id) selectedRun.value = null
         arcPrefs.edit().putString("last_classroom", classroom.id).apply()
         selectedClassroom.value = classroom
         if (selectedRubric.value?.grade != classroom.grade) {
@@ -394,6 +395,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             showToast("Rubrik bu sınıf düzeyine uygun değil.")
             return
         }
+        if (selectedRubric.value?.id != rubric.id) selectedRun.value = null
         selectedRubric.value = rubric
     }
 
