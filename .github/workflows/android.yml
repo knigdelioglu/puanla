@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      compose_published_version:
+        description: 'Optional public Maven version for independent AAR compatibility test'
+        required: false
+        type: string
   repository_dispatch:
     types: [compose-design-system-updated]
   schedule:
@@ -26,12 +31,14 @@ jobs:
       compose_sha: ${{ steps.refs.outputs.compose_sha }}
       should_build: ${{ steps.refs.outputs.should_build }}
       promote: ${{ steps.refs.outputs.promote }}
+      published_version: ${{ steps.refs.outputs.published_version }}
     steps:
       - uses: actions/checkout@v4
       - name: Resolve pinned or candidate Compose revision
         id: refs
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_PUBLISHED_VERSION: ${{ inputs.compose_published_version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -41,10 +48,18 @@ jobs:
           compose_sha="$pinned"
           should_build=true
           promote=false
+          published_version="${REQUESTED_PUBLISHED_VERSION:-}"
+          if [[ -n "$published_version" ]]; then
+            [[ "$published_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || {
+              echo "::error::Invalid published Compose version"; exit 1;
+            }
+          fi
 
           # Every ordinary Puanla build uses the last validated pin.
           # Dispatch, manual and scheduled runs test a newer upstream revision.
-          if [[ "$EVENT_NAME" == "repository_dispatch" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ -n "$published_version" ]]; then
+            echo "::notice::Testing published Maven artifact $published_version without advancing source pin"
+          elif [[ "$EVENT_NAME" == "repository_dispatch" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
             compose_sha="$(git ls-remote https://github.com/knigdelioglu/compose-design-system.git refs/heads/main | cut -f1)"
             [[ "$compose_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Cannot resolve upstream Compose main"; exit 1; }
             if [[ "$compose_sha" == "$pinned" ]]; then
@@ -69,6 +84,7 @@ jobs:
             echo "compose_sha=$compose_sha"
             echo "should_build=$should_build"
             echo "promote=$promote"
+            echo "published_version=$published_version"
           } >> "$GITHUB_OUTPUT"
           echo "Using Puanla $puanla_sha with Compose $compose_sha (build=$should_build, promote=$promote)"
 
@@ -85,12 +101,18 @@ jobs:
           ref: ${{ needs.resolve.outputs.puanla_sha }}
           path: puanla
       - name: Checkout exactly the resolved Compose revision
+        if: ${{ needs.resolve.outputs.published_version == '' }}
         uses: actions/checkout@v4
         with:
           repository: knigdelioglu/compose-design-system
           ref: ${{ needs.resolve.outputs.compose_sha }}
           path: compose-design-system
           persist-credentials: false
+      - name: Enable independently published Compose AAR smoke mode
+        if: ${{ needs.resolve.outputs.published_version != '' }}
+        env:
+          LIBRARY_VERSION: ${{ needs.resolve.outputs.published_version }}
+        run: echo "ORG_GRADLE_PROJECT_composePublishedVersion=$LIBRARY_VERSION" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

@@ -49,7 +49,12 @@ android {
 }
 
 dependencies {
-    implementation(project(":design-system"))
+    val publishedComposeVersion = providers.gradleProperty("composePublishedVersion").orNull
+    if (publishedComposeVersion != null) {
+        implementation("com.knigdelioglu:compose-design-system:$publishedComposeVersion")
+    } else {
+        implementation(project(":design-system"))
+    }
 
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
