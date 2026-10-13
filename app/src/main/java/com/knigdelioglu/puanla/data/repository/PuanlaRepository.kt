@@ -260,6 +260,8 @@ class PuanlaRepository(
 
     fun observeRuns(): Flow<List<AssessmentRunEntity>> = runDao.observeAll()
 
+    fun observeRunProgress(runId: String): Flow<List<RunClassroomProgress>> = runDao.observeProgress(runId)
+
     suspend fun getRun(runId: String): AssessmentRunEntity? = runDao.get(runId)
 
     suspend fun getRunClassrooms(runId: String): List<RunClassroomEntity> = runDao.getAssignments(runId)
