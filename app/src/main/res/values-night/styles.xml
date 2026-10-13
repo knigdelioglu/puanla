@@ -1,0 +1,4 @@
+<resources>
+    <!-- Use a dark launch window when Android itself is in dark mode. -->
+    <style name="Theme.Puanla" parent="android:style/Theme.Material.NoActionBar" />
+</resources>
