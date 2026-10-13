@@ -128,6 +128,33 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     // Keyed state prevents the previous student's last criterion flashing on screen.
     var activeCriterionIndex by rememberStudentCriterionIndex(selectedStudent?.id, selectedRubric?.id, selectedRun?.id)
     var autoAdvanceQuickScore by rememberSaveable { mutableStateOf(true) }
+    var lastCriterionContext by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var readyCriterionContext by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Changing student in the same session always starts at measure one.
+    // Returning to a session (including after app restart) resumes its saved
+    // measure, without carrying over another session's selection.
+    LaunchedEffect(selectedStudent?.id, selectedRun?.id, criteria.size) {
+        val studentId = selectedStudent?.id ?: return@LaunchedEffect
+        val runId = selectedRun?.id ?: return@LaunchedEffect
+        if (criteria.isEmpty()) return@LaunchedEffect
+        val context = runId to studentId
+        if (lastCriterionContext != context) {
+            activeCriterionIndex = if (lastCriterionContext?.first != runId) {
+                viewModel.lastCriterionIndex(studentId, runId).coerceIn(0, criteria.lastIndex)
+            } else 0
+            lastCriterionContext = context
+        }
+        readyCriterionContext = context
+    }
+
+    LaunchedEffect(activeCriterionIndex, selectedStudent?.id, selectedRun?.id, readyCriterionContext) {
+        val studentId = selectedStudent?.id ?: return@LaunchedEffect
+        val runId = selectedRun?.id ?: return@LaunchedEffect
+        if (readyCriterionContext == (runId to studentId) && criteria.isNotEmpty()) {
+            viewModel.rememberCriterionIndex(studentId, runId, activeCriterionIndex)
+        }
+    }
 
     val filteredStudents = remember(students, searchQuery) {
         if (searchQuery.isBlank()) students
