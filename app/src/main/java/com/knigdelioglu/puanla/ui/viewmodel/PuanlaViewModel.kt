@@ -492,12 +492,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val s = selectedStudent.value ?: return
         val r = selectedRubric.value ?: return
         val c = selectedClassroom.value ?: return
-        if (s.classroomId != c.id || r.grade != c.grade) return
+        val run = selectedRun.value ?: return
+        if (s.classroomId != c.id || r.grade != c.grade || run.rubricId != r.id) return
         currentAssessmentJob = viewModelScope.launch {
-            val assessment = repository.getAssessmentForStudent(s.id, r.id)
+            val assessment = repository.getRunAssessmentForStudent(s.id, run.id)
             val scores = if (assessment != null) repository.getScoresForAssessment(assessment.id) else emptyList()
             if (selectedStudent.value?.id == s.id &&
                 selectedRubric.value?.id == r.id &&
+                selectedRun.value?.id == run.id &&
                 selectedClassroom.value?.id == c.id) {
                 currentAssessment.value = assessment
                 currentScores.value = scores.associateBy { it.criterionId }
@@ -505,10 +507,11 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun refreshSelectionIfMatches(classId: String, studentId: String, rubricId: String) {
+    private fun refreshSelectionIfMatches(classId: String, studentId: String, rubricId: String, runId: String) {
         if (selectedClassroom.value?.id == classId &&
             selectedStudent.value?.id == studentId &&
-            selectedRubric.value?.id == rubricId) {
+            selectedRubric.value?.id == rubricId &&
+            selectedRun.value?.id == runId) {
             loadCurrentAssessment()
         }
     }
@@ -521,16 +524,21 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val student = selectedStudent.value ?: return
         val rubric = selectedRubric.value ?: return
         val classroom = selectedClassroom.value ?: return
+        val run = selectedRun.value ?: return
+        if (run.status != "ACTIVE" || run.rubricId != rubric.id) {
+            showToast("Arşivlenmiş değerlendirmede puan değiştirilemez.")
+            return
+        }
         val criterionTitle = criteria.value.find { it.id == criterionId }?.title ?: "Ölçüt"
         // Take the lock before launch so rapid taps for one criterion are applied
         // sequentially, even across asynchronous Room transactions.
-        val lock = scoreMutex(student.id, rubric.id, criterionId)
+        val lock = scoreMutex(student.id, run.id, criterionId)
         launchMutation {
             try {
                 lock.withLock {
                     // Preserve the persisted observation note when changing/clearing a
                     // score. Note edits are a separate operation.
-                    val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                    val assessment = repository.getRunAssessmentForStudent(student.id, run.id)
                     val stored = assessment?.let { a ->
                         repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
                     }
@@ -539,14 +547,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                     val original = repository.saveCriterionScore(
                         classroomId = classroom.id, studentId = student.id, rubricId = rubric.id,
                         criterionId = criterionId, scorePoints = points,
-                        evidenceNote = stored?.evidenceNote ?: note
+                        evidenceNote = stored?.evidenceNote ?: note, runId = run.id
                     )
-                    refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                    refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                     val undoId = UUID.randomUUID().toString()
                     undoStack.push(undoId, UndoAction("${student.fullName} - $criterionTitle") {
                         lock.withLock {
                             // Undo only the intended edit, never a later score or note.
-                            val latestAssessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                            val latestAssessment = repository.getRunAssessmentForStudent(student.id, run.id)
                             val latest = latestAssessment?.let { a ->
                                 repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
                             }
@@ -557,9 +565,9 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                                     classroomId = classroom.id, studentId = student.id,
                                     rubricId = rubric.id, criterionId = criterionId,
                                     scorePoints = original?.points,
-                                    evidenceNote = latest?.evidenceNote
+                                    evidenceNote = latest?.evidenceNote, runId = run.id
                                 )
-                                refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
+                                refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                                 true
                             }
                         }
@@ -588,13 +596,15 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val student = selectedStudent.value ?: return
         val rubric = selectedRubric.value ?: return
         val classroom = selectedClassroom.value ?: return
-        val key = "${student.id}/${rubric.id}/$criterionId"
+        val run = selectedRun.value ?: return
+        if (run.status != "ACTIVE" || run.rubricId != rubric.id) return
+        val key = "${student.id}/${run.id}/$criterionId"
         pendingNoteWrites.remove(key)?.cancel()
         val writeJob = launchMutation {
             try {
                 delay(500)
-                scoreMutex(student.id, rubric.id, criterionId).withLock {
-                    val assessment = repository.getAssessmentForStudent(student.id, rubric.id)
+                scoreMutex(student.id, run.id, criterionId).withLock {
+                    val assessment = repository.getRunAssessmentForStudent(student.id, run.id)
                     val previous = assessment?.let {
                         repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == criterionId }
                     }
@@ -602,7 +612,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                         repository.saveCriterionScore(
                             classroomId = classroom.id, studentId = student.id,
                             rubricId = rubric.id, criterionId = criterionId,
-                            scorePoints = previous?.points, evidenceNote = note
+                            scorePoints = previous?.points, evidenceNote = note, runId = run.id
                         )
                         refreshSelectionIfMatches(classroom.id, student.id, rubric.id)
                     }
@@ -1019,7 +1029,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun generateCsv(): String {
         val c = selectedClassroom.value ?: return ""
         val r = selectedRubric.value ?: return ""
-        return repository.generateCsvExport(c.id, r.id)
+        val run = selectedRun.value ?: return ""
+        return repository.generateCsvExport(c.id, r.id, run.id)
     }
 
     /** Export waits for pending criterion edits before taking its database snapshot. */
@@ -1027,7 +1038,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         mutations.snapshot {
             val classroom = requireNotNull(selectedClassroom.value) { "Sınıf seçilmedi." }
             val rubric = requireNotNull(selectedRubric.value) { "Rubrik seçilmedi." }
-            repository.generatePdfReportSnapshot(classroom.id, rubric.id)
+            val run = requireNotNull(selectedRun.value) { "Değerlendirme seçilmedi." }
+            repository.generatePdfReportSnapshot(classroom.id, rubric.id, run.id)
         }
 
     // Backup and restore are mutually exclusive with every tracked write,
@@ -1047,6 +1059,8 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 selectedStudent.value = null
                 selectedClassroom.value = null
                 selectedRubric.value = null
+                selectedRun.value = null
+                assessmentRuns.value = emptyList()
                 students.value = emptyList()
                 criteria.value = emptyList()
                 currentScores.value = emptyMap()
