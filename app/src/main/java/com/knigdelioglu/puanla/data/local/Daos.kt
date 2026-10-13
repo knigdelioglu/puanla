@@ -120,6 +120,14 @@ interface RubricDao {
     suspend fun insertLevels(levels: List<CriterionLevelEntity>)
 }
 
+data class RunClassroomProgress(
+    val classroomId: String,
+    val classroomName: String,
+    val total: Int,
+    val completed: Int,
+    val partial: Int
+)
+
 @Dao
 interface AssessmentRunDao {
     @Query("SELECT * FROM assessment_runs ORDER BY createdAt DESC, id DESC")
@@ -133,6 +141,21 @@ interface AssessmentRunDao {
 
     @Query("SELECT * FROM assessment_runs WHERE rubricId = :rubricId AND id IN (SELECT runId FROM run_classrooms WHERE classroomId = :classroomId) ORDER BY createdAt DESC, id DESC")
     fun observeForClassroom(classroomId: String, rubricId: String): Flow<List<AssessmentRunEntity>>
+
+    @Query("""
+        SELECT c.id AS classroomId, c.name AS classroomName,
+            (SELECT COUNT(*) FROM students s WHERE s.classroomId = c.id) AS total,
+            (SELECT COUNT(*) FROM assessments a
+                WHERE a.runId = :runId AND a.classroomId = c.id AND a.isCompleted = 1) AS completed,
+            (SELECT COUNT(*) FROM assessments a
+                WHERE a.runId = :runId AND a.classroomId = c.id
+                    AND a.isCompleted = 0 AND a.scoredCount > 0) AS partial
+        FROM run_classrooms rc
+        JOIN classrooms c ON c.id = rc.classroomId
+        WHERE rc.runId = :runId
+        ORDER BY c.grade ASC, c.section ASC
+    """)
+    fun observeProgress(runId: String): Flow<List<RunClassroomProgress>>
 
     @Query("SELECT * FROM run_classrooms WHERE runId = :runId")
     suspend fun getAssignments(runId: String): List<RunClassroomEntity>
