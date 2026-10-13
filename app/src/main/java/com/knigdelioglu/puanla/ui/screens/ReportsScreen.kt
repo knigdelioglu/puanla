@@ -102,7 +102,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
     var showPdfDialog by remember { mutableStateOf(false) }
     var pdfGenerating by remember { mutableStateOf(false) }
-    var pendingPdfSnapshot by remember { mutableStateOf<PdfReportSnapshot?>(null) }
+    var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
+    var pdfAllClasses by remember { mutableStateOf(false) }
+    var pdfSummaryOnly by remember { mutableStateOf(false) }
+    var pendingSummaryOnly by remember { mutableStateOf(false) }
     var pendingPdfCourse by remember { mutableStateOf("") }
     var pendingPdfTeacher by remember { mutableStateOf("") }
     var csvActionsOpen by remember { mutableStateOf(false) }
@@ -137,8 +140,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     }
 
     val savePdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val snapshot = pendingPdfSnapshot
-        if (uri != null && snapshot != null) scope.launch {
+        val snapshots = pendingPdfSnapshots
+        if (uri != null && snapshots.isNotEmpty()) scope.launch {
             pdfGenerating = true
             try {
                 withContext(Dispatchers.IO) {
@@ -146,7 +149,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         "PDF dosyası açılamadı."
                     }
                     stream.use {
-                        PdfReportWriter.write(snapshot, pendingPdfCourse, pendingPdfTeacher, it)
+                        PdfReportWriter.writeAll(snapshots, pendingPdfCourse, pendingPdfTeacher, it, pendingSummaryOnly)
                     }
                 }
                 viewModel.showToast("Ölçüt bazlı PDF raporu kaydedildi.")
@@ -156,10 +159,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 viewModel.showToast("PDF kaydedilemedi: ${e.message}")
             } finally {
                 pdfGenerating = false
-                pendingPdfSnapshot = null
+                pendingPdfSnapshots = emptyList()
             }
         } else {
-            pendingPdfSnapshot = null
+            pendingPdfSnapshots = emptyList()
         }
     }
 
@@ -600,6 +603,26 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = pdfAllClasses,
+                            onCheckedChange = { pdfAllClasses = it }
+                        )
+                        Text(
+                            "Bu değerlendirmedeki bütün sınıflar",
+                            color = colors.foreground
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = pdfSummaryOnly,
+                            onCheckedChange = { pdfSummaryOnly = it }
+                        )
+                        Text(
+                            "Yalnızca özet ve grafikler (ölçüt tablosu olmadan)",
+                            color = colors.foreground
+                        )
+                    }
                     Text(
                         "Bu bilgiler sonraki PDF çıktıları için cihazda saklanır. " +
                             "İmza çizgisi çıktı üzerinde elle imzalanabilir.",
@@ -623,11 +646,14 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                 if (!pdfGenerating) scope.launch {
                                     pdfGenerating = true
                                     try {
-                                        val snapshot = withContext(Dispatchers.IO) {
-                                            viewModel.generatePdfSnapshot()
+                                        val snapshots = withContext(Dispatchers.IO) {
+                                            viewModel.generatePdfSnapshots(pdfAllClasses)
                                         }
-                                        require(snapshot.criteria.isNotEmpty()) { "Rubrikte ölçüt bulunamadı." }
-                                        pendingPdfSnapshot = snapshot
+                                        require(snapshots.isNotEmpty() && snapshots.all { it.criteria.isNotEmpty() }) {
+                                            "Rubrikte ölçüt bulunamadı."
+                                        }
+                                        pendingPdfSnapshots = snapshots
+                                        pendingSummaryOnly = pdfSummaryOnly
                                         pendingPdfCourse = pdfCourse.trim()
                                         pendingPdfTeacher = pdfTeacher.trim()
                                         pdfPreferences.edit()
@@ -635,11 +661,11 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${snapshot.classroomName}-${selectedRun?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${selectedRun?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
-                                        pendingPdfSnapshot = null
+                                        pendingPdfSnapshots = emptyList()
                                         viewModel.showToast("PDF hazırlanamadı: ${e.message}")
                                     } finally {
                                         pdfGenerating = false
