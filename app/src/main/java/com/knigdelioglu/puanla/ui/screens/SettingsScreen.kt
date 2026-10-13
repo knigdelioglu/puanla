@@ -461,7 +461,7 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                         message = "Yedek tarihi: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR")).format(Date(preview.exportedAt))}. " +
                             "${preview.classrooms} sınıf, ${preview.students} öğrenci, " +
                             "${preview.rubrics} rubrik, ${preview.assessments} değerlendirme, " +
-                            "${preview.scores} ölçüt puanı ve ${preview.groups} grup. " +
+                            "${preview.scores} ölçüt puanı, ${preview.evaluationRuns} değerlendirme oturumu ve ${preview.groups} grup. " +
                             "Bu işlem cihazdaki mevcut TÜM verilerin yerine bu yedeği koyacak. " +
                             "Devam etmeden önce mevcut verilerin ayrı bir yedeğini alın.",
                         type = ArcAlertType.Warning
