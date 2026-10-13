@@ -1,6 +1,6 @@
 package com.knigdelioglu.puanla.ui.screens
 
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.graphicsLayer
@@ -76,6 +76,7 @@ import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcStepper
 import com.knigdelioglu.arc.compose.navigation.ArcCarousel
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
+import com.knigdelioglu.puanla.domain.ocr.OcrImageDecoder
 import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
@@ -182,18 +183,8 @@ private fun OcrImportChrome(
  * The SAF picker and Android cross-app drop use the same bounded bitmap decode.
  * The caller must hold any temporary URI read permission until this completes.
  */
-private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): android.graphics.Bitmap =
-    withContext(Dispatchers.IO) {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Görsel okunamadı." }
-        var sample = 1
-        while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 2400) sample *= 2
-        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: error("Görsel çözümlenemedi.")
-    }
+private suspend fun decodeOcrImage(context: android.content.Context, uri: Uri): Bitmap =
+    OcrImageDecoder.decode(context, uri, maxDimension = 2400)
 
 @Composable
 private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel) {
@@ -659,31 +650,93 @@ private fun OcrStepVerification(
 private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
     val context = LocalContext.current
     var zoom by remember(uri) { mutableStateOf(1f) }
-    val preview by produceState<ImageBitmap?>(initialValue = null, key1 = uri) {
-        value = if (uri == null) null else withContext(Dispatchers.IO) {
-            try {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
-                var sample = 1
-                while (maxOf(bounds.outWidth / sample, bounds.outHeight / sample) > 1400) sample *= 2
-                val options = BitmapFactory.Options().apply { inSampleSize = sample }
-                context.contentResolver.openInputStream(uri)?.use {
-                    BitmapFactory.decodeStream(it, null, options)
-                }?.asImageBitmap()
-            } catch (_: Exception) {
-                null
-            }
+    var selectedIndex by remember(uri) { mutableStateOf(0) }
+    var showWholePhoto by remember(uri) { mutableStateOf(false) }
+    val preview by produceState<Bitmap?>(initialValue = null, key1 = uri) {
+        value = if (uri == null) null else try {
+            OcrImageDecoder.decode(context, uri, maxDimension = 1400)
+        } catch (_: Exception) {
+            null
         }
     }
     val bitmap = preview
     if (bitmap == null) {
         ArcAlert(
             title = "Fotoğraf önizlemesi",
-            message = "Seçilen fotoğraf henüz yüklenemedi veya erişilemiyor. Öğrenci bilgilerini yine de tek tek kontrol edin.",
+            message = "Kaynak fotoğraf gösterilemiyor. Öğrenci bilgilerini tek tek kontrol edin.",
             type = ArcAlertType.Warning
         )
         return
+    }
+    if (candidates.isEmpty()) return
+
+    val currentIndex = selectedIndex.coerceIn(0, candidates.lastIndex)
+    val selected = candidates[currentIndex]
+    // OCR sees a larger image than the preview. Map its physical pixel
+    // rectangles to the correctly oriented, downsampled review bitmap.
+    val cropped = remember(bitmap, selected, showWholePhoto) {
+        val imageHeight = selected.imageHeight
+        val imageWidth = selected.imageWidth
+        val top = selected.sourceTop
+        val bottom = selected.sourceBottom
+        val left = selected.sourceLeft
+        val right = selected.sourceRight
+        if (showWholePhoto || imageHeight == null || imageHeight <= 0 ||
+            imageWidth == null || imageWidth <= 0 || top == null || bottom == null ||
+            left == null || right == null || bottom <= top || right <= left
+        ) {
+            bitmap
+        } else {
+            val yScale = bitmap.height.toFloat() / imageHeight
+            val xScale = bitmap.width.toFloat() / imageWidth
+            val padY = maxOf(16, ((bottom - top) * 1.0f).toInt())
+            val padX = maxOf(24, ((right - left) * 0.08f).toInt())
+            val cropTop = ((top - padY) * yScale).toInt().coerceIn(0, bitmap.height - 1)
+            val cropBottom = ((bottom + padY) * yScale).toInt().coerceIn(cropTop + 1, bitmap.height)
+            val cropLeft = ((left - padX) * xScale).toInt().coerceIn(0, bitmap.width - 1)
+            val cropRight = ((right + padX) * xScale).toInt().coerceIn(cropLeft + 1, bitmap.width)
+            Bitmap.createBitmap(
+                bitmap, cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ArcButton(
+            text = "Önceki",
+            onClick = { selectedIndex = (currentIndex - 1).coerceAtLeast(0) },
+            enabled = currentIndex > 0,
+            size = ArcButtonSize.Sm,
+            variant = ArcButtonVariant.Outline
+        )
+        Text(
+            text = "Fotoğraf satırı ${currentIndex + 1} / ${candidates.size}",
+            color = ArcTheme.colors.foreground,
+            fontSize = 13.sp
+        )
+        ArcButton(
+            text = "Sonraki",
+            onClick = { selectedIndex = (currentIndex + 1).coerceAtMost(candidates.lastIndex) },
+            enabled = currentIndex < candidates.lastIndex,
+            size = ArcButtonSize.Sm,
+            variant = ArcButtonVariant.Outline
+        )
+        ArcButton(
+            text = if (showWholePhoto) "Satıra Odaklan" else "Tüm Fotoğraf",
+            onClick = { showWholePhoto = !showWholePhoto },
+            size = ArcButtonSize.Sm,
+            variant = ArcButtonVariant.Secondary
+        )
+    }
+    if (selected.isAmbiguous) {
+        ArcAlert(
+            title = "Bu öğrenci doğrulanmalı",
+            message = selected.ambiguityReason ?: "Kaynak fotoğraftan ad, soyad ve numarayı doğrulayın.",
+            type = ArcAlertType.Warning
+        )
     }
     Text("Fotoğraf yakınlaştırma: ${(zoom * 100).toInt()}%", color = ArcTheme.colors.textSecondary)
     ArcSlider(
@@ -695,8 +748,8 @@ private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
     ArcImageCompare(
         beforeContent = {
             Image(
-                bitmap = bitmap,
-                contentDescription = "Öğrenci listesinin orijinal fotoğrafı",
+                bitmap = cropped.asImageBitmap(),
+                contentDescription = "OCR kaynağında ${currentIndex + 1}. öğrencinin fotoğraf satırı",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = zoom, scaleY = zoom)
             )
@@ -706,24 +759,14 @@ private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
                 modifier = Modifier.fillMaxSize().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("OCR çıktısından ilk satırlar", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
-                candidates.take(5).forEach {
-                    Text(
-                        text = "${it.studentNumber}  ${it.firstName}  ${it.lastName}",
-                        maxLines = 1,
-                        color = ArcTheme.colors.textSecondary,
-                        fontSize = 13.sp
-                    )
-                }
-                if (candidates.size > 5) Text(
-                    text = "Ve ${candidates.size - 5} satır daha; tamamını aşağıdan doğrulayın.",
-                    color = ArcTheme.colors.textMuted,
-                    fontSize = 12.sp
-                )
+                Text("OCR sonucu · Öğrenci ${currentIndex + 1}", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                Text(text = "Numara: ${selected.studentNumber.ifBlank { "Okunamadı" }}", color = ArcTheme.colors.textSecondary)
+                Text(text = "Ad: ${selected.firstName.ifBlank { "Okunamadı" }}", color = ArcTheme.colors.textSecondary)
+                Text(text = "Soyad: ${selected.lastName.ifBlank { "Okunamadı" }}", color = ArcTheme.colors.textSecondary)
             }
         },
-        beforeLabel = "Kaynak fotoğraf",
-        afterLabel = "Okunan alanlar",
+        beforeLabel = "Kaynak satır",
+        afterLabel = "Okunan öğrenci",
         modifier = Modifier.fillMaxWidth()
     )
 }
