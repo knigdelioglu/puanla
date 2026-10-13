@@ -54,4 +54,26 @@ class OcrVerificationScrollingTest {
         rule.onNodeWithTag("ocrStudent-student-24").assertIsDisplayed()
         rule.onNodeWithText("Fotoğraftan Öğrenci Listesi Aktarımı").assertDoesNotExist()
     }
+
+    @Test
+    fun existingPhotoPickerRemainsAlongsideOptionalPerspectiveScanner() {
+        val application = InstrumentationRegistry.getInstrumentation()
+            .targetContext.applicationContext as Application
+        val viewModel = PuanlaViewModel(application)
+        viewModel.selectedClassroom.value = ClassroomEntity(
+            id = "ocr-scan-optional", grade = 11, section = "C",
+            name = "11-C", academicYear = "2026-2027"
+        )
+        viewModel.ocrStep.value = 0
+        rule.setContent {
+            ArcTheme(reducedMotion = true) {
+                OcrImportScreen(viewModel)
+            }
+        }
+        // No Google Play scan SDK is launched by this test: prove the fallback
+        // and optional perspective entry points coexist for all devices.
+        rule.onNodeWithText("Belgeyi Tara / Perspektifi Düzelt").assertIsDisplayed()
+        rule.onNodeWithText("Basılı Sınıf Listesi Fotoğrafı Seç").assertIsDisplayed()
+    }
+
 }
