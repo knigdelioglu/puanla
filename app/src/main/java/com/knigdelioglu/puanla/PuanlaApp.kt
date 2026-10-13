@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
@@ -21,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,7 +71,8 @@ import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
  */
 @Composable
 fun PuanlaApp(
-    viewModel: PuanlaViewModel = viewModel()
+    viewModel: PuanlaViewModel = viewModel(),
+    onSystemBarAppearanceChanged: (Boolean) -> Unit = {}
 ) {
     val darkModePreference by viewModel.darkMode.collectAsState()
     val reduceMotion by viewModel.reduceMotion.collectAsState()
@@ -76,6 +81,9 @@ fun PuanlaApp(
     val commandPaletteShortcutIsCustom by viewModel.commandPaletteShortcutIsCustom.collectAsState()
     val isSystemDark = isSystemInDarkTheme()
     val isDark = darkModePreference ?: isSystemDark
+
+    // The system bars follow the same resolved theme as the Compose UI.
+    SideEffect { onSystemBarAppearanceChanged(isDark) }
 
     val currentDestination by viewModel.currentDestination.collectAsState()
     val toastMessages by viewModel.toastMessages.collectAsState()
@@ -116,7 +124,11 @@ fun PuanlaApp(
             color = ArcTheme.colors.background
         ) {
             Box(
-                modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Keep interactive UI clear of status/navigation bars and display cutouts.
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .onPreviewKeyEvent { event ->
                     val keyEvent = event.nativeKeyEvent
                     if (event.type == KeyEventType.KeyDown &&
                         KeyboardShortcutMatcher.matchesCommandPaletteShortcut(
@@ -134,6 +146,9 @@ fun PuanlaApp(
                 }
             ) {
                 Scaffold(
+                    // The root already consumes safe drawing insets for all screen content
+                    // and floating controls; Scaffold must not apply them a second time.
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
                         Column {
                             AppTopBar(
