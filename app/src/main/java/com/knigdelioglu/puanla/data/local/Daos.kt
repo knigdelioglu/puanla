@@ -157,6 +157,9 @@ interface AssessmentRunDao {
     """)
     fun observeProgress(runId: String): Flow<List<RunClassroomProgress>>
 
+    @Query("SELECT COUNT(*) FROM run_classrooms WHERE classroomId = :classroomId")
+    suspend fun countAssignmentsForClassroom(classroomId: String): Int
+
     @Query("SELECT * FROM run_classrooms WHERE runId = :runId")
     suspend fun getAssignments(runId: String): List<RunClassroomEntity>
 
@@ -183,6 +186,9 @@ interface AssessmentDao {
 
     @Query("SELECT * FROM assessments WHERE classroomId = :classroomId AND runId = :runId")
     suspend fun getForRun(classroomId: String, runId: String): List<AssessmentEntity>
+
+    @Query("SELECT * FROM assessments WHERE id = :id LIMIT 1")
+    suspend fun getAssessmentById(id: String): AssessmentEntity?
 
     @Query("SELECT * FROM assessments WHERE studentId = :studentId AND runId = :runId LIMIT 1")
     suspend fun getStudentInRun(studentId: String, runId: String): AssessmentEntity?
