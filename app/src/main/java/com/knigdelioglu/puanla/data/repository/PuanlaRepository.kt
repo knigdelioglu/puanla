@@ -707,7 +707,7 @@ class PuanlaRepository(
                         title = "Önceki değerlendirme",
                         criteriaSnapshotJson = imported.criteria.filter { criterion ->
                             criterion.rubricId == it.rubricId
-                        }.takeIf { it.isNotEmpty() }?.let(Json::encodeToString) ?: "",
+                        }.takeIf { it.isNotEmpty() }?.let { criteria -> Json.encodeToString(criteria) } ?: "",
                         createdAt = 0
                     )
                 }
