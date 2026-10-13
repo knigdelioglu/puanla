@@ -47,6 +47,24 @@ class EvaluationRunRepositoryTest {
                 }
             }
             assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+            val octoberAssessment = requireNotNull(repository.getRunAssessmentForStudent("s1", october.id))
+            val decemberAssessment = requireNotNull(repository.getRunAssessmentForStudent("s1", december.id))
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    repository.clearAssessmentScores(octoberAssessment.id, "s1", "r")
+                }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    repository.clearAssessmentScores(decemberAssessment.id, "s2", "r")
+                }
+            }
+            repository.clearAssessmentScores(decemberAssessment.id, "s1", "r")
+            assertTrue(repository.getRunCriterionScoresForStudent("s1", december.id).isEmpty())
+            assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repository.deleteClassroom(requireNotNull(repository.getClassroomById("c1"))) }
+            }
         } finally {
             db.close()
         }
