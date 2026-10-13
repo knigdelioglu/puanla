@@ -1,6 +1,8 @@
 package com.knigdelioglu.puanla.data.local
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.summarizeScores
 
@@ -58,6 +60,28 @@ data class BackupSnapshot(
         val rubricById = rubrics.associateBy { it.id }
         val criterionById = criteria.associateBy { it.id }
         val assessmentById = assessments.associateBy { it.id }
+        val runById = runs.associateBy { it.id }
+        val snapshotCriteria = if (version == 3) runs.associate { run ->
+            val frozen = if (run.criteriaSnapshotJson.isBlank()) {
+                criteria.filter { it.rubricId == run.rubricId }
+            } else {
+                try {
+                    Json.decodeFromString<List<CriterionEntity>>(run.criteriaSnapshotJson)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("Oturum ölçütlerinin kaydı bozuk.", e)
+                }
+            }
+            require(frozen.isNotEmpty() && frozen.map { it.id }.distinct().size == frozen.size &&
+                frozen.all { it.rubricId == run.rubricId && it.maxPoints >= 0 &&
+                    criterionById.containsKey(it.id) }) {
+                "Oturum ölçütleri rubrikle uyuşmuyor."
+            }
+            run.id to frozen
+        } else emptyMap()
+        fun criteriaFor(assessment: AssessmentEntity): List<CriterionEntity> =
+            snapshotCriteria[assessment.runId]
+                ?: criteria.filter { it.rubricId == assessment.rubricId }
+
         require(students.all {
             classById.containsKey(it.classroomId) && it.studentNumber.isNotBlank() &&
                 it.firstName.isNotBlank() && it.lastName.isNotBlank()
@@ -75,7 +99,6 @@ data class BackupSnapshot(
             clazz != null && student?.classroomId == clazz.id && rubric?.grade == clazz.grade
         }) { "Değerlendirme sınıf, öğrenci veya rubrik ilişkisi geçersiz." }
         if (version >= 3) {
-            val runById = runs.associateBy { it.id }
             val linked = runClassrooms.map { it.runId to it.classroomId }.toSet()
             require(runs.all {
                 rubricById.containsKey(it.rubricId) && it.title.isNotBlank() &&
@@ -100,12 +123,16 @@ data class BackupSnapshot(
         require(scores.all {
             val assessment = assessmentById[it.assessmentId]
             val criterion = criterionById[it.criterionId]
-            assessment != null && criterion != null && criterion.rubricId == assessment.rubricId &&
-                (it.points == null || it.points in 0..criterion.maxPoints)
+            val frozenCriterion = assessment?.let { row ->
+                criteriaFor(row).firstOrNull { criterion -> criterion.id == it.criterionId }
+            }
+            assessment != null && criterion != null && frozenCriterion != null &&
+                criterion.rubricId == assessment.rubricId &&
+                (it.points == null || it.points in 0..frozenCriterion.maxPoints)
         }) { "Ölçüt puanı veya ilişkisi geçersiz." }
         unique(scores) { "${it.assessmentId}/${it.criterionId}" }
         for (assessment in assessments) {
-            val rubricCriteria = criteria.filter { it.rubricId == assessment.rubricId }
+            val rubricCriteria = criteriaFor(assessment)
             val scoreMap = scores.filter { it.assessmentId == assessment.id }.associate { it.criterionId to it.points }
             val summary = summarizeScores(rubricCriteria.map { CriterionScore(it.maxPoints, scoreMap[it.id]) })
             require(assessment.isCompleted == summary.completed &&
