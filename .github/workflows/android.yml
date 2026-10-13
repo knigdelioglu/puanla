@@ -7,112 +7,80 @@ on:
   workflow_dispatch:
     inputs:
       compose_published_version:
-        description: 'Optional public Maven version for independent AAR compatibility test'
+        description: 'Optional published Compose Maven version for a compatibility check'
         required: false
         type: string
-  repository_dispatch:
-    types: [compose-design-system-updated]
-  schedule:
-    - cron: '19 * * * *'
+      compose_legacy_sources:
+        description: 'Emergency rollback: build from the previously pinned Compose source commit'
+        required: false
+        type: boolean
+        default: false
 
-# Serialize main builds and dependency promotions so a promotion never
-# races another build/release started from the same workflow.
+# CI builds exactly one Puanla revision and one explicitly selected library
+# version; Compose's moving main can never change an ordinary release.
 concurrency:
   group: puanla-android-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      puanla_sha: ${{ steps.refs.outputs.puanla_sha }}
-      compose_sha: ${{ steps.refs.outputs.compose_sha }}
-      should_build: ${{ steps.refs.outputs.should_build }}
-      promote: ${{ steps.refs.outputs.promote }}
-      published_version: ${{ steps.refs.outputs.published_version }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Resolve pinned or candidate Compose revision
-        id: refs
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          REQUESTED_PUBLISHED_VERSION: ${{ inputs.compose_published_version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          pinned="$(tr -d '[:space:]' < .github/compose-design-system.sha)"
-          [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid Compose pin"; exit 1; }
-          puanla_sha="$(git rev-parse HEAD)"
-          compose_sha="$pinned"
-          should_build=true
-          promote=false
-          published_version="${REQUESTED_PUBLISHED_VERSION:-}"
-          if [[ -n "$published_version" ]]; then
-            [[ "$published_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || {
-              echo "::error::Invalid published Compose version"; exit 1;
-            }
-          fi
-
-          # Every ordinary Puanla build uses the last validated pin.
-          # Dispatch, manual and scheduled runs test a newer upstream revision.
-          if [[ -n "$published_version" ]]; then
-            echo "::notice::Testing published Maven artifact $published_version without advancing source pin"
-          elif [[ "$EVENT_NAME" == "repository_dispatch" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            compose_sha="$(git ls-remote https://github.com/knigdelioglu/compose-design-system.git refs/heads/main | cut -f1)"
-            [[ "$compose_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Cannot resolve upstream Compose main"; exit 1; }
-            if [[ "$compose_sha" == "$pinned" ]]; then
-              should_build=false
-              echo "::notice::Compose already pinned at $pinned"
-            else
-              # Do not adopt a revision whose own Compose CI has not passed.
-              # This also handles a push whose Android checks are still running.
-              if ! curl --fail --silent --show-error --retry 2 \
-                -H 'Accept: application/vnd.github+json' \
-                "https://api.github.com/repos/knigdelioglu/compose-design-system/actions/workflows/android.yml/runs?head_sha=$compose_sha&per_page=10" \
-                | jq -e --arg sha "$compose_sha" '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .status == "completed" and .conclusion == "success")] | length > 0' > /dev/null; then
-                should_build=false
-                echo "::notice::Compose $compose_sha has no successful completed Android push workflow yet; will retry on next dispatch/poll."
-              else
-                promote=true
-              fi
-            fi
-          fi
-          {
-            echo "puanla_sha=$puanla_sha"
-            echo "compose_sha=$compose_sha"
-            echo "should_build=$should_build"
-            echo "promote=$promote"
-            echo "published_version=$published_version"
-          } >> "$GITHUB_OUTPUT"
-          echo "Using Puanla $puanla_sha with Compose $compose_sha (build=$should_build, promote=$promote)"
-
   verify:
-    needs: resolve
-    if: needs.resolve.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
+    outputs:
+      compose_mode: ${{ steps.dependency.outputs.mode }}
+      compose_version: ${{ steps.dependency.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.puanla_sha }}
-          path: puanla
-      - name: Checkout exactly the resolved Compose revision
-        if: ${{ needs.resolve.outputs.published_version == '' }}
+      - name: Select published AAR or explicit source rollback
+        id: dependency
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.compose_published_version }}
+          LEGACY_SOURCES: ${{ inputs.compose_legacy_sources }}
+        run: |
+          set -euo pipefail
+          if [[ "${LEGACY_SOURCES:-false}" == "true" ]]; then
+            [[ -z "${REQUESTED_VERSION:-}" ]] || {
+              echo "::error::Cannot override Maven version while using source rollback"
+              exit 1
+            }
+            sha="$(tr -d '[:space:]' < .github/compose-design-system.sha)"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Invalid source rollback SHA"
+              exit 1
+            }
+            echo "mode=source" >> "$GITHUB_OUTPUT"
+            echo "version=$sha" >> "$GITHUB_OUTPUT"
+            echo "compose_sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "::notice::Using explicit Compose source rollback $sha"
+          else
+            version="${REQUESTED_VERSION:-$(sed -n 's/^composeDesignSystemVersion=//p' gradle.properties)}"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || {
+              echo "::error::Invalid published Compose version"
+              exit 1
+            }
+            if [[ -n "${REQUESTED_VERSION:-}" ]]; then
+              echo "ORG_GRADLE_PROJECT_composePublishedVersion=$version" >> "$GITHUB_ENV"
+            else
+              grep -qx 'composeUsePublishedByDefault=true' gradle.properties || {
+                echo "::error::Published Compose must be the default for normal CI builds"
+                exit 1
+              }
+            fi
+            echo "mode=maven" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "::notice::Verifying immutable Compose Maven AAR $version"
+          fi
+      - name: Checkout pinned Compose source only for explicit rollback
+        if: steps.dependency.outputs.mode == 'source'
         uses: actions/checkout@v4
         with:
           repository: knigdelioglu/compose-design-system
-          ref: ${{ needs.resolve.outputs.compose_sha }}
+          ref: ${{ steps.dependency.outputs.compose_sha }}
           path: compose-design-system
           persist-credentials: false
-      - name: Enable independently published Compose AAR smoke mode
-        if: ${{ needs.resolve.outputs.published_version != '' }}
-        env:
-          LIBRARY_VERSION: ${{ needs.resolve.outputs.published_version }}
-        run: echo "ORG_GRADLE_PROJECT_composePublishedVersion=$LIBRARY_VERSION" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -126,9 +94,29 @@ jobs:
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
+      - name: Confirm the resolved published AAR version
+        if: steps.dependency.outputs.mode == 'maven'
+        env:
+          EXPECTED_VERSION: ${{ steps.dependency.outputs.version }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:dependencyInsight --dependency compose-design-system --configuration debugRuntimeClasspath --no-daemon > compose-dependency-resolution.txt
+          grep -F "com.knigdelioglu:compose-design-system:$EXPECTED_VERSION" compose-dependency-resolution.txt || {
+            echo "::error::Gradle did not resolve the selected Compose AAR $EXPECTED_VERSION"
+            cat compose-dependency-resolution.txt
+            exit 1
+          }
       - name: Verify unit tests and package APKs
-        working-directory: puanla
-        run: ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"
+        env:
+          MODE: ${{ steps.dependency.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$MODE" == "source" ]]; then
+            args+=("-PcomposeUsePublishedByDefault=false" "-PcomposeDesignSystemDir=$GITHUB_WORKSPACE/compose-design-system/design-system")
+          fi
+          ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon "${args[@]}"
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -136,6 +124,8 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Verify tablet UI tests before publishing
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          MODE: ${{ steps.dependency.outputs.mode }}
         with:
           api-level: 36
           target: google_apis
@@ -144,63 +134,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           emulator-boot-timeout: 900
           disable-animations: true
-          script: cd puanla && ./gradlew :app:connectedDebugAndroidTest --no-daemon -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"
+          script: |
+            args=()
+            if [[ "$MODE" == "source" ]]; then
+              args+=("-PcomposeUsePublishedByDefault=false" "-PcomposeDesignSystemDir=$GITHUB_WORKSPACE/compose-design-system/design-system")
+            fi
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon "${args[@]}"
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
           name: puanla-tablet-debug-apk
-          path: puanla/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-  promote-compose:
-    needs: [resolve, verify]
-    if: needs.resolve.outputs.promote == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.puanla_sha }}
-      - name: Download validated APK
-        uses: actions/download-artifact@v4
-        with:
-          name: puanla-tablet-debug-apk
-          path: dist
-      - name: Adopt validated Compose commit without racing changes to main
-        env:
-          EXPECTED_PUANLA_SHA: ${{ needs.resolve.outputs.puanla_sha }}
-          COMPOSE_SHA: ${{ needs.resolve.outputs.compose_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          [[ "$(git rev-parse origin/main)" == "$EXPECTED_PUANLA_SHA" ]] || {
-            echo "::error::Puanla main changed during verification; no promotion or release. A later poll will retry."
-            exit 1
-          }
-          printf '%s\n' "$COMPOSE_SHA" > .github/compose-design-system.sha
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/compose-design-system.sha
-          git commit -m "chore(deps): adopt verified Compose $COMPOSE_SHA [skip ci]"
-          git push origin HEAD:main
-          echo "PROMOTED_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Publish APK from verified dependency promotion
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMPOSE_SHA: ${{ needs.resolve.outputs.compose_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="v0.1.1-tablet.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "dist/app-debug.apk#Puanla-${TAG}-debug.apk" \
-            --repo "$GITHUB_REPOSITORY" --target "$PROMOTED_COMMIT" --prerelease \
-            --title "Puanla 0.1.1 Tablet Önizleme" \
-            --notes "Puanla birim, APK derleme ve Android emülatör testlerinden geçen Compose Design System $COMPOSE_SHA ile oluşturulmuştur. Debug imzalıdır; yüklemeden önce mevcut verilerinizi yedekleyin."
-
   publish-main:
-    needs: [resolve, verify]
+    needs: verify
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -210,15 +158,15 @@ jobs:
         with:
           name: puanla-tablet-debug-apk
           path: dist
-      - name: Publish only verified main APK
+      - name: Publish only tested AAR-backed main APK
         env:
           GH_TOKEN: ${{ github.token }}
-          COMPOSE_SHA: ${{ needs.resolve.outputs.compose_sha }}
+          COMPOSE_VERSION: ${{ needs.verify.outputs.compose_version }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="v0.1.1-tablet.${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "dist/app-debug.apk#Puanla-${TAG}-debug.apk" \
+          gh release create "$TAG" "dist/app-debug.apk#Puanla-$TAG-debug.apk" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Puanla 0.1.1 Tablet Önizleme" \
-            --notes "Birim, APK derleme ve Android emülatör testleri başarılı. Compose Design System commit: $COMPOSE_SHA. Debug imzalıdır; yüklemeden önce verilerinizi yedekleyin."
+            --notes "Birim, APK ve tablet emülatör testleri başarılı. Compose Maven AAR: $COMPOSE_VERSION. Debug APK her CI çalışmasında farklı anahtarla imzalanabilir; mevcut verilerinizi yedekleyin."
