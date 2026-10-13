@@ -12,6 +12,9 @@ dependencyResolutionManagement {
         mavenCentral()
         // Opt-in Maven-based P0 compatibility check. The published version must exist.
         if (providers.gradleProperty("composePublishedVersion").isPresent) {
+            providers.gradleProperty("composePublishedRepositoryDir").orNull?.let { path ->
+                maven { url = uri(file(path)) }
+            }
             maven { url = uri("https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/") }
         }
     }
