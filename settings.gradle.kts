@@ -10,13 +10,19 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Opt-in Maven-based P0 compatibility check. The published version must exist.
+        // Resolve published, pinned Compose AAR; skip Maven lookup during source rollback.
         if (providers.gradleProperty("composePublishedVersion").isPresent ||
             providers.gradleProperty("composeUsePublishedByDefault").orNull == "true") {
             providers.gradleProperty("composePublishedRepositoryDir").orNull?.let { path ->
-                maven { url = uri(file(path)) }
+                maven {
+                    url = uri(file(path))
+                    content { includeGroup("com.knigdelioglu") }
+                }
             }
-            maven { url = uri("https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/") }
+            maven {
+                url = uri("https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/")
+                content { includeGroup("com.knigdelioglu") }
+            }
         }
     }
 }
@@ -33,15 +39,15 @@ if (composePublishedVersion != null) {
 }
 
 if (composePublishedVersion == null) {
-val composeDesignSystemDir = providers.gradleProperty("composeDesignSystemDir")
-    .map { path -> file(path) }
-    .orElse(file("../compose-design-system/design-system"))
-    .get()
-require(composeDesignSystemDir.isDirectory) {
-    "Compose Design System bulunamadı: $composeDesignSystemDir. " +
-        "`-PcomposeDesignSystemDir=<design-system modül dizini>` ile yolu belirtebilirsiniz."
-}
-
-include(":design-system")
-project(":design-system").projectDir = composeDesignSystemDir
+    // Emergency local source fallback; never silently follow upstream main.
+    val composeDesignSystemDir = providers.gradleProperty("composeDesignSystemDir")
+        .map { path -> file(path) }
+        .orElse(file("../compose-design-system/design-system"))
+        .get()
+    require(composeDesignSystemDir.isDirectory) {
+        "Compose Design System bulunamadı: $composeDesignSystemDir. " +
+            "`-PcomposeDesignSystemDir=<design-system modül dizini>` ile yolu belirtebilirsiniz."
+    }
+    include(":design-system")
+    project(":design-system").projectDir = composeDesignSystemDir
 }
