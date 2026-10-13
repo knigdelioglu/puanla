@@ -284,11 +284,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             selectedClassroom.collect { classroom ->
                 if (classroom != null) {
-                    if (selectedRubric.value?.grade != classroom.grade) {
-                        val lastId = arcPrefs.getString("last_rubric_${classroom.id}", null)
-                        selectedRubric.value = rubrics.value.firstOrNull {
-                            it.id == lastId && it.grade == classroom.grade
-                        } ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
+                    val savedRubricId = arcPrefs.getString("last_rubric_${classroom.id}", null)
+                    val targetRubric = rubrics.value.firstOrNull {
+                        it.id == savedRubricId && it.grade == classroom.grade
+                    } ?: selectedRubric.value?.takeIf { it.grade == classroom.grade }
+                        ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
+                    if (selectedRubric.value?.id != targetRubric?.id) {
+                        selectedRun.value = null
+                        selectedRubric.value = targetRubric
                     }
                     loadStudentsForClassroom(classroom.id)
                     loadGroupTasks()
@@ -390,11 +393,14 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         if (selectedClassroom.value?.id != classroom.id) selectedRun.value = null
         arcPrefs.edit().putString("last_classroom", classroom.id).apply()
         selectedClassroom.value = classroom
-        if (selectedRubric.value?.grade != classroom.grade) {
-            val lastId = arcPrefs.getString("last_rubric_${classroom.id}", null)
-            selectedRubric.value = rubrics.value.firstOrNull {
-                it.id == lastId && it.grade == classroom.grade
-            } ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
+        val lastId = arcPrefs.getString("last_rubric_${classroom.id}", null)
+        val targetRubric = rubrics.value.firstOrNull {
+            it.id == lastId && it.grade == classroom.grade
+        } ?: selectedRubric.value?.takeIf { it.grade == classroom.grade }
+            ?: rubrics.value.firstOrNull { it.grade == classroom.grade }
+        if (selectedRubric.value?.id != targetRubric?.id) {
+            selectedRun.value = null
+            selectedRubric.value = targetRubric
         }
     }
 
