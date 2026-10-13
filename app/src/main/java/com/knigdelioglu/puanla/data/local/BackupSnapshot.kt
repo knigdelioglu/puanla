@@ -10,7 +10,7 @@ import com.knigdelioglu.puanla.domain.summarizeScores
  */
 @Serializable
 data class BackupSnapshot(
-    val version: Int = 3,
+    val version: Int = 2,
     val exportedAt: Long = System.currentTimeMillis(),
     val classrooms: List<ClassroomEntity>,
     val students: List<StudentEntity>,
