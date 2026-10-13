@@ -104,13 +104,15 @@ interface RubricDao {
     @Query("SELECT * FROM criterion_levels WHERE criterionId IN (SELECT id FROM criteria WHERE rubricId = :rubricId) ORDER BY orderIndex ASC")
     suspend fun getLevelsForRubric(rubricId: String): List<CriterionLevelEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // REPLACE deletes the old row and can cascade-delete all past marks.
+    // UPDATE-on-conflict keeps FK relationships and assessment history.
+    @Upsert
     suspend fun insertRubric(rubric: RubricEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertRubricIfAbsent(rubric: RubricEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertCriteria(criteria: List<CriterionEntity>)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
