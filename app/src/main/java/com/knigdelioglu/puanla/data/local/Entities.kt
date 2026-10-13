@@ -1,6 +1,7 @@
 package com.knigdelioglu.puanla.data.local
 
 import kotlinx.serialization.Serializable
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -177,12 +178,12 @@ data class AssessmentEntity(
     val classroomId: String,
     val studentId: String,
     val rubricId: String,
-    val runId: String = "",
     val isCompleted: Boolean = false,
     val definitiveTotal: Int? = null,
     val scoredCount: Int = 0,
     val observationNote: String? = null,
-    val lastModifiedAt: Long = System.currentTimeMillis()
+    val lastModifiedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val runId: String = ""
 )
 
 @Entity(
