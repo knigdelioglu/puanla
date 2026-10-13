@@ -646,19 +646,49 @@ class PuanlaRepository(
             groupSessions = dao.groupSessions(),
             groupAssessments = dao.groupAssessments(),
             groupScores = dao.groupScores(),
-            groupMemberResults = dao.groupMemberResults()
+            groupMemberResults = dao.groupMemberResults(),
+            runs = dao.runs(),
+            runClassrooms = dao.runClassrooms()
         ).also { it.validate() })
     }
 
     suspend fun restoreBackupFromJson(jsonString: String): Result<Int> {
         return try {
             // No writes before this completes. Unsupported old/partial formats are rejected.
-            val snapshot = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+            val imported = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+            imported.validate()
+            // v1/v2 backups have no runs; retain every mark and assign each
+            // original classroom/rubric pair to its own legacy run.
+            val snapshot = if (imported.version < 3) {
+                val grouped = imported.assessments.distinctBy { it.classroomId to it.rubricId }
+                val legacy = grouped.map {
+                    AssessmentRunEntity(
+                        id = "legacy_${it.classroomId}_${it.rubricId}",
+                        rubricId = it.rubricId,
+                        title = "Önceki değerlendirme",
+                        criteriaSnapshotJson = "",
+                        createdAt = 0
+                    )
+                }
+                imported.copy(
+                    version = 3,
+                    runs = legacy,
+                    runClassrooms = grouped.map {
+                        val id = "legacy_${it.classroomId}_${it.rubricId}"
+                        RunClassroomEntity("assign_$id", id, it.classroomId)
+                    },
+                    assessments = imported.assessments.map {
+                        it.copy(runId = "legacy_${it.classroomId}_${it.rubricId}")
+                    }
+                )
+            } else imported
             snapshot.validate()
             db.withTransaction {
                 val dao = db.backupDao()
                 dao.clearScores()
                 dao.clearAssessments()
+                dao.clearRunClassrooms()
+                dao.clearRuns()
                 dao.clearGroupMemberResults()
                 dao.clearGroupScores()
                 dao.clearGroupAssessments()
@@ -675,6 +705,8 @@ class PuanlaRepository(
                 dao.putStudents(snapshot.students)
                 dao.putCriteria(snapshot.criteria)
                 dao.putLevels(snapshot.levels)
+                dao.putRuns(snapshot.runs)
+                dao.putRunClassrooms(snapshot.runClassrooms)
                 dao.putAssessments(snapshot.assessments)
                 dao.putScores(snapshot.scores)
                 dao.putGroups(snapshot.groups)
