@@ -168,7 +168,12 @@ interface AssessmentRunDao {
     @Query("SELECT COUNT(*) FROM run_classrooms WHERE classroomId = :classroomId")
     suspend fun countAssignmentsForClassroom(classroomId: String): Int
 
-    @Query("SELECT * FROM run_classrooms WHERE runId = :runId")
+    @Query("""
+        SELECT rc.* FROM run_classrooms rc
+        JOIN classrooms c ON c.id = rc.classroomId
+        WHERE rc.runId = :runId
+        ORDER BY c.grade ASC, c.section ASC
+    """)
     suspend fun getAssignments(runId: String): List<RunClassroomEntity>
 
     @Query("SELECT EXISTS(SELECT 1 FROM run_classrooms WHERE runId = :runId AND classroomId = :classroomId)")
