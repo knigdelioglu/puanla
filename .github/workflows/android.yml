@@ -135,11 +135,13 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           script: |
-            args=()
-            if [[ "$MODE" == "source" ]]; then
-              args+=("-PcomposeUsePublishedByDefault=false" "-PcomposeDesignSystemDir=$GITHUB_WORKSPACE/compose-design-system/design-system")
+            if [ "$MODE" = "source" ]; then
+              ./gradlew :app:connectedDebugAndroidTest --no-daemon \
+                -PcomposeUsePublishedByDefault=false \
+                -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"
+            else
+              ./gradlew :app:connectedDebugAndroidTest --no-daemon
             fi
-            ./gradlew :app:connectedDebugAndroidTest --no-daemon "${args[@]}"
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
