@@ -206,17 +206,17 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val firstComparisonStudent = students.firstOrNull { it.id == firstComparisonStudentId }
     val secondComparisonStudent = students.firstOrNull { it.id == secondComparisonStudentId }
 
-    LaunchedEffect(comparisonOpen, firstComparisonStudentId, secondComparisonStudentId, selectedRubric?.id) {
+    LaunchedEffect(comparisonOpen, firstComparisonStudentId, secondComparisonStudentId, selectedRubric?.id, selectedRun?.id) {
         val rubric = selectedRubric
         val firstId = firstComparisonStudentId
         val secondId = secondComparisonStudentId
-        if (comparisonOpen && rubric != null && firstId != null && secondId != null && firstId != secondId) {
+        if (comparisonOpen && rubric != null && selectedRun != null && firstId != null && secondId != null && firstId != secondId) {
             comparisonLoading = true
             comparisonError = false
             comparisonRows = try {
-                val criteria = viewModel.repository.getCriteriaForRubric(rubric.id)
-                val firstScores = viewModel.repository.getCriterionScoresForStudent(firstId, rubric.id)
-                val secondScores = viewModel.repository.getCriterionScoresForStudent(secondId, rubric.id)
+                val criteria = viewModel.repository.getCriteriaForRun(requireNotNull(selectedRun))
+                val firstScores = viewModel.repository.getRunCriterionScoresForStudent(firstId, requireNotNull(selectedRun).id)
+                val secondScores = viewModel.repository.getRunCriterionScoresForStudent(secondId, requireNotNull(selectedRun).id)
                 studentComparisonRows(criteria, firstScores, secondScores)
             } catch (cancel: CancellationException) {
                 throw cancel
