@@ -10,7 +10,7 @@ import com.knigdelioglu.puanla.domain.summarizeScores
  */
 @Serializable
 data class BackupSnapshot(
-    val version: Int = 2,
+    val version: Int = 3,
     val exportedAt: Long = System.currentTimeMillis(),
     val classrooms: List<ClassroomEntity>,
     val students: List<StudentEntity>,
@@ -21,13 +21,15 @@ data class BackupSnapshot(
     val scores: List<CriterionScoreEntity>,
     val groups: List<GroupTaskEntity>,
     val auditLogs: List<AuditLogEntity>,
+    val runs: List<AssessmentRunEntity> = emptyList(),
+    val runClassrooms: List<RunClassroomEntity> = emptyList(),
     val groupSessions: List<GroupAssessmentSessionEntity> = emptyList(),
     val groupAssessments: List<GroupAssessmentEntity> = emptyList(),
     val groupScores: List<GroupCriterionScoreEntity> = emptyList(),
     val groupMemberResults: List<GroupMemberResultEntity> = emptyList()
 ) {
     fun validate() {
-        require(version in 1..2) { "Desteklenmeyen yedek sürümü: $version" }
+        require(version in 1..3) { "Desteklenmeyen yedek sürümü: $version" }
         if (version == 1) require(groupSessions.isEmpty() && groupAssessments.isEmpty() &&
             groupScores.isEmpty() && groupMemberResults.isEmpty()) { "Eski yedekte yeni grup notları olamaz." }
         fun <T> unique(list: List<T>, key: (T) -> String) {
@@ -38,6 +40,9 @@ data class BackupSnapshot(
         unique(rubrics) { it.id }
         unique(criteria) { it.id }
         unique(levels) { it.id }
+        unique(runs) { it.id }
+        unique(runClassrooms) { it.id }
+        unique(runClassrooms) { "${it.runId}/${it.classroomId}" }
         unique(assessments) { it.id }
         unique(scores) { it.id }
         unique(groups) { it.id }
@@ -69,7 +74,29 @@ data class BackupSnapshot(
             val rubric = rubricById[it.rubricId]
             clazz != null && student?.classroomId == clazz.id && rubric?.grade == clazz.grade
         }) { "Değerlendirme sınıf, öğrenci veya rubrik ilişkisi geçersiz." }
-        unique(assessments) { "${it.studentId}/${it.rubricId}" }
+        if (version >= 3) {
+            val runById = runs.associateBy { it.id }
+            val linked = runClassrooms.map { it.runId to it.classroomId }.toSet()
+            require(runs.all {
+                rubricById.containsKey(it.rubricId) && it.title.isNotBlank() &&
+                    it.status in setOf("ACTIVE", "ARCHIVED")
+            }) { "Değerlendirme oturumu geçersiz." }
+            require(runClassrooms.all { relation ->
+                val run = runById[relation.runId]
+                run != null && rubricById[run.rubricId]?.grade == classById[relation.classroomId]?.grade
+            }) { "Oturum-sınıf eşleşmesi geçersiz." }
+            require(assessments.all { assessment ->
+                val run = runById[assessment.runId]
+                run?.rubricId == assessment.rubricId &&
+                    (assessment.runId to assessment.classroomId) in linked
+            }) { "Öğrencinin oturum ilişkisi eksik." }
+            unique(assessments) { "${it.studentId}/${it.runId}" }
+        } else {
+            require(runs.isEmpty() && runClassrooms.isEmpty() && assessments.all { it.runId.isBlank() }) {
+                "Eski sürüm yedekte oturum bulunamaz."
+            }
+            unique(assessments) { "${it.studentId}/${it.rubricId}" }
+        }
         require(scores.all {
             val assessment = assessmentById[it.assessmentId]
             val criterion = criterionById[it.criterionId]
