@@ -186,7 +186,9 @@ fun EvaluationRunSheet(
                     progress.forEach { item ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                classrooms.firstOrNull { it.id == item.classroomId }?.let(viewModel::selectClassroom)
+                                classrooms.firstOrNull { it.id == item.classroomId }?.let { target ->
+                                    run?.let { active -> viewModel.openRunClassroom(active, target) }
+                                }
                                 onDismiss()
                             }.padding(vertical = 9.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
