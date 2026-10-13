@@ -41,18 +41,30 @@ object PdfReportWriter {
         teacherName: String,
         output: OutputStream,
         generatedDate: LocalDate = LocalDate.now()
+    ) = writeAll(listOf(snapshot), courseName, teacherName, output, false, generatedDate)
+
+    /** Multi-class export: each classroom occupies its own contiguous section. */
+    fun writeAll(
+        snapshots: List<PdfReportSnapshot>,
+        courseName: String,
+        teacherName: String,
+        output: OutputStream,
+        summaryOnly: Boolean = false,
+        generatedDate: LocalDate = LocalDate.now()
     ) {
-        require(snapshot.criteria.isNotEmpty()) { "Rubrikte ölçüt bulunamadı." }
+        require(snapshots.isNotEmpty()) { "Raporlanacak sınıf yok." }
         require(courseName.isNotBlank() && teacherName.isNotBlank()) { "Ders ve öğretmen adı zorunludur." }
-        require(snapshot.criteria.distinctBy { it.id }.size == snapshot.criteria.size) {
-            "Rubrikte yinelenen ölçüt var."
+        snapshots.forEach { snapshot ->
+            require(snapshot.criteria.isNotEmpty() &&
+                snapshot.criteria.distinctBy { it.id }.size == snapshot.criteria.size) {
+                "Rubrik ölçütleri geçersiz."
+            }
         }
-        val summary = PdfReportStatistics.summary(snapshot)
         val date = generatedDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("tr-TR")))
         val pdf = PdfDocument()
         var pageNumber = 0
 
-        fun newPage(title: String): Pair<PdfDocument.Page, Canvas> {
+        fun newPage(snapshot: PdfReportSnapshot, title: String): Pair<PdfDocument.Page, Canvas> {
             pageNumber++
             val page = pdf.startPage(
                 PdfDocument.PageInfo.Builder(WIDTH, HEIGHT, pageNumber).create()
@@ -64,16 +76,18 @@ object PdfReportWriter {
         }
 
         try {
+            snapshots.forEach { snapshot ->
+            val summary = PdfReportStatistics.summary(snapshot)
             run {
-                val (page, canvas) = newPage("Değerlendirme Raporu")
+                val (page, canvas) = newPage(snapshot, "Değerlendirme Raporu")
                 drawSummary(canvas, snapshot, summary)
                 pdf.finishPage(page)
             }
-
+            if (!summaryOnly) {
             // Every criterion title is preserved in full here. Table columns
             // use Ö1, Ö2, ... to avoid tiny, unreadable text.
             run {
-                var pair = newPage("Rubrik Ölçütleri")
+                var pair = newPage(snapshot, "Rubrik Ölçütleri")
                 var y = 121f
                 snapshot.criteria.forEachIndexed { index, criterion ->
                     val label = "Ö${index + 1}  ${criterion.title}  (Azami ${criterion.maxPoints} puan)"
@@ -81,7 +95,7 @@ object PdfReportWriter {
                     val required = (wrapped.size * 15 + 8).toFloat()
                     if (y + required > TABLE_BOTTOM) {
                         pdf.finishPage(pair.first)
-                        pair = newPage("Rubrik Ölçütleri (devam)")
+                        pair = newPage(snapshot, "Rubrik Ölçütleri (devam)")
                         y = 121f
                     }
                     rounded(pair.second, MARGIN, y - 11f, RIGHT, y + required - 7f, pale)
@@ -101,7 +115,7 @@ object PdfReportWriter {
 
             criterionGroups.forEachIndexed { groupIndex, criteria ->
                 studentGroups.forEachIndexed { studentPageIndex, students ->
-                    val (page, canvas) = newPage("Öğrenci Ölçüt Puanları")
+                    val (page, canvas) = newPage(snapshot, "Öğrenci Ölçüt Puanları")
                     val first = studentPageIndex * ROWS_PER_PAGE + 1
                     val last = first + students.size - 1
                     writeText(
@@ -113,6 +127,8 @@ object PdfReportWriter {
                     drawTable(canvas, snapshot, criteria, students)
                     pdf.finishPage(page)
                 }
+            }
+            }
             }
             pdf.writeTo(output)
         } finally {
