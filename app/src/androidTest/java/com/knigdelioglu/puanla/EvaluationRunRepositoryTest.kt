@@ -40,6 +40,12 @@ class EvaluationRunRepositoryTest {
             assertNull(repository.getRunAssessmentForStudent("s2", december.id))
             val csv = repository.generateCsvExport("c1", "r", december.id)
             assertTrue(csv.contains(";60;Tamamlandı"))
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repository.generateCsvExport("c1", "r") }
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { repository.generatePdfReportSnapshot("c1", "r") }
+            }
             repository.archiveRun(october.id, true)
             assertThrows(IllegalArgumentException::class.java) {
                 runBlocking {
