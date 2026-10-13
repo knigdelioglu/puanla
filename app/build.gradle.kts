@@ -49,15 +49,10 @@ android {
 }
 
 dependencies {
-    // Until the first immutable AAR is published, use the known-good source pin.
-    // Explicit Maven smoke tests continue to work with -PcomposePublishedVersion.
-    val publishedComposeVersion = if (providers.gradleProperty("composeLegacySources").orNull == "true") {
-        null
-    } else {
-        providers.gradleProperty("composePublishedVersion").orNull
-            ?: providers.gradleProperty("composeDesignSystemVersion").orNull
-                ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
-    }
+    // The verified source pin remains default until the Maven AAR is published.
+    val publishedComposeVersion = providers.gradleProperty("composePublishedVersion").orNull
+        ?: providers.gradleProperty("composeDesignSystemVersion").orNull
+            ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
     if (publishedComposeVersion != null) {
         implementation("com.knigdelioglu:compose-design-system:$publishedComposeVersion")
     } else {
@@ -81,6 +76,7 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.document.scanner)
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
