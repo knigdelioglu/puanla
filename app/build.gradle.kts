@@ -49,7 +49,7 @@ android {
 }
 
 dependencies {
-    // The verified source pin remains default until the Maven AAR is published.
+    // Published 0.1.1 AAR is the default. Source fallback is opt-in for recovery.
     val publishedComposeVersion = providers.gradleProperty("composePublishedVersion").orNull
         ?: providers.gradleProperty("composeDesignSystemVersion").orNull
             ?.takeIf { providers.gradleProperty("composeUsePublishedByDefault").orNull == "true" }
