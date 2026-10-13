@@ -130,6 +130,9 @@ data class RunClassroomProgress(
 
 @Dao
 interface AssessmentRunDao {
+    @Query("SELECT * FROM assessment_runs WHERE criteriaSnapshotJson = ''")
+    suspend fun runsMissingCriterionSnapshots(): List<AssessmentRunEntity>
+
     @Query("SELECT * FROM assessment_runs ORDER BY createdAt DESC, id DESC")
     fun observeAll(): Flow<List<AssessmentRunEntity>>
 
