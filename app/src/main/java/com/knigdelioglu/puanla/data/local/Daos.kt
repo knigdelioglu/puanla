@@ -140,6 +140,9 @@ interface AssessmentRunDao {
     fun observe(id: String): Flow<AssessmentRunEntity?>
 
     @Query("SELECT * FROM assessment_runs WHERE rubricId = :rubricId AND id IN (SELECT runId FROM run_classrooms WHERE classroomId = :classroomId) ORDER BY createdAt DESC, id DESC")
+    suspend fun getForClassroom(classroomId: String, rubricId: String): List<AssessmentRunEntity>
+
+    @Query("SELECT * FROM assessment_runs WHERE rubricId = :rubricId AND id IN (SELECT runId FROM run_classrooms WHERE classroomId = :classroomId) ORDER BY createdAt DESC, id DESC")
     fun observeForClassroom(classroomId: String, rubricId: String): Flow<List<AssessmentRunEntity>>
 
     @Query("""
