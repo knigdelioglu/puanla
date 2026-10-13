@@ -111,6 +111,36 @@ data class CriterionLevelEntity(
     val orderIndex: Int
 )
 
+/** One evaluation may be assigned to multiple classrooms. */
+@Entity(tableName = "assessment_runs", indices = [Index(value = ["rubricId"])])
+@Serializable
+data class AssessmentRunEntity(
+    @PrimaryKey val id: String,
+    val rubricId: String,
+    val title: String,
+    val criteriaSnapshotJson: String = "",
+    val status: String = "ACTIVE",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "run_classrooms",
+    indices = [
+        Index(value = ["runId", "classroomId"], unique = true),
+        Index(value = ["classroomId"])
+    ],
+    foreignKeys = [
+        ForeignKey(entity = AssessmentRunEntity::class, parentColumns = ["id"], childColumns = ["runId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = ClassroomEntity::class, parentColumns = ["id"], childColumns = ["classroomId"], onDelete = ForeignKey.CASCADE)
+    ]
+)
+@Serializable
+data class RunClassroomEntity(
+    @PrimaryKey val id: String,
+    val runId: String,
+    val classroomId: String
+)
+
 @Entity(
     tableName = "assessments",
     foreignKeys = [
@@ -135,7 +165,8 @@ data class CriterionLevelEntity(
     ],
     indices = [
         Index(value = ["classroomId", "rubricId"]),
-        Index(value = ["studentId", "rubricId"], unique = true),
+        Index(value = ["studentId", "runId"], unique = true),
+        Index(value = ["runId"]),
         Index(value = ["rubricId"])
     ]
 
@@ -146,6 +177,7 @@ data class AssessmentEntity(
     val classroomId: String,
     val studentId: String,
     val rubricId: String,
+    val runId: String = "",
     val isCompleted: Boolean = false,
     val definitiveTotal: Int? = null,
     val scoredCount: Int = 0,
