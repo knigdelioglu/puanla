@@ -115,13 +115,13 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var showDateFilter by remember { mutableStateOf(false) }
     var calendarTarget by remember { mutableStateOf<String?>(null) }
     var comparisonOpen by remember { mutableStateOf(false) }
-    var firstComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
-    var secondComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf<String?>(null) }
+    var firstComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf<String?>(null) }
+    var secondComparisonStudentId by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf<String?>(null) }
     var comparisonRows by remember { mutableStateOf<List<List<String>>>(emptyList()) }
     var comparisonLoading by remember { mutableStateOf(false) }
     var comparisonError by remember { mutableStateOf(false) }
-    var filterStart by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
-    var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id) { mutableStateOf("") }
+    var filterStart by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf("") }
+    var filterEnd by remember(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id) { mutableStateOf("") }
     val filterActive = filterStart.isNotEmpty() || filterEnd.isNotEmpty()
     val filterValid = AssessmentDateFilter.isValidRange(filterStart, filterEnd)
     val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
