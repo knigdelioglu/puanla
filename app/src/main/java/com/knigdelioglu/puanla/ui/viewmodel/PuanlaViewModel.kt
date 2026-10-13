@@ -407,6 +407,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun openRunClassroom(run: AssessmentRunEntity, classroom: ClassroomEntity) {
+        if (run.rubricId != selectedRubric.value?.id || classroom.grade != selectedRubric.value?.grade) return
+        arcPrefs.edit().putString("last_run_${classroom.id}_${run.rubricId}", run.id).apply()
+        selectClassroom(classroom)
+    }
+
     fun createRun(title: String, classroomIds: List<String>) {
         val rubric = selectedRubric.value ?: return
         launchMutation {
