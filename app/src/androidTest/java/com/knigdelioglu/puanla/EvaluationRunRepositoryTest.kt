@@ -46,6 +46,18 @@ class EvaluationRunRepositoryTest {
             assertThrows(IllegalArgumentException::class.java) {
                 runBlocking { repository.generatePdfReportSnapshot("c1", "r") }
             }
+            // Updating rubric metadata must never REPLACE and cascade-delete
+            // an existing criterion score. Historical attempts still use
+            // their frozen 100-point criterion despite the new 60-point template.
+            db.rubricDao().insertRubric(RubricEntity("r", "Güncel Drama", "", 11, "Drama"))
+            db.rubricDao().insertCriteria(
+                listOf(CriterionEntity("criterion", "r", "Güncellenen Anlatım", "", 60, 0))
+            )
+            assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+            repository.saveCriterionScore("c1", "s1", "r", "criterion", 90, runId = october.id)
+            assertEquals(90, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
+            repository.saveCriterionScore("c1", "s1", "r", "criterion", 80, runId = october.id)
+            assertEquals(80, repository.getRunCriterionScoresForStudent("s1", october.id)["criterion"])
             repository.archiveRun(october.id, true)
             assertThrows(IllegalArgumentException::class.java) {
                 runBlocking {
