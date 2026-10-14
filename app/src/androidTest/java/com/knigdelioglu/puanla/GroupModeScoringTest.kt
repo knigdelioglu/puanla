@@ -134,7 +134,15 @@ class GroupModeScoringTest {
             db.rubricDao().insertCriteria(listOf(CriterionEntity("crit", "r", "Ölçüt", "", 100, 0)))
             val repo = PuanlaRepository(db) { "{}" }
             repo.saveGroupTask(GroupTaskEntity("g1", "c", "", "G1", "[\"s\"]", "[]"))
-            repo.saveGroupTask(GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]"))
+            try {
+                repo.saveGroupTask(GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]"))
+                fail("New groups cannot contain a previously assigned student")
+            } catch (_: IllegalArgumentException) { }
+            // Legacy/backup records may still have overlapping membership; scoring
+            // must not silently award a second group grade for the same session.
+            db.groupTaskDao().insertOrUpdateGroupTask(
+                GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]")
+            )
             val session = repo.createGroupSession("c", "r", "Drama")
             repo.scoreGroup(session.id, "g1", "crit", 90)
             try {
