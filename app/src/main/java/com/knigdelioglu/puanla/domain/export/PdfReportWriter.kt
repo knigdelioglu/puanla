@@ -230,13 +230,18 @@ object PdfReportWriter {
         group: List<IndexedValue<CsvCriterion>>,
         students: List<CsvStudent>
     ) {
-        val widths = listOf(68f, 180f) +
-            List(group.size) { (RIGHT - MARGIN - 68f - 180f - 58f - 80f) / group.size } +
+        val includesGroup = snapshot.students.any { it.groupTitle != null }
+        val nameWidth = if (includesGroup) 135f else 180f
+        val groupColumn = if (includesGroup) listOf(110f) else emptyList()
+        val fixed = 68f + nameWidth + groupColumn.sum() + 58f + 80f
+        val widths = listOf(68f, nameWidth) + groupColumn +
+            List(group.size) { (RIGHT - MARGIN - fixed) / group.size } +
             listOf(58f, 80f)
         val positions = mutableListOf(MARGIN)
         widths.forEach { positions.add(positions.last() + it) }
         rounded(canvas, MARGIN, 133f, RIGHT, 160f, pale)
         val headers = listOf("Okul No", "Adı Soyadı") +
+            (if (includesGroup) listOf("Grup") else emptyList()) +
             group.map { "Ö${it.index + 1} (${it.value.maxPoints})" } +
             listOf("Toplam", "Durum")
         headers.forEachIndexed { i, title ->
@@ -251,6 +256,7 @@ object PdfReportWriter {
             val total = PdfReportStatistics.definitiveScore(student, snapshot.criteria)
             val state = PdfReportStatistics.state(student, snapshot.criteria)
             val cells = listOf(student.number, "${student.firstName} ${student.lastName}") +
+                (if (includesGroup) listOf(student.groupTitle ?: "—") else emptyList()) +
                 group.map { (_, criterion) ->
                     student.scores[criterion.id]?.takeIf { it in 0..criterion.maxPoints }?.toString() ?: "—"
                 } + listOf(
