@@ -29,7 +29,8 @@ object CsvExportFormatter {
         val maxPoints = criteria.sumOf { it.maxPoints }
         val groupReport = students.any { it.groupTitle != null }
         val headers = listOf("Okul No", "Adı", "Soyadı") +
-            if (groupReport) listOf("Grup") + criteria.map { "${it.title} (Azami ${it.maxPoints})" } +
+            (if (groupReport) listOf("Grup") else emptyList()) +
+            criteria.map { "${it.title} (Azami ${it.maxPoints})" } +
             listOf("Toplam Puan ($maxPoints)", "Değerlendirme Durumu")
         appendRow(headers)
 
@@ -48,6 +49,7 @@ object CsvExportFormatter {
             }
             appendRow(
                 listOf(student.number, student.firstName, student.lastName) +
+                    (if (groupReport) listOf(student.groupTitle ?: "—") else emptyList()) +
                     criteria.map { student.scores[it.id]?.toString() ?: "Puanlanmadı" } +
                     listOf(if (completed) student.definitiveTotal.toString() else "Eksik", state)
             )
