@@ -648,14 +648,14 @@ class PuanlaRepository(
             "Rubrik bu sınıfa uygun değil."
         }
         val criteria = rubricDao.getCriteriaForRubric(rubric.id)
-        val memberScores = mutableMapOf<String, Pair<GroupMemberResultEntity, Map<String, Int?>>>()
+        val memberScores = mutableMapOf<String, Triple<GroupMemberResultEntity, String, Map<String, Int?>>>()
         for (evaluation in dao.getAssessments(session.id)) {
             val scores = dao.getScores(evaluation.id).associate { it.criterionId to it.points }
             for (member in dao.getMemberResults(evaluation.id)) {
                 require(member.studentId !in memberScores) {
                     "Öğrenci aynı grup oturumunda birden fazla kez değerlendirilmiş."
                 }
-                memberScores[member.studentId] = member to scores
+                memberScores[member.studentId] = Triple(member, evaluation.groupTitleSnapshot, scores)
             }
         }
         val rows = studentDao.getStudentsForClassroom(classroom.id).map { student ->
@@ -664,10 +664,11 @@ class PuanlaRepository(
                 number = student.studentNumber,
                 firstName = student.firstName,
                 lastName = student.lastName,
-                scores = result?.second.orEmpty(),
+                scores = result?.third.orEmpty(),
                 definitiveTotal = result?.first?.definitiveTotal,
                 isCompleted = result?.first?.isCompleted == true,
-                scoredCount = result?.second?.values?.count { it != null } ?: 0
+                scoredCount = result?.third?.values?.count { it != null } ?: 0,
+                groupTitle = result?.second
             )
         }
         return PdfReportSnapshot(
