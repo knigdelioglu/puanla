@@ -77,6 +77,53 @@ class GroupModeScoringTest {
     }
 
     @Test
+    fun distinctGroupsReceiveIndependentGradesAndCanRepairStaleMembership() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            val members = listOf(
+                StudentEntity("s1", "c", "1", "Ayşe", "Yılmaz"),
+                StudentEntity("s2", "c", "2", "Mert", "Demir"),
+                StudentEntity("s3", "c", "3", "Ece", "Kaya")
+            )
+            db.studentDao().insertStudents(members)
+            db.rubricDao().insertRubric(RubricEntity("r", "Drama", "", 11, "Drama", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("crit", "r", "Sunum", "", 100, 0)
+            ))
+            val repo = PuanlaRepository(db) { "{}" }
+            val group1 = GroupTaskEntity("g1", "c", "", "Grup A", "[\"s1\",\"s2\"]", "[]")
+            val group2 = GroupTaskEntity("g2", "c", "", "Grup B", "[\"s3\"]", "[]")
+            repo.saveGroupTask(group1)
+            repo.saveGroupTask(group2)
+            val session = repo.createGroupSession("c", "r", "Drama Oturumu")
+            val first = repo.scoreGroup(session.id, "g1", "crit", 80)
+            val second = repo.scoreGroup(session.id, "g2", "crit", 90)
+            assertEquals(2, repo.getGroupAssessmentsFlow(session.id).first().size)
+            assertEquals(listOf(80, 80), repo.getGroupMemberResults(first.id).map { it.definitiveTotal })
+            assertEquals(listOf(90), repo.getGroupMemberResults(second.id).map { it.definitiveTotal })
+            val initial = repo.generateGroupPdfReportSnapshot(session.id)
+            assertEquals(listOf(80, 80, 90), initial.students.map { it.definitiveTotal })
+            assertEquals(90, repo.getStudentGroupGradesFlow("s3", "r").first().single().definitiveTotal)
+            assertNull(repo.getAssessmentForStudent("s3", "r"))
+
+            // Simulate a legitimate roster correction during this same session.
+            repo.saveGroupTask(group1.copy(memberStudentIdsJson = "[\"s1\"]"))
+            repo.saveGroupTask(group2.copy(memberStudentIdsJson = "[\"s2\",\"s3\"]"))
+            assertEquals(2, repo.syncGroupSessionMembership(session.id))
+            assertEquals(0, repo.syncGroupSessionMembership(session.id))
+            assertEquals(listOf("s1"), repo.getGroupMemberResults(first.id).map { it.studentId })
+            assertEquals(setOf("s2", "s3"), repo.getGroupMemberResults(second.id).map { it.studentId }.toSet())
+            assertEquals(90, repo.getStudentGroupGradesFlow("s2", "r").first().single().definitiveTotal)
+            assertEquals(listOf(80, 90, 90), repo.generateGroupPdfReportSnapshot(session.id).students.map { it.definitiveTotal })
+            assertTrue(repo.generateGroupCsvExport(session.id).contains("Tamamlandı"))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun rejectsStudentInTwoScoredGroupsInTheSameSession() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
@@ -87,7 +134,15 @@ class GroupModeScoringTest {
             db.rubricDao().insertCriteria(listOf(CriterionEntity("crit", "r", "Ölçüt", "", 100, 0)))
             val repo = PuanlaRepository(db) { "{}" }
             repo.saveGroupTask(GroupTaskEntity("g1", "c", "", "G1", "[\"s\"]", "[]"))
-            repo.saveGroupTask(GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]"))
+            try {
+                repo.saveGroupTask(GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]"))
+                fail("New groups cannot contain a previously assigned student")
+            } catch (_: IllegalArgumentException) { }
+            // Legacy/backup records may still have overlapping membership; scoring
+            // must not silently award a second group grade for the same session.
+            db.groupTaskDao().insertOrUpdateGroupTask(
+                GroupTaskEntity("g2", "c", "", "G2", "[\"s\"]", "[]")
+            )
             val session = repo.createGroupSession("c", "r", "Drama")
             repo.scoreGroup(session.id, "g1", "crit", 90)
             try {

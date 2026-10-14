@@ -98,6 +98,16 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
 
     var createGroup by remember { mutableStateOf(false) }
+    var createRandomGroups by remember { mutableStateOf(false) }
+    var confirmMembershipSync by remember { mutableStateOf(false) }
+    val assignedStudentIds = remember(groups) {
+        groups.flatMap { group ->
+            try {
+                val array = JSONArray(group.memberStudentIdsJson)
+                (0 until array.length()).map { array.getString(it) }
+            } catch (_: Exception) { emptyList() }
+        }.toSet()
+    }
     var createSession by remember { mutableStateOf(false) }
     var showPreparation by remember { mutableStateOf(false) }
     var activeCriterionIndex by remember(selectedGroup?.id, session?.id, rubric?.id) { mutableIntStateOf(0) }
@@ -122,6 +132,12 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 text = if (showPreparation) "Puanlamaya dön" else "Hazırlık",
                 onClick = { showPreparation = !showPreparation },
                 size = ArcButtonSize.Sm, variant = ArcButtonVariant.Outline
+            )
+            ArcButton(
+                text = "Rastgele Grup Oluştur", onClick = { createRandomGroups = true },
+                size = ArcButtonSize.Sm,
+                enabled = classroom != null && students.any { it.id !in assignedStudentIds },
+                variant = ArcButtonVariant.Outline
             )
             ArcButton(
                 text = "Yeni Grup", onClick = { createGroup = true },
@@ -229,6 +245,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                     onNext = {
                                         if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                     },
+                                    onSyncMembership = { confirmMembershipSync = true },
                                     onNextGroup = {
                                         val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                         groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
@@ -276,7 +293,8 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 onNext = {
                                     if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                 },
-                                onNextGroup = {
+                                onSyncMembership = { confirmMembershipSync = true },
+                                    onNextGroup = {
                                     val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                     groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
                                 }
@@ -288,13 +306,55 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
         }
     }
 
+    if (confirmMembershipSync) {
+        Dialog(onDismissRequest = { confirmMembershipSync = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = ArcTheme.colors.surfaceRaised,
+                modifier = Modifier.width(440.dp)
+            ) {
+                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Grup Üyeliklerini Eşitle", fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp, color = ArcTheme.colors.foreground)
+                    Text(
+                        "Bu oturumdaki puanlanmış grupların üye listeleri güncel sınıf gruplarıyla eşleştirilir. " +
+                            "Gruptan çıkarılan öğrenci o grubun notunu kaybeder; yeni üye grup notunu alır. " +
+                            "Başka oturumlar ve bireysel notlar etkilenmez.",
+                        fontSize = 13.sp, color = ArcTheme.colors.textSecondary
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        ArcButton(text = "Vazgeç",
+                            onClick = { confirmMembershipSync = false },
+                            variant = ArcButtonVariant.Ghost)
+                        Spacer(Modifier.width(8.dp))
+                        ArcButton(text = "Üyelikleri Eşitle",
+                            onClick = {
+                                viewModel.syncGroupMemberships()
+                                confirmMembershipSync = false
+                            }, variant = ArcButtonVariant.Primary)
+                    }
+                }
+            }
+        }
+    }
     if (createGroup) {
         CreateGroupDialog(
             students = students,
+            assignedStudentIds = assignedStudentIds,
             onDismiss = { createGroup = false },
             onConfirm = { title, memberIds ->
                 viewModel.addGroupTask(title, memberIds)
                 createGroup = false
+            }
+        )
+    }
+    if (createRandomGroups) {
+        RandomGroupsDialog(
+            availableCount = students.count { it.id !in assignedStudentIds },
+            onDismiss = { createRandomGroups = false },
+            onConfirm = { average ->
+                viewModel.createRandomGroups(average)
+                createRandomGroups = false
             }
         )
     }
@@ -378,6 +438,7 @@ private fun GroupScoringPane(
     onScore: (Int) -> Unit,
     onClear: () -> Unit,
     onNext: () -> Unit,
+    onSyncMembership: () -> Unit,
     onNextGroup: () -> Unit
 ) {
     if (group == null) {
@@ -402,6 +463,13 @@ private fun GroupScoringPane(
             if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
             else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
             color = ArcTheme.colors.textSecondary
+        )
+        ArcButton(
+            text = "Üyelikleri Eşitle",
+            onClick = onSyncMembership,
+            variant = ArcButtonVariant.Outline,
+            size = ArcButtonSize.Sm,
+            modifier = Modifier.fillMaxWidth()
         )
         if (criterion != null) {
             ArcCard(modifier = Modifier.fillMaxWidth()) {
@@ -619,11 +687,16 @@ private fun GroupTaskCard(
 @Composable
 private fun CreateGroupDialog(
     students: List<StudentEntity>,
+    assignedStudentIds: Set<String>,
     onDismiss: () -> Unit,
     onConfirm: (String, List<String>) -> Unit
 ) {
     var groupTitle by remember { mutableStateOf("") }
     var selectedStudentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showAllStudents by remember { mutableStateOf(false) }
+    val visibleStudents = remember(students, assignedStudentIds, showAllStudents) {
+        if (showAllStudents) students else students.filterNot { it.id in assignedStudentIds }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -658,16 +731,40 @@ private fun CreateGroupDialog(
                     color = ArcTheme.colors.textSecondary
                 )
                 Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "${visibleStudents.size} öğrenci gösteriliyor · ${assignedStudentIds.size} öğrenci gruplarda",
+                        fontSize = 12.sp, color = ArcTheme.colors.textSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ArcButton(
+                        text = if (showAllStudents) "Boştakileri göster" else "Tüm Sınıfı Göster",
+                        size = ArcButtonSize.Sm,
+                        variant = ArcButtonVariant.Outline,
+                        onClick = {
+                            if (showAllStudents) {
+                                selectedStudentIds = selectedStudentIds - assignedStudentIds
+                            }
+                            showAllStudents = !showAllStudents
+                        }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
 
                 // One controlled Arc selection component, no nested row/checkbox
                 // click handlers that could toggle the same pupil twice.
                 ArcMultiSelect(
                     selectedItems = selectedStudentIds,
-                    items = students.map { it.id },
-                    onSelectionChanged = { selectedStudentIds = it },
+                    items = visibleStudents.map { it.id },
+                    onSelectionChanged = { selectedStudentIds = it - assignedStudentIds },
                     labelProvider = { id ->
                         students.firstOrNull { it.id == id }?.let {
-                            "${it.studentNumber} - ${it.fullName}"
+                            "${it.studentNumber} - ${it.fullName}" +
+                                if (id in assignedStudentIds) " (başka grupta)" else ""
                         } ?: id
                     },
                     modifier = Modifier
@@ -675,6 +772,10 @@ private fun CreateGroupDialog(
                         .verticalScroll(rememberScrollState())
                 )
 
+                if (showAllStudents) {
+                    Text("Başka gruptaki öğrenciler yalnızca görüntülenir; aynı anda ikinci bir gruba eklenemez.",
+                        fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
+                }
                 Spacer(Modifier.height(20.dp))
 
                 Row(
@@ -696,6 +797,61 @@ private fun CreateGroupDialog(
                         },
                         variant = ArcButtonVariant.Primary,
                         enabled = groupTitle.isNotBlank() && selectedStudentIds.isNotEmpty()
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun RandomGroupsDialog(
+    availableCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var averageText by remember { mutableStateOf("4") }
+    val average = averageText.toIntOrNull()?.takeIf { it > 0 }
+    val groupSizes = remember(availableCount, average) {
+        if (average == null) emptyList() else
+            com.knigdelioglu.puanla.domain.group.GroupPartitioner
+                .distribute((0 until availableCount).map { it.toString() }, average) { it }
+                .map { it.size }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = ArcTheme.shapes.panel,
+            color = ArcTheme.colors.surfaceRaised,
+            border = BorderStroke(1.dp, ArcTheme.colors.border),
+            modifier = Modifier.width(440.dp)
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Rastgele Grup Oluştur", fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                Text(
+                    "Yalnızca başka bir gruba alınmamış ${availableCount} öğrenci rastgele ve dengeli dağıtılacak.",
+                    fontSize = 13.sp, color = ArcTheme.colors.textSecondary
+                )
+                ArcInput(
+                    value = averageText,
+                    onValueChange = { input -> averageText = input.filter { it.isDigit() }.take(3) },
+                    label = "Ortalama öğrenci sayısı",
+                    placeholder = "Örn. 4"
+                )
+                Text(
+                    if (groupSizes.isEmpty()) "Pozitif bir öğrenci sayısı girin."
+                    else "${groupSizes.size} grup oluşturulacak · Üye sayıları: ${groupSizes.joinToString(", ")}",
+                    fontSize = 13.sp, color = ArcTheme.colors.textSecondary
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    ArcButton(text = "Vazgeç", onClick = onDismiss, variant = ArcButtonVariant.Ghost)
+                    Spacer(Modifier.width(8.dp))
+                    ArcButton(
+                        text = "Grupları Oluştur",
+                        onClick = { average?.let(onConfirm) },
+                        enabled = average != null && availableCount > 0,
+                        variant = ArcButtonVariant.Primary
                     )
                 }
             }

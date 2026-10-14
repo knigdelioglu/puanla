@@ -1073,6 +1073,37 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun syncGroupMemberships() {
+        val session = selectedGroupSession.value ?: return
+        launchMutation {
+            try {
+                val count = repository.syncGroupSessionMembership(session.id)
+                if (selectedGroupSession.value?.id == session.id) {
+                    loadCurrentGroupAssessment()
+                }
+                showToast(
+                    if (count == 0) "Üyelikler zaten güncel."
+                    else "${count} grubun oturumdaki üye kayıtları güncellendi."
+                )
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Üyelikler eşitlenemedi: ${e.message}") }
+        }
+    }
+
+    fun createRandomGroups(averageSize: Int) {
+        val classroom = selectedClassroom.value ?: return
+        launchMutation {
+            try {
+                val created = repository.createRandomGroups(classroom.id, averageSize)
+                if (selectedClassroom.value?.id == classroom.id) {
+                    selectedGroup.value = created.firstOrNull()
+                    showToast("${created.size} rastgele grup oluşturuldu.")
+                }
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Rastgele gruplar oluşturulamadı: " + e.message) }
+        }
+    }
+
     fun setGroupScore(criterionId: String, points: Int?) {
         val group = selectedGroup.value ?: return
         val session = selectedGroupSession.value ?: return

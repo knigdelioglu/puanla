@@ -316,5 +316,7 @@ interface GroupAssessmentDao {
     @Upsert suspend fun upsertScore(row: GroupCriterionScoreEntity)
     @Query("SELECT * FROM group_member_results WHERE groupAssessmentId = :assessmentId")
     suspend fun getMemberResults(assessmentId: String): List<GroupMemberResultEntity>
+    @Query("DELETE FROM group_member_results WHERE groupAssessmentId = :assessmentId")
+    suspend fun deleteMemberResults(assessmentId: String)
     @Upsert suspend fun upsertMemberResults(rows: List<GroupMemberResultEntity>)
 }

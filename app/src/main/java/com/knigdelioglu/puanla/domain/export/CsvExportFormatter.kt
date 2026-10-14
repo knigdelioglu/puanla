@@ -9,7 +9,8 @@ data class CsvStudent(
     val scores: Map<String, Int?> = emptyMap(),
     val definitiveTotal: Int? = null,
     val isCompleted: Boolean = false,
-    val scoredCount: Int = 0
+    val scoredCount: Int = 0,
+    val groupTitle: String? = null
 )
 
 /**
@@ -26,7 +27,9 @@ object CsvExportFormatter {
         require(criteria.all { it.maxPoints >= 0 }) { "Invalid maximum points" }
         append(BOM)
         val maxPoints = criteria.sumOf { it.maxPoints }
+        val groupReport = students.any { it.groupTitle != null }
         val headers = listOf("Okul No", "Adı", "Soyadı") +
+            (if (groupReport) listOf("Grup") else emptyList()) +
             criteria.map { "${it.title} (Azami ${it.maxPoints})" } +
             listOf("Toplam Puan ($maxPoints)", "Değerlendirme Durumu")
         appendRow(headers)
@@ -46,6 +49,7 @@ object CsvExportFormatter {
             }
             appendRow(
                 listOf(student.number, student.firstName, student.lastName) +
+                    (if (groupReport) listOf(student.groupTitle ?: "—") else emptyList()) +
                     criteria.map { student.scores[it.id]?.toString() ?: "Puanlanmadı" } +
                     listOf(if (completed) student.definitiveTotal.toString() else "Eksik", state)
             )
