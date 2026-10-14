@@ -52,9 +52,8 @@ import com.knigdelioglu.arc.compose.display.ArcToastStack
 import com.knigdelioglu.arc.compose.display.ArcNotificationItem
 import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
 import com.knigdelioglu.arc.compose.controls.ArcButton
+import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
-import com.knigdelioglu.arc.compose.advanced.ArcAdvancedItem
-import com.knigdelioglu.arc.compose.advanced.ArcGlassTabBar
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.ui.components.AppCommandPaletteModal
 import com.knigdelioglu.puanla.ui.components.KeyboardShortcutMatcher
@@ -109,15 +108,6 @@ fun PuanlaApp(
     var lastMainTab by remember { mutableStateOf(AppDestination.WORKSPACE) }
     LaunchedEffect(currentDestination) {
         lastMainTab = currentDestination.primaryTab(lastMainTab)
-    }
-    val navigationItems = remember {
-        destinations.map { destination ->
-            ArcAdvancedItem(
-                key = destination.name,
-                label = destination.label,
-                contentDescription = destination.label
-            )
-        }
     }
 
     val arcToastMessages = remember(toastMessages) {
@@ -177,16 +167,16 @@ fun PuanlaApp(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                ArcGlassTabBar(
-                                    tabs = navigationItems,
-                                    selectedKey = currentDestination.primaryTab(lastMainTab).name,
-                                    onTabSelected = { key ->
-                                        destinations.firstOrNull { it.name == key }?.let {
+                                ArcSegmentedControl(
+                                    items = destinations.map { it.label },
+                                    selectedIndex = destinations.indexOf(currentDestination.primaryTab(lastMainTab)),
+                                    onSelectIndex = { index ->
+                                        destinations.getOrNull(index)?.let {
                                             lastMainTab = it
                                             viewModel.currentDestination.value = it
                                         }
                                     },
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
