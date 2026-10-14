@@ -498,8 +498,9 @@ class PuanlaRepository(
             overlapping?.let { it to other.title }
         }
         require(conflict == null) {
-            val student = studentDao.getStudentById(requireNotNull(conflict).first)
-            "${student?.firstName} ${student?.lastName} zaten '${conflict.second}' grubunda."
+            val (studentId, groupTitle) = requireNotNull(conflict)
+            val student = studentDao.getStudentById(studentId)
+            "${student?.firstName} ${student?.lastName} zaten '${groupTitle}' grubunda."
         }
         groupTaskDao.insertOrUpdateGroupTask(task)
     }
