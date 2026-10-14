@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -40,10 +39,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -118,27 +113,20 @@ fun ArcButton(
     }
 
     Surface(
+        onClick = onClick,
         modifier = modifier
             .scale(scale)
-            .defaultMinSize(minHeight = size.height, minWidth = size.height)
-            .semantics {
-                role = Role.Button
-                if (!enabled || loading) disabled()
-            },
+            .defaultMinSize(minHeight = size.height, minWidth = size.height),
+        enabled = enabled && !loading,
         shape = shape,
         color = backgroundColor,
         contentColor = contentColor,
         border = border,
-        shadowElevation = if (variant == ArcButtonVariant.Primary && enabled && !pressed) 1.dp else 0.dp
+        shadowElevation = if (variant == ArcButtonVariant.Primary && enabled && !pressed) 1.dp else 0.dp,
+        interactionSource = interactionSource
     ) {
         Box(
             modifier = Modifier
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    enabled = enabled && !loading,
-                    onClick = onClick
-                )
                 .padding(horizontal = size.horizontalPadding),
             contentAlignment = Alignment.Center
         ) {
@@ -395,8 +383,8 @@ fun ArcExpandingButtonGroup(
         items.forEachIndexed { index, (label, icon) ->
             val selected = index == selectedIndex
             Surface(
+                onClick = { onSelectIndex(index) },
                 modifier = Modifier
-                    .clickable { onSelectIndex(index) }
                     .animateContentSize(animationSpec = motion.fastTween()),
                 shape = ArcTheme.shapes.pill,
                 color = if (selected) ArcTheme.colors.accent else Color.Transparent,
