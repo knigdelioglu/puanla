@@ -89,6 +89,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
     val selectedRun by viewModel.selectedRun.collectAsState()
+    val groupSessions by viewModel.groupSessions.collectAsState()
+    val selectedGroupSession by viewModel.selectedGroupSession.collectAsState()
     val students by viewModel.students.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
 
@@ -101,6 +103,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfCourse by remember { mutableStateOf(pdfPreferences.getString("course", "") ?: "") }
     var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
     var showPdfDialog by remember { mutableStateOf(false) }
+    var groupReportMode by remember { mutableStateOf(false) }
     var pdfGenerating by remember { mutableStateOf(false) }
     var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
     var pdfAllClasses by remember { mutableStateOf(false) }
@@ -280,7 +283,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 ArcButton(
                     text = "PDF Raporu",
-                    onClick = { showPdfDialog = true },
+                    onClick = {
+                        groupReportMode = false
+                        showPdfDialog = true
+                    },
                     enabled = selectedClassroom != null && selectedRun != null && !pdfGenerating,
                     variant = ArcButtonVariant.Outline,
                     size = ArcButtonSize.Md
@@ -332,6 +338,64 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         }
                     )
                 }
+                }
+            }
+        }
+
+        if (selectedClassroom != null && selectedRubric != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Grup değerlendirmesi raporu",
+                    color = colors.foreground, fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                )
+                if (groupSessions.isEmpty()) {
+                    Text("Bu sınıf ve rubrik için grup oturumu bulunmuyor.",
+                        color = colors.textSecondary, fontSize = 12.sp)
+                } else {
+                    ArcSelect(
+                        selectedItem = selectedGroupSession,
+                        items = groupSessions,
+                        onItemSelected = { viewModel.selectGroupSession(it) },
+                        labelProvider = { it.title },
+                        placeholder = "Grup oturumu seç",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ArcButton(
+                            text = "Grup PDF",
+                            enabled = selectedGroupSession != null && !pdfGenerating,
+                            onClick = {
+                                groupReportMode = true
+                                pdfAllClasses = false
+                                showPdfDialog = true
+                            },
+                            variant = ArcButtonVariant.Outline,
+                            size = ArcButtonSize.Md
+                        )
+                        ArcButton(
+                            text = "Grup CSV",
+                            enabled = selectedGroupSession != null && !csvGenerating,
+                            onClick = {
+                                val sessionId = selectedGroupSession?.id
+                                if (sessionId != null) scope.launch {
+                                    csvGenerating = true
+                                    try {
+                                        generatedCsvContent = withContext(Dispatchers.IO) {
+                                            viewModel.repository.generateGroupCsvExport(sessionId)
+                                        }
+                                        isCsvPreviewDialogOpen = true
+                                    } catch (e: Exception) {
+                                        viewModel.showToast("Grup CSV hazırlanamadı: ${e.message}")
+                                    } finally { csvGenerating = false }
+                                }
+                            },
+                            variant = ArcButtonVariant.Primary,
+                            size = ArcButtonSize.Md
+                        )
+                    }
+                    Text("Grup puanı her üyeye ölçütleriyle aktarılır; bireysel sınav kayıtları değişmez.",
+                        fontSize = 12.sp, color = colors.textSecondary)
                 }
             }
         }
@@ -582,9 +646,11 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     modifier = Modifier.padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Ölçüt Bazlı PDF Raporu", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                    Text(if (groupReportMode) "Grup Ölçüt Bazlı PDF Raporu" else "Ölçüt Bazlı PDF Raporu", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
                     Text(
-                        "Seçili sınıfın güncel bireysel puanları, ölçüt açıklamaları, sınıf özeti ve imza alanı yer alır. " +
+                        if (groupReportMode)
+                            "Seçili grup oturumunun ölçüt puanları bütün grup üyelerine yansıtılır. Bireysel sınav puanları değiştirilmez."
+                        else "Seçili sınıfın güncel bireysel puanları, ölçüt açıklamaları, sınıf özeti ve imza alanı yer alır. " +
                             "Tarih filtresinden bağımsız olarak seçili değerlendirme ve sınıfın puanları kullanılır. Grup notları karıştırılmaz.",
                         fontSize = 12.sp,
                         color = colors.textSecondary
@@ -603,7 +669,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!groupReportMode) Row(verticalAlignment = Alignment.CenterVertically) {
                         androidx.compose.material3.Checkbox(
                             checked = pdfAllClasses,
                             onCheckedChange = { pdfAllClasses = it }
@@ -647,7 +713,12 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                     pdfGenerating = true
                                     try {
                                         val snapshots = withContext(Dispatchers.IO) {
-                                            viewModel.generatePdfSnapshots(pdfAllClasses)
+                                            if (groupReportMode) {
+                                                val sessionId = requireNotNull(selectedGroupSession?.id) {
+                                                    "Grup oturumu seçilmedi."
+                                                }
+                                                listOf(viewModel.repository.generateGroupPdfReportSnapshot(sessionId))
+                                            } else viewModel.generatePdfSnapshots(pdfAllClasses)
                                         }
                                         require(snapshots.isNotEmpty() && snapshots.all { it.criteria.isNotEmpty() }) {
                                             "Rubrikte ölçüt bulunamadı."
@@ -661,7 +732,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${selectedRun?.title?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${if (groupReportMode) "grup" else if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (groupReportMode) selectedGroupSession?.title else selectedRun?.title)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
