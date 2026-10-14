@@ -2,7 +2,6 @@ package com.knigdelioglu.puanla.domain.backup
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -44,23 +43,25 @@ class MutationCoordinatorTest {
         assertNotNull(coordinator.launchWrite(backgroundScope) {})
     }
 
-    @Test fun restoreCancelsAndJoinsPriorMutations() = runTest {
+    @Test fun restoreWaitsForPriorMutationsBeforeReplacingDatabase() = runTest {
         val coordinator = MutationCoordinator()
-        val finallyCalled = CompletableDeferred<Unit>()
+        val allowedToFinish = CompletableDeferred<Unit>()
+        var writeFinished = false
         coordinator.launchWrite(backgroundScope) {
-            try {
-                awaitCancellation()
-            } finally {
-                finallyCalled.complete(Unit)
-            }
+            allowedToFinish.await()
+            writeFinished = true
         }
         runCurrent()
         val restored = async {
             coordinator.restore {
-                assertTrue(finallyCalled.isCompleted)
+                assertTrue(writeFinished)
                 "restored"
             }
         }
+        runCurrent()
+        assertTrue(coordinator.isPaused())
+        assertFalse(restored.isCompleted)
+        allowedToFinish.complete(Unit)
         runCurrent()
         assertEquals("restored", restored.await())
         assertFalse(coordinator.isPaused())

@@ -57,6 +57,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -87,10 +90,16 @@ data class EvidenceNoteSaveState(val key: String, val status: Status) {
     }
 }
 
-class PuanlaViewModel(application: Application) : AndroidViewModel(application) {
+class PuanlaViewModel internal constructor(
+    application: Application,
+    db: PuanlaDatabase,
+    repositoryOverride: PuanlaRepository?
+) : AndroidViewModel(application) {
 
-    private val db = PuanlaDatabase.getInstance(application)
-    val repository = PuanlaRepository(db) {
+    constructor(application: Application) : this(application, PuanlaDatabase.getInstance(application), null)
+
+    private val db = db
+    val repository = repositoryOverride ?: PuanlaRepository(db) {
         getApplication<Application>().assets.open("rubrics.json")
             .bufferedReader(Charsets.UTF_8).use { it.readText() }
     }
@@ -236,7 +245,21 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val evidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
     private val undoStack = UndoHistory<UndoAction>()
     private val groupUndoStack = UndoHistory<UndoAction>()
-    private val pendingNoteWrites = mutableMapOf<String, Job>()
+    private data class PendingEvidenceNote(
+        val key: String,
+        val classroomId: String,
+        val studentId: String,
+        val rubricId: String,
+        val runId: String,
+        val criterionId: String,
+        var note: String,
+        var revision: Long = 0,
+        var flushRequested: Boolean = false,
+        val edits: Channel<Unit> = Channel(Channel.CONFLATED),
+        val flush: Channel<Unit> = Channel(Channel.CONFLATED),
+        var job: Job? = null
+    )
+    private val pendingNoteWrites = mutableMapOf<String, PendingEvidenceNote>()
     // A fixed set of locks avoids retaining a mutex for every pupil/criterion ever graded.
     // Hash collisions only serialize unrelated writes; same-key writes remain ordered.
     private val scoreLocks = Array(128) { Mutex() }
@@ -690,47 +713,90 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val run = selectedRun.value ?: return
         if (run.status != "ACTIVE" || run.rubricId != rubric.id) return
         val key = "${student.id}/${run.id}/$criterionId"
-        pendingNoteWrites.remove(key)?.cancel()
+        val pending = pendingNoteWrites[key] ?: PendingEvidenceNote(
+            key, classroom.id, student.id, rubric.id, run.id, criterionId, note
+        ).also { pendingNoteWrites[key] = it }
+        pending.note = note
+        pending.revision++
+        pending.flushRequested = false
+        pending.edits.trySend(Unit)
         evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVING)
-        val writeJob = launchMutation(onBlocked = {
-            evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.ERROR)
-            showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemedi.")
-        }) {
-            try {
-                delay(500)
-                scoreMutex(student.id, run.id, criterionId).withLock {
-                    val assessment = repository.getRunAssessmentForStudent(student.id, run.id)
-                    val previous = assessment?.let {
-                        repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == criterionId }
-                    }
-                    if ((previous?.evidenceNote ?: "") != note) {
-                        repository.saveCriterionScore(
-                            classroomId = classroom.id, studentId = student.id,
-                            rubricId = rubric.id, criterionId = criterionId,
-                            scorePoints = previous?.points, evidenceNote = note, runId = run.id
-                        )
-                        refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
-                    }
-                    evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVED)
-                }
-            } catch (cancel: CancellationException) {
-                if (pendingNoteWrites[key] == currentCoroutineContext()[Job] &&
-                    evidenceNoteSaveState.value?.key == key
-                ) evidenceNoteSaveState.value = null
-                throw cancel
-            } catch (e: Exception) {
-                evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.ERROR)
-                showToast("Gözlem notu kaydedilemedi: ${e.message}")
-            } finally {
-                if (pendingNoteWrites[key] == currentCoroutineContext()[Job]) pendingNoteWrites.remove(key)
-            }
-        }
-        if (writeJob != null) pendingNoteWrites[key] = writeJob
+        startEvidenceNoteWorker(pending)
     }
 
-    /** Waits for the currently debounced note writes when the app leaves foreground. */
+    private fun startEvidenceNoteWorker(pending: PendingEvidenceNote) {
+        if (pending.job?.isActive == true) return
+        val job = launchMutation(onBlocked = {
+            if (pendingNoteWrites[pending.key] === pending) {
+                evidenceNoteSaveState.value = EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+                showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemedi.")
+            }
+        }) {
+            while (pendingNoteWrites[pending.key] === pending) {
+                if (!pending.flushRequested) {
+                    // Either a new edit restarts the quiet period or lifecycle flush bypasses it.
+                    val interrupted = withTimeoutOrNull(500) {
+                        select<Unit> {
+                            pending.edits.onReceive { }
+                            pending.flush.onReceive { }
+                        }
+                        true
+                    } ?: false
+                    if (interrupted && !pending.flushRequested) continue
+                }
+                pending.flushRequested = false
+                val revision = pending.revision
+                val note = pending.note
+                try {
+                    scoreMutex(pending.studentId, pending.runId, pending.criterionId).withLock {
+                        if (pendingNoteWrites[pending.key] === pending && pending.revision == revision) {
+                            val assessment = repository.getRunAssessmentForStudent(pending.studentId, pending.runId)
+                            val previous = assessment?.let {
+                                repository.getScoresForAssessment(it.id).firstOrNull { score -> score.criterionId == pending.criterionId }
+                            }
+                            if ((previous?.evidenceNote ?: "") != note) {
+                                repository.saveCriterionScore(
+                                    classroomId = pending.classroomId, studentId = pending.studentId,
+                                    rubricId = pending.rubricId, criterionId = pending.criterionId,
+                                    scorePoints = previous?.points, evidenceNote = note, runId = pending.runId
+                                )
+                            }
+                            if (pending.revision == revision && pendingNoteWrites[pending.key] === pending) {
+                                refreshSelectionIfMatches(pending.classroomId, pending.studentId, pending.rubricId, pending.runId)
+                                evidenceNoteSaveState.value = EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.SAVED)
+                                pendingNoteWrites.remove(pending.key)
+                                pending.edits.close()
+                                pending.flush.close()
+                                return@launchMutation
+                            }
+                        }
+                    }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (e: Exception) {
+                    if (pendingNoteWrites[pending.key] === pending) {
+                        evidenceNoteSaveState.value = EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+                        showToast("Gözlem notu kaydedilemedi: ${e.message}")
+                    }
+                    return@launchMutation
+                }
+                // A newer edit arrived during the write; serialize it after its debounce.
+            }
+        }
+        if (job == null) return
+        pending.job = job
+        job.invokeOnCompletion { if (pending.job === job) pending.job = null }
+    }
+
+    /** Lifecycle flush bypasses debounce and joins the coordinator-tracked writes. */
     suspend fun flushPendingEvidenceNotes() {
-        pendingNoteWrites.values.toList().joinAll()
+        val pending = pendingNoteWrites.values.toList()
+        pending.forEach {
+            it.flushRequested = true
+            it.flush.trySend(Unit)
+            startEvidenceNoteWorker(it)
+        }
+        pending.mapNotNull { it.job }.joinAll()
     }
 
     fun nextStudent() {
@@ -1326,45 +1392,68 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Backup and restore are mutually exclusive with every tracked write,
     // not just criterion scores. Snapshots wait for pending work; restore
-    // cancels and joins it before performing the one-transaction replacement.
+    // waits for it before performing the one-transaction replacement.
     suspend fun createBackup(): String = mutations.snapshot {
+        check(withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isEmpty() }) {
+            "Bekleyen gözlem notu kaydedilemedi; yedekleme durduruldu."
+        }
         repository.generateFullBackupJson()
     }
 
-    suspend fun restoreBackup(json: String): Result<Int> = mutations.restore {
-        val result = repository.restoreBackupFromJson(json)
-        if (result.isSuccess) {
-            withContext(Dispatchers.Main.immediate) {
-                pendingNoteWrites.clear()
-                evidenceNoteSaveState.value = null
-                undoStack.clear()
-                groupUndoStack.clear()
-                canUndoGroupAction.value = false
-                // scoreLocks is a fixed Array<Mutex>; no clearing is needed or supported.
-                selectedStudent.value = null
-                selectedClassroom.value = null
-                selectedRubric.value = null
-                selectedRun.value = null
-                assessmentRuns.value = emptyList()
-                students.value = emptyList()
-                criteria.value = emptyList()
-                currentScores.value = emptyMap()
-                currentAssessment.value = null
-                groupFlowJob?.cancel()
-                groupSessionFlowJob?.cancel()
-                groupAssessmentFlowJob?.cancel()
-                currentGroupScoreJob?.cancel()
-                groupTasks.value = emptyList()
-                selectedGroup.value = null
-                groupSessions.value = emptyList()
-                selectedGroupSession.value = null
-                groupAssessments.value = emptyList()
-                currentGroupAssessment.value = null
-                currentGroupScores.value = emptyMap()
-                currentGroupMembers.value = emptyList()
-                // Room flows repopulate selections once the transaction completes.
+    suspend fun restoreBackup(json: String): Result<Int> {
+        val validation = repository.validateBackupJson(json)
+        if (validation.isFailure) return Result.failure(requireNotNull(validation.exceptionOrNull()))
+        return mutations.restore {
+            val hasUnsavedNote = withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isNotEmpty() }
+            if (hasUnsavedNote) {
+                return@restore Result.failure(IllegalStateException(
+                    "Bekleyen gözlem notu kaydedilemedi; geri yükleme durduruldu."
+                ))
             }
+            val result = repository.restoreBackupFromJson(json)
+            if (result.isSuccess) {
+                withContext(Dispatchers.Main.immediate) {
+                    pendingNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
+                    pendingNoteWrites.clear()
+                    evidenceNoteSaveState.value = null
+                    lastStudentSelectionContext = null
+                    studentFlowJob?.cancel(); studentFlowJob = null
+                    assessmentFlowJob?.cancel(); assessmentFlowJob = null
+                    currentAssessmentJob?.cancel(); currentAssessmentJob = null
+                    studentGroupGradesJob?.cancel(); studentGroupGradesJob = null
+                    groupFlowJob?.cancel(); groupFlowJob = null
+                    groupSessionFlowJob?.cancel(); groupSessionFlowJob = null
+                    groupAssessmentFlowJob?.cancel(); groupAssessmentFlowJob = null
+                    currentGroupScoreJob?.cancel(); currentGroupScoreJob = null
+                    currentStudentGroupGrades.value = emptyList()
+                    classAssessments.value = emptyList()
+                    runClassProgress.value = emptyList()
+                    undoStack.clear()
+                    groupUndoStack.clear()
+                    canUndoGroupAction.value = false
+                    // scoreLocks is a fixed Array<Mutex>; no clearing is needed or supported.
+                    selectedStudent.value = null
+                    selectedClassroom.value = null
+                    selectedRubric.value = null
+                    selectedRun.value = null
+                    assessmentRuns.value = emptyList()
+                    students.value = emptyList()
+                    criteria.value = emptyList()
+                    levels.value = emptyList()
+                    currentScores.value = emptyMap()
+                    currentAssessment.value = null
+                    groupTasks.value = emptyList()
+                    selectedGroup.value = null
+                    groupSessions.value = emptyList()
+                    selectedGroupSession.value = null
+                    groupAssessments.value = emptyList()
+                    currentGroupAssessment.value = null
+                    currentGroupScores.value = emptyMap()
+                    currentGroupMembers.value = emptyList()
+                    // Room flows repopulate selections once the transaction completes.
+                }
+            }
+            result
         }
-        result
     }
 }

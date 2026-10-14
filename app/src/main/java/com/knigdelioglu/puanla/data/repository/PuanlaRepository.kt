@@ -922,77 +922,90 @@ class PuanlaRepository(
         ).also { it.validate() })
     }
 
-    suspend fun restoreBackupFromJson(jsonString: String): Result<Int> {
-        return try {
-            // No writes before this completes. Unsupported old/partial formats are rejected.
-            val imported = backupJson.decodeFromString<BackupSnapshot>(jsonString)
-            imported.validate()
-            // v1/v2 backups have no runs; retain every mark and assign each
-            // original classroom/rubric pair to its own legacy run.
-            val snapshot = if (imported.version < 3) {
-                val grouped = imported.assessments.distinctBy { it.classroomId to it.rubricId }
-                val legacy = grouped.map {
-                    AssessmentRunEntity(
-                        id = "legacy_${it.classroomId}_${it.rubricId}",
-                        rubricId = it.rubricId,
-                        title = "Önceki değerlendirme",
-                        criteriaSnapshotJson = imported.criteria.filter { criterion ->
-                            criterion.rubricId == it.rubricId
-                        }.takeIf { it.isNotEmpty() }?.let { criteria -> Json.encodeToString(criteria) } ?: "",
-                        createdAt = 0
-                    )
-                }
-                imported.copy(
-                    version = 3,
-                    runs = legacy,
-                    runClassrooms = grouped.map {
-                        val id = "legacy_${it.classroomId}_${it.rubricId}"
-                        RunClassroomEntity("assign_$id", id, it.classroomId)
-                    },
-                    assessments = imported.assessments.map {
-                        it.copy(runId = "legacy_${it.classroomId}_${it.rubricId}")
-                    }
-                )
-            } else imported
-            snapshot.validate()
-            db.withTransaction {
-                val dao = db.backupDao()
-                dao.clearScores()
-                dao.clearAssessments()
-                dao.clearRunClassrooms()
-                dao.clearRuns()
-                dao.clearGroupMemberResults()
-                dao.clearGroupScores()
-                dao.clearGroupAssessments()
-                dao.clearGroupSessions()
-                dao.clearGroups()
-                dao.clearLevels()
-                dao.clearCriteria()
-                dao.clearStudents()
-                dao.clearRubrics()
-                dao.clearClassrooms()
-                dao.clearLogs()
-                dao.putClassrooms(snapshot.classrooms)
-                dao.putRubrics(snapshot.rubrics)
-                dao.putStudents(snapshot.students)
-                dao.putCriteria(snapshot.criteria)
-                dao.putLevels(snapshot.levels)
-                dao.putRuns(snapshot.runs)
-                dao.putRunClassrooms(snapshot.runClassrooms)
-                dao.putAssessments(snapshot.assessments)
-                dao.putScores(snapshot.scores)
-                dao.putGroups(snapshot.groups)
-                dao.putGroupSessions(snapshot.groupSessions)
-                dao.putGroupAssessments(snapshot.groupAssessments)
-                dao.putGroupScores(snapshot.groupScores)
-                dao.putGroupMemberResults(snapshot.groupMemberResults)
-                dao.putLogs(snapshot.auditLogs)
-            }
-            Result.success(snapshot.students.size)
-        } catch (cancel: kotlinx.coroutines.CancellationException) {
-            throw cancel
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    /** Decode and validate before pausing live writes; keep legacy conversion shared with restore. */
+    fun validateBackupJson(jsonString: String): Result<Unit> = try {
+        decodeValidatedBackup(jsonString)
+        Result.success(Unit)
+    } catch (cancel: kotlinx.coroutines.CancellationException) {
+        throw cancel
+    } catch (e: Exception) {
+        Result.failure(e)
     }
+
+    private fun decodeValidatedBackup(jsonString: String): BackupSnapshot {
+        val imported = backupJson.decodeFromString<BackupSnapshot>(jsonString)
+        imported.validate()
+        // v1/v2 backups have no runs; retain every mark and assign each original
+        // classroom/rubric pair to its own historical run.
+        val snapshot = if (imported.version < 3) {
+            val grouped = imported.assessments.distinctBy { it.classroomId to it.rubricId }
+            val legacyRuns = grouped.map { assessment ->
+                AssessmentRunEntity(
+                    id = "legacy_${assessment.classroomId}_${assessment.rubricId}",
+                    rubricId = assessment.rubricId,
+                    title = "Önceki değerlendirme",
+                    criteriaSnapshotJson = imported.criteria.filter { it.rubricId == assessment.rubricId }
+                        .takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) } ?: "",
+                    createdAt = 0
+                )
+            }
+            imported.copy(
+                version = 3,
+                runs = legacyRuns,
+                runClassrooms = grouped.map { assessment ->
+                    val id = "legacy_${assessment.classroomId}_${assessment.rubricId}"
+                    RunClassroomEntity("assign_$id", id, assessment.classroomId)
+                },
+                assessments = imported.assessments.map { assessment ->
+                    assessment.copy(runId = "legacy_${assessment.classroomId}_${assessment.rubricId}")
+                }
+            )
+        } else imported
+        snapshot.validate()
+        return snapshot
+    }
+
+    suspend fun restoreBackupFromJson(jsonString: String): Result<Int> = try {
+        // Parsing, legacy conversion, and relationship validation happen before the transaction.
+        val snapshot = decodeValidatedBackup(jsonString)
+        db.withTransaction {
+            val dao = db.backupDao()
+            dao.clearScores()
+            dao.clearAssessments()
+            dao.clearRunClassrooms()
+            dao.clearRuns()
+            dao.clearGroupMemberResults()
+            dao.clearGroupScores()
+            dao.clearGroupAssessments()
+            dao.clearGroupSessions()
+            dao.clearGroups()
+            dao.clearLevels()
+            dao.clearCriteria()
+            dao.clearStudents()
+            dao.clearRubrics()
+            dao.clearClassrooms()
+            dao.clearLogs()
+            dao.putClassrooms(snapshot.classrooms)
+            dao.putRubrics(snapshot.rubrics)
+            dao.putStudents(snapshot.students)
+            dao.putCriteria(snapshot.criteria)
+            dao.putLevels(snapshot.levels)
+            dao.putRuns(snapshot.runs)
+            dao.putRunClassrooms(snapshot.runClassrooms)
+            dao.putAssessments(snapshot.assessments)
+            dao.putScores(snapshot.scores)
+            dao.putGroups(snapshot.groups)
+            dao.putGroupSessions(snapshot.groupSessions)
+            dao.putGroupAssessments(snapshot.groupAssessments)
+            dao.putGroupScores(snapshot.groupScores)
+            dao.putGroupMemberResults(snapshot.groupMemberResults)
+            dao.putLogs(snapshot.auditLogs)
+        }
+        Result.success(snapshot.students.size)
+    } catch (cancel: kotlinx.coroutines.CancellationException) {
+        throw cancel
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
 }

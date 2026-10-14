@@ -4,9 +4,9 @@
 
 Puanla, Compose Design System'i artık **yayımlanmış ve sabitlenmiş Maven AAR** olarak tüketir:
 
-- Maven koordinatı: `com.knigdelioglu:compose-design-system:0.1.1`
+- Maven koordinatı: `com.knigdelioglu:compose-design-system:0.1.2`
 - Kaynak: `https://raw.githubusercontent.com/knigdelioglu/compose-design-system/maven-repository/`
-- Sürüm: `gradle.properties` içindeki `composeDesignSystemVersion=0.1.1`
+- Sürüm: `gradle.properties` içindeki `composeDesignSystemVersion=0.1.2`
 - Mod: `composeUsePublishedByDefault=true`
 - Dağıtım: AAR + POM + `.module` dosyaları birlikte yayımlanır. Gradle'ın transitive Compose bağımlılıkları metadata üzerinden çözülür.
 

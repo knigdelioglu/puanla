@@ -31,6 +31,7 @@ import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcRadioCards
+import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.navigation.ArcBottomSheet
 import com.knigdelioglu.arc.compose.display.ArcTooltip
 import com.knigdelioglu.arc.compose.display.ArcThemeSwitch
@@ -102,6 +103,20 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
                         variant = ArcButtonVariant.Outline,
                         size = ArcButtonSize.Sm,
                         enabled = selectedClassroom != null && selectedRubric != null
+                    )
+                }
+
+                if (currentDestination == AppDestination.WORKSPACE ||
+                    currentDestination == AppDestination.GROUP_WORK
+                ) {
+                    ArcSegmentedControl(
+                        items = listOf("Bireysel", "Grup"),
+                        selectedIndex = if (currentDestination == AppDestination.GROUP_WORK) 1 else 0,
+                        onSelectIndex = { index ->
+                            viewModel.currentDestination.value =
+                                if (index == 1) AppDestination.GROUP_WORK else AppDestination.WORKSPACE
+                        },
+                        modifier = Modifier.width(168.dp)
                     )
                 }
 

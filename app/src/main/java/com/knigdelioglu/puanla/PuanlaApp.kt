@@ -26,7 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,7 +52,6 @@ import com.knigdelioglu.arc.compose.display.ArcToastStack
 import com.knigdelioglu.arc.compose.display.ArcNotificationItem
 import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
 import com.knigdelioglu.arc.compose.controls.ArcButton
-import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.advanced.ArcAdvancedItem
 import com.knigdelioglu.arc.compose.advanced.ArcGlassTabBar
@@ -81,11 +80,10 @@ fun PuanlaApp(
     onSystemBarAppearanceChanged: (Boolean) -> Unit = {}
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val lifecycleScope = rememberCoroutineScope()
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                lifecycleScope.launch { viewModel.flushPendingEvidenceNotes() }
+                lifecycleOwner.lifecycleScope.launch { viewModel.flushPendingEvidenceNotes() }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -190,19 +188,6 @@ fun PuanlaApp(
                                     },
                                     modifier = Modifier.weight(1f)
                                 )
-                                if (currentDestination == AppDestination.WORKSPACE ||
-                                    currentDestination == AppDestination.GROUP_WORK
-                                ) {
-                                    ArcSegmentedControl(
-                                        items = listOf("Bireysel", "Grup"),
-                                        selectedIndex = if (currentDestination == AppDestination.GROUP_WORK) 1 else 0,
-                                        onSelectIndex = { index ->
-                                            viewModel.currentDestination.value =
-                                                if (index == 1) AppDestination.GROUP_WORK else AppDestination.WORKSPACE
-                                        },
-                                        modifier = Modifier.width(224.dp)
-                                    )
-                                }
                             }
                         }
                     }

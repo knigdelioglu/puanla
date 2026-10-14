@@ -3,7 +3,6 @@ package com.knigdelioglu.puanla.domain.backup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -12,7 +11,7 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Coordinates ALL ViewModel database mutations with full backup / restore.
  * A snapshot waits for submitted writes (including debounced notes).
- * A restore cancels and joins writes before replacing the database.
+ * A restore pauses submissions and joins writes before replacing the database.
  *
  * Registration and pausing are synchronized, so even a caller on IO cannot
  * race a newly submitted write on the Compose main thread.
@@ -80,7 +79,6 @@ class MutationCoordinator {
                 active.toList()
             }
             try {
-                pending.forEach { it.cancel() }
                 pending.joinAll()
                 replace()
             } finally {
