@@ -1073,6 +1073,23 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun syncGroupMemberships() {
+        val session = selectedGroupSession.value ?: return
+        launchMutation {
+            try {
+                val count = repository.syncGroupSessionMembership(session.id)
+                if (selectedGroupSession.value?.id == session.id) {
+                    loadCurrentGroupAssessment()
+                }
+                showToast(
+                    if (count == 0) "Üyelikler zaten güncel."
+                    else "${count} grubun oturumdaki üye kayıtları güncellendi."
+                )
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Üyelikler eşitlenemedi: ${e.message}") }
+        }
+    }
+
     fun createRandomGroups(averageSize: Int) {
         val classroom = selectedClassroom.value ?: return
         launchMutation {
