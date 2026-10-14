@@ -99,6 +99,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
 
     var createGroup by remember { mutableStateOf(false) }
     var createRandomGroups by remember { mutableStateOf(false) }
+    var confirmMembershipSync by remember { mutableStateOf(false) }
     val assignedStudentIds = remember(groups) {
         groups.flatMap { group ->
             try {
@@ -244,6 +245,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                     onNext = {
                                         if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                     },
+                                    onSyncMembership = { confirmMembershipSync = true },
                                     onNextGroup = {
                                         val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                         groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
@@ -291,7 +293,8 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 onNext = {
                                     if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                 },
-                                onNextGroup = {
+                                onSyncMembership = { confirmMembershipSync = true },
+                                    onNextGroup = {
                                     val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                     groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
                                 }
@@ -303,6 +306,37 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
         }
     }
 
+    if (confirmMembershipSync) {
+        Dialog(onDismissRequest = { confirmMembershipSync = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = ArcTheme.colors.surfaceRaised,
+                modifier = Modifier.width(440.dp)
+            ) {
+                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Grup Üyeliklerini Eşitle", fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp, color = ArcTheme.colors.foreground)
+                    Text(
+                        "Bu oturumdaki puanlanmış grupların üye listeleri güncel sınıf gruplarıyla eşleştirilir. " +
+                            "Gruptan çıkarılan öğrenci o grubun notunu kaybeder; yeni üye grup notunu alır. " +
+                            "Başka oturumlar ve bireysel notlar etkilenmez.",
+                        fontSize = 13.sp, color = ArcTheme.colors.textSecondary
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        ArcButton(text = "Vazgeç",
+                            onClick = { confirmMembershipSync = false },
+                            variant = ArcButtonVariant.Ghost)
+                        Spacer(Modifier.width(8.dp))
+                        ArcButton(text = "Üyelikleri Eşitle",
+                            onClick = {
+                                viewModel.syncGroupMemberships()
+                                confirmMembershipSync = false
+                            }, variant = ArcButtonVariant.Primary)
+                    }
+                }
+            }
+        }
+    }
     if (createGroup) {
         CreateGroupDialog(
             students = students,
@@ -404,6 +438,7 @@ private fun GroupScoringPane(
     onScore: (Int) -> Unit,
     onClear: () -> Unit,
     onNext: () -> Unit,
+    onSyncMembership: () -> Unit,
     onNextGroup: () -> Unit
 ) {
     if (group == null) {
@@ -428,6 +463,13 @@ private fun GroupScoringPane(
             if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
             else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
             color = ArcTheme.colors.textSecondary
+        )
+        ArcButton(
+            text = "Üyelikleri Eşitle",
+            onClick = onSyncMembership,
+            variant = ArcButtonVariant.Outline,
+            size = ArcButtonSize.Sm,
+            modifier = Modifier.fillMaxWidth()
         )
         if (criterion != null) {
             ArcCard(modifier = Modifier.fillMaxWidth()) {
@@ -718,10 +760,11 @@ private fun CreateGroupDialog(
                 ArcMultiSelect(
                     selectedItems = selectedStudentIds,
                     items = visibleStudents.map { it.id },
-                    onSelectionChanged = { selectedStudentIds = it },
+                    onSelectionChanged = { selectedStudentIds = it - assignedStudentIds },
                     labelProvider = { id ->
                         students.firstOrNull { it.id == id }?.let {
-                            "${it.studentNumber} - ${it.fullName}"
+                            "${it.studentNumber} - ${it.fullName}" +
+                                if (id in assignedStudentIds) " (başka grupta)" else ""
                         } ?: id
                     },
                     modifier = Modifier
@@ -729,6 +772,10 @@ private fun CreateGroupDialog(
                         .verticalScroll(rememberScrollState())
                 )
 
+                if (showAllStudents) {
+                    Text("Başka gruptaki öğrenciler yalnızca görüntülenir; aynı anda ikinci bir gruba eklenemez.",
+                        fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
+                }
                 Spacer(Modifier.height(20.dp))
 
                 Row(
