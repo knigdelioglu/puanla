@@ -479,7 +479,28 @@ class PuanlaRepository(
     fun getGroupTasksFlow(classroomId: String): Flow<List<GroupTaskEntity>> =
         groupTaskDao.getGroupTasksFlow(classroomId)
 
-    suspend fun saveGroupTask(task: GroupTaskEntity) {
+    suspend fun saveGroupTask(task: GroupTaskEntity) = db.withTransaction {
+        val members = JSONArray(task.memberStudentIdsJson).let { json ->
+            (0 until json.length()).map { json.getString(it) }
+        }
+        require(members.isNotEmpty() && members.distinct().size == members.size) {
+            "Grup üyeleri geçersiz."
+        }
+        require(members.all { studentDao.getStudentById(it)?.classroomId == task.classroomId }) {
+            "Bütün üyeler aynı sınıfa ait olmalı."
+        }
+        val otherGroups = groupTaskDao.getGroupTasksFlow(task.classroomId).first()
+            .filterNot { it.id == task.id }
+        val conflict = otherGroups.firstNotNullOfOrNull { other ->
+            val json = JSONArray(other.memberStudentIdsJson)
+            val overlapping = (0 until json.length()).map { json.getString(it) }
+                .firstOrNull { it in members }
+            overlapping?.let { it to other.title }
+        }
+        require(conflict == null) {
+            val student = studentDao.getStudentById(requireNotNull(conflict).first)
+            "${student?.firstName} ${student?.lastName} zaten '${conflict.second}' grubunda."
+        }
         groupTaskDao.insertOrUpdateGroupTask(task)
     }
 
@@ -657,6 +678,62 @@ class PuanlaRepository(
         )
     }
 
+    /**
+     * Explicit repair for legacy or edited classroom group rosters. Replaces
+     * membership projections within THIS session only; graded criteria and
+     * other sessions stay unchanged. The caller must confirm this operation.
+     */
+    suspend fun syncGroupSessionMembership(sessionId: String): Int = db.withTransaction {
+        val dao = db.groupAssessmentDao()
+        val session = requireNotNull(dao.getSession(sessionId)) { "Oturum bulunamadı." }
+        val assessments = dao.getAssessments(sessionId)
+        val currentMembers = assessments.map { assessment ->
+            val group = requireNotNull(groupTaskDao.getGroupTaskById(assessment.groupId)) {
+                "'${assessment.groupTitleSnapshot}' grubu artık bulunmuyor."
+            }
+            require(group.classroomId == session.classroomId) { "Grup başka sınıfa ait." }
+            val array = JSONArray(group.memberStudentIdsJson)
+            val members = (0 until array.length()).map { array.getString(it) }
+            require(members.isNotEmpty() && members.distinct().size == members.size) {
+                "'${group.title}' üye listesi geçersiz."
+            }
+            require(members.all { studentDao.getStudentById(it)?.classroomId == session.classroomId }) {
+                "'${group.title}' üyeleri sınıfa ait değil."
+            }
+            assessment to members
+        }
+        val allIds = currentMembers.flatMap { it.second }
+        require(allIds.distinct().size == allIds.size) {
+            "Güncel gruplarda bir öğrenci birden fazla puanlanmış grupta. Önce grup üyelerini düzeltin."
+        }
+        var updated = 0
+        for ((assessment, memberIds) in currentMembers) {
+            val array = JSONArray(assessment.memberStudentIdsJson)
+            val oldIds = (0 until array.length()).map { array.getString(it) }
+            if (oldIds != memberIds) {
+                dao.deleteMemberResults(assessment.id)
+                dao.upsertMemberResults(memberIds.map { studentId ->
+                    GroupMemberResultEntity(
+                        id = assessment.id + "_" + studentId,
+                        groupAssessmentId = assessment.id, studentId = studentId,
+                        definitiveTotal = assessment.definitiveTotal,
+                        isCompleted = assessment.isCompleted
+                    )
+                })
+                dao.upsertAssessment(
+                    assessment.copy(memberStudentIdsJson = JSONArray(memberIds).toString(),
+                        lastModifiedAt = System.currentTimeMillis())
+                )
+                updated++
+            }
+        }
+        if (updated > 0) auditLogDao.insertLog(AuditLogEntity(
+            id = UUID.randomUUID().toString(), action = "GROUP_MEMBERSHIP_SYNCED",
+            details = "Oturum ${session.id}: ${updated} grup üye listesi güncellendi."
+        ))
+        updated
+    }
+
     /** Sessions are independent of editable classroom groups, and scoped to a rubric. */
     fun getStudentGroupGradesFlow(studentId: String, rubricId: String): Flow<List<StudentGroupGrade>> =
         db.groupAssessmentDao().getStudentGroupGradesFlow(studentId, rubricId)
@@ -712,11 +789,18 @@ class PuanlaRepository(
                     "Grup üyeleri sınıfa ait değil."
                 }
             }
-            val previouslyScored = dao.getAssessments(sessionId).flatMap { previous ->
+            val overlap = dao.getAssessments(sessionId).firstNotNullOfOrNull { previous ->
                 val array = JSONArray(previous.memberStudentIdsJson)
-                (0 until array.length()).map { array.getString(it) }
-            }.toSet()
-            require(memberIds.none { it in previouslyScored }) { "Öğrenci aynı oturumda başka grupta." }
+                val previousIds = (0 until array.length()).map { array.getString(it) }.toSet()
+                memberIds.firstOrNull { it in previousIds }?.let { it to previous.groupTitleSnapshot }
+            }
+            require(overlap == null) {
+                val (studentId, groupName) = requireNotNull(overlap)
+                val student = studentDao.getStudentById(studentId)
+                "${student?.firstName ?: "Öğrenci"} ${student?.lastName.orEmpty()} " +
+                    "bu oturumda '${groupName}' grubunun kayıtlı üyelerinde. " +
+                    "Güncel gruplar farklıysa 'Üyelikleri Eşitle' seçeneğini kullanın."
+            }
             evaluation = GroupAssessmentEntity(
                 id = UUID.randomUUID().toString(), sessionId = sessionId, groupId = groupId,
                 groupTitleSnapshot = group.title,
