@@ -38,6 +38,7 @@ import org.json.JSONObject
 import java.util.UUID
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.group.GroupChecklistRules
+import com.knigdelioglu.puanla.domain.group.GroupPartitioner
 
 class PuanlaRepository(
     private val db: PuanlaDatabase,
@@ -482,6 +483,40 @@ class PuanlaRepository(
         groupTaskDao.insertOrUpdateGroupTask(task)
     }
 
+    /**
+     * Creates all groups in one transaction from students not already assigned
+     * to any classroom group. A stale UI snapshot cannot duplicate membership.
+     */
+    suspend fun createRandomGroups(classroomId: String, averageSize: Int): List<GroupTaskEntity> =
+        db.withTransaction {
+            require(averageSize > 0) { "Ortalama grup büyüklüğü pozitif olmalı." }
+            requireNotNull(classroomDao.getClassroomById(classroomId)) { "Sınıf bulunamadı." }
+            val existing = groupTaskDao.getGroupTasksFlow(classroomId).first()
+            val assigned = existing.flatMap { group ->
+                val json = JSONArray(group.memberStudentIdsJson)
+                (0 until json.length()).map { json.getString(it) }
+            }.toSet()
+            val available = studentDao.getStudentsForClassroom(classroomId)
+                .map { it.id }.filterNot { it in assigned }
+            require(available.isNotEmpty()) { "Gruplandırılmamış öğrenci kalmadı." }
+            val partitions = GroupPartitioner.distribute(available, averageSize)
+            val names = existing.map { it.title }.toMutableSet()
+            var number = 1
+            partitions.map { memberIds ->
+                var title: String
+                do { title = "Grup ${number++}" } while (title in names)
+                names.add(title)
+                GroupTaskEntity(
+                    id = UUID.randomUUID().toString(),
+                    classroomId = classroomId,
+                    rubricId = "",
+                    title = title,
+                    memberStudentIdsJson = JSONArray(memberIds).toString(),
+                    checklistJson = "[]"
+                ).also { groupTaskDao.insertOrUpdateGroupTask(it) }
+            }
+        }
+
     suspend fun deleteGroupTask(task: GroupTaskEntity) = db.withTransaction {
         require(db.groupAssessmentDao().countAssessmentsForGroup(task.id) == 0) {
             "Bu grubun değerlendirme geçmişi var. Not kaybını önlemek için silinemez."
@@ -561,6 +596,62 @@ class PuanlaRepository(
             classroomName = classroom.name,
             academicYear = classroom.academicYear,
             rubricTitle = run?.let { "${it.title} · ${rubric.title}" } ?: rubric.title,
+            criteria = criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) },
+            students = rows
+        )
+    }
+
+    /**
+     * Group reports are intentionally separate from individual assessment runs.
+     * A member inherits every criterion score from the authoritative group record;
+     * no individual student's own score is overwritten.
+     */
+    suspend fun generateGroupPdfReportSnapshot(sessionId: String): PdfReportSnapshot =
+        db.withTransaction { buildGroupReport(sessionId) }
+
+    suspend fun generateGroupCsvExport(sessionId: String): String = db.withTransaction {
+        buildGroupReport(sessionId).let { CsvExportFormatter.generate(it.criteria, it.students) }
+    }
+
+    private suspend fun buildGroupReport(sessionId: String): PdfReportSnapshot {
+        val dao = db.groupAssessmentDao()
+        val session = requireNotNull(dao.getSession(sessionId)) { "Grup oturumu bulunamadı." }
+        val classroom = requireNotNull(classroomDao.getClassroomById(session.classroomId)) {
+            "Sınıf bulunamadı."
+        }
+        val rubric = requireNotNull(rubricDao.getRubricById(session.rubricId)) {
+            "Rubrik bulunamadı."
+        }
+        require(rubric.grade == classroom.grade && rubric.id !in RubricSeeder.unverifiedLegacyIds) {
+            "Rubrik bu sınıfa uygun değil."
+        }
+        val criteria = rubricDao.getCriteriaForRubric(rubric.id)
+        val memberScores = mutableMapOf<String, Pair<GroupMemberResultEntity, Map<String, Int?>>>()
+        for (evaluation in dao.getAssessments(session.id)) {
+            val scores = dao.getScores(evaluation.id).associate { it.criterionId to it.points }
+            for (member in dao.getMemberResults(evaluation.id)) {
+                require(member.studentId !in memberScores) {
+                    "Öğrenci aynı grup oturumunda birden fazla kez değerlendirilmiş."
+                }
+                memberScores[member.studentId] = member to scores
+            }
+        }
+        val rows = studentDao.getStudentsForClassroom(classroom.id).map { student ->
+            val result = memberScores[student.id]
+            CsvStudent(
+                number = student.studentNumber,
+                firstName = student.firstName,
+                lastName = student.lastName,
+                scores = result?.second.orEmpty(),
+                definitiveTotal = result?.first?.definitiveTotal,
+                isCompleted = result?.first?.isCompleted == true,
+                scoredCount = result?.second?.values?.count { it != null } ?: 0
+            )
+        }
+        return PdfReportSnapshot(
+            classroomName = classroom.name,
+            academicYear = classroom.academicYear,
+            rubricTitle = "Grup · ${session.title} · ${rubric.title}",
             criteria = criteria.map { CsvCriterion(it.id, it.title, it.maxPoints) },
             students = rows
         )
