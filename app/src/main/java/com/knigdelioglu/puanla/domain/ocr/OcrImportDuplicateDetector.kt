@@ -31,6 +31,25 @@ data class OcrDuplicateValidation(
 
 /** Finds likely repeated OCR rows without silently merging or correcting student records. */
 object OcrImportDuplicateDetector {
+    /** Rows safe for a bulk approval shortcut; uncertain rows still need individual review. */
+    fun reliableCandidateIndices(
+        candidates: List<OcrStudentRow>,
+        currentRoster: List<OcrRosterIdentity>
+    ): Set<Int> {
+        val duplicateHints = findPotentialDuplicates(candidates, currentRoster)
+        val proposed = candidates.mapIndexed { index, row ->
+            val validIdentity = row.studentNumber.isNotBlank() && row.studentNumber.all(Char::isDigit) &&
+                row.firstName.isNotBlank() && row.lastName.isNotBlank()
+            row.copy(
+                isApproved = validIdentity && !row.isAmbiguous &&
+                    row.ambiguityReason.isNullOrBlank() && index !in duplicateHints
+            )
+        }
+        val validation = validateSelectedCandidates(proposed, currentRoster)
+        if (!validation.canImport) return emptySet()
+        return proposed.indices.filterTo(linkedSetOf()) { proposed[it].isApproved }
+    }
+
     fun findPotentialDuplicates(
         candidates: List<OcrStudentRow>,
         currentRoster: List<OcrRosterIdentity>

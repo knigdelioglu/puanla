@@ -10,6 +10,21 @@ import org.junit.Test
 
 class OcrImportDuplicateDetectorTest {
     @Test
+    fun bulkApprovalOnlyReturnsCompleteUnambiguousNonDuplicateRows() {
+        val candidates = listOf(
+            row("100", "Ayşe", "Yılmaz"),
+            row("101", "Mert", "Demir").copy(isAmbiguous = true),
+            row("102", "Sevrn", "Ytckm"),
+            row("", "Ece", "Kaya"),
+            row("105", "Ece", "Kaya").copy(ambiguityReason = "Okul numarası doğrulanmalı")
+        )
+        assertEquals(setOf(0), OcrImportDuplicateDetector.reliableCandidateIndices(
+            candidates,
+            listOf(OcrRosterIdentity("104", "Şevin", "Yücem"))
+        ))
+    }
+
+    @Test
     fun recognizesTurkishNameWithMultipleOcrTyposAsPossibleDuplicate() {
         val rows = listOf(
             row("100", "Şevin", "Yücem"),
@@ -199,7 +214,7 @@ class OcrImportDuplicateDetectorTest {
     }
 
     private fun row(number: String, firstName: String, lastName: String) = OcrStudentRow(
-        rawIndex = number.toInt(),
+        rawIndex = number.toIntOrNull() ?: 0,
         studentNumber = number,
         firstName = firstName,
         lastName = lastName

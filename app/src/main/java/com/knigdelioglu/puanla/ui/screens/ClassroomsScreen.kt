@@ -2,8 +2,6 @@ package com.knigdelioglu.puanla.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -39,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -89,17 +87,14 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     var selectedGradeFilter by remember { mutableIntStateOf(0) } // 0: Tümü, 9..12
     var isAddClassDialogOpen by remember { mutableStateOf(false) }
     var isAddStudentDialogOpen by remember { mutableStateOf(false) }
+    var classroomBeingEdited by remember { mutableStateOf<ClassroomEntity?>(null) }
+    var classroomPendingDeletion by remember { mutableStateOf<ClassroomEntity?>(null) }
     var inspectedStudent by remember { mutableStateOf<StudentEntity?>(null) }
     var studentPendingDeletion by remember { mutableStateOf<StudentEntity?>(null) }
     var assessmentStatus by remember { mutableStateOf("Tümü") }
     var showStatusFilters by remember { mutableStateOf(false) }
 
     val gradeChips = listOf("Tümü", "9. Sınıf", "10. Sınıf", "11. Sınıf", "12. Sınıf")
-    // Reserve a substantial, bounded roster viewport even in tablet landscape.
-    // The page itself can scroll above it, while Arc's lazy table stays virtualized.
-    val rosterTableHeight = (LocalConfiguration.current.screenHeightDp * 0.85f)
-        .dp.coerceAtLeast(520.dp)
-
     val filteredClassrooms = remember(classrooms, selectedGradeFilter) {
         if (selectedGradeFilter == 0) classrooms
         else {
@@ -130,7 +125,6 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .testTag("classroomManagementScroll")
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -233,10 +227,8 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                         if (isSelected) ArcTheme.colors.accent else ArcTheme.colors.borderSubtle
                     )
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = ArcTheme.shapes.pill,
                             color = if (isSelected) ArcTheme.colors.accent else ArcTheme.colors.surfaceMuted,
@@ -269,6 +261,13 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                             Spacer(Modifier.width(10.dp))
                             ArcBadge(text = "Aktif", variant = ArcBadgeVariant.Success)
                         }
+                      }
+                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                          ArcButton(text = "Düzenle", onClick = { classroomBeingEdited = cls },
+                              variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
+                          ArcButton(text = "Sil", onClick = { classroomPendingDeletion = cls },
+                              variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
+                      }
                     }
                 }
             }
@@ -300,7 +299,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 }
             }
         } else {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -426,7 +425,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     ArcSortableDataTable(
                         items = filteredStudents,
                         columns = columns,
-                        modifier = Modifier.fillMaxWidth().height(rosterTableHeight),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                         pageSize = 25,
                         rowKey = { it.id }
                     )
@@ -470,6 +469,34 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 })
             }
         }
+    }
+    classroomBeingEdited?.let { classroom ->
+        EditClassroomDialog(
+            classroom = classroom,
+            onDismiss = { classroomBeingEdited = null },
+            onConfirm = { section, year ->
+                viewModel.updateClassroomDetails(classroom, section, year) { success, message ->
+                    viewModel.showToast(message)
+                    if (success) classroomBeingEdited = null
+                }
+            }
+        )
+    }
+    classroomPendingDeletion?.let { classroom ->
+        ArcDialog(
+            isOpen = true,
+            onDismissRequest = { classroomPendingDeletion = null },
+            title = "Sınıfı Sil",
+            description = "${classroom.name} silme işlemi yalnızca sınıfta öğrenci, değerlendirme veya grup kaydı yoksa tamamlanır. Kayıt varsa veri kaybını önlemek için repository silmeyi reddeder.",
+            confirmText = "Sınıfı Sil",
+            cancelText = "Vazgeç",
+            onConfirm = {
+                viewModel.deleteClassroom(classroom) { success, message ->
+                    viewModel.showToast(message)
+                    if (success) classroomPendingDeletion = null
+                }
+            }
+        )
     }
     studentPendingDeletion?.let { student ->
         ArcDialog(
@@ -516,6 +543,41 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun EditClassroomDialog(
+    classroom: ClassroomEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit
+) {
+    var section by remember(classroom.id) { mutableStateOf(classroom.section) }
+    var academicYear by remember(classroom.id) { mutableStateOf(classroom.academicYear) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = ArcTheme.shapes.panel,
+            color = ArcTheme.colors.surfaceRaised,
+            border = BorderStroke(1.dp, ArcTheme.colors.border),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 460.dp)
+        ) {
+            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${classroom.grade}. sınıf bilgilerini düzenle", fontWeight = FontWeight.Bold,
+                    color = ArcTheme.colors.foreground, fontSize = 18.sp)
+                Text("Sınıf düzeyi ve kayıt kimliği sabit kalır; rubrik ve geçmiş kayıt bağlantıları korunur.",
+                    color = ArcTheme.colors.textSecondary, fontSize = 13.sp)
+                ArcInput(value = section, onValueChange = { section = it.uppercase() },
+                    label = "Şube", placeholder = "A")
+                ArcInput(value = academicYear, onValueChange = { academicYear = it },
+                    label = "Öğretim yılı", placeholder = "2026-2027")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    ArcButton(text = "Vazgeç", onClick = onDismiss, variant = ArcButtonVariant.Ghost)
+                    Spacer(Modifier.width(8.dp))
+                    ArcButton(text = "Kaydet", onClick = { onConfirm(section, academicYear) },
+                        enabled = section.isNotBlank() && academicYear.isNotBlank(), variant = ArcButtonVariant.Primary)
+                }
+            }
+        }
     }
 }
 

@@ -26,6 +26,41 @@ class EvaluationRunRestoreAndroidTest {
         db.rubricDao().insertCriteria(listOf(CriterionEntity("criterion", "rubric", "Anlatım", "", 100, 0)))
     }
 
+    @Test fun restoringAnEmptyClassBackupClearsEveryGroupAndIndividualRecord() = runBlocking {
+        val destination = newDatabase()
+        try {
+            seed(destination)
+            val repo = PuanlaRepository(destination) { "{}" }
+            val run = repo.createAssessmentRun("rubric", "Etkin", listOf("c1"))
+            repo.saveCriterionScore("c1", "s1", "rubric", "criterion", 65, runId = run.id)
+            val group = GroupTaskEntity("group", "c1", "", "Grup", "[\"s1\"]", "[]")
+            repo.saveGroupTask(group)
+            val session = repo.createGroupSession("c1", "rubric", "Grup oturumu")
+            repo.scoreGroup(session.id, group.id, "criterion", 80)
+
+            val empty = BackupSnapshot(
+                version = 3,
+                classrooms = emptyList(), students = emptyList(), rubrics = emptyList(),
+                criteria = emptyList(), levels = emptyList(), assessments = emptyList(),
+                scores = emptyList(), groups = emptyList(), auditLogs = emptyList()
+            )
+            val json = Json { encodeDefaults = true; explicitNulls = true }.encodeToString(empty)
+            assertTrue(repo.restoreBackupFromJson(json).isSuccess)
+            assertTrue(destination.backupDao().classrooms().isEmpty())
+            assertTrue(destination.backupDao().students().isEmpty())
+            assertTrue(destination.backupDao().runs().isEmpty())
+            assertTrue(destination.backupDao().assessments().isEmpty())
+            assertTrue(destination.backupDao().scores().isEmpty())
+            assertTrue(destination.backupDao().groups().isEmpty())
+            assertTrue(destination.backupDao().groupSessions().isEmpty())
+            assertTrue(destination.backupDao().groupAssessments().isEmpty())
+            assertTrue(destination.backupDao().groupScores().isEmpty())
+            assertTrue(destination.backupDao().groupMemberResults().isEmpty())
+        } finally {
+            destination.close()
+        }
+    }
+
     @Test fun fullV3BackupRestoresDistinctAttemptScoresAndArchiveStatus() = runBlocking {
         val source = newDatabase()
         val destination = newDatabase()

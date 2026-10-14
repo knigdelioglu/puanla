@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,6 +40,10 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,6 +80,17 @@ fun PuanlaApp(
     viewModel: PuanlaViewModel = viewModel(),
     onSystemBarAppearanceChanged: (Boolean) -> Unit = {}
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleScope = rememberCoroutineScope()
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                lifecycleScope.launch { viewModel.flushPendingEvidenceNotes() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val darkModePreference by viewModel.darkMode.collectAsState()
     val reduceMotion by viewModel.reduceMotion.collectAsState()
     val accent by viewModel.accent.collectAsState()

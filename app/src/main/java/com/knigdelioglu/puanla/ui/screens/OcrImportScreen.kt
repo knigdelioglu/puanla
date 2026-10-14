@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
@@ -52,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,7 +137,7 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
 
         when (step) {
             0 -> OcrStepPhotoSelection(viewModel, modifier = Modifier.weight(1f))
-            1 -> OcrStepScanning(isScanning, ocrError)
+            1 -> OcrStepScanning(isScanning, ocrError, viewModel)
             3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
         }
     }
@@ -356,7 +358,10 @@ private fun OcrStepPhotoSelection(viewModel: PuanlaViewModel, modifier: Modifier
 }
 
 @Composable
-private fun OcrStepScanning(isScanning: Boolean, error: String?) {
+private fun OcrStepScanning(isScanning: Boolean, error: String?, viewModel: PuanlaViewModel) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val selectedUri by viewModel.ocrSelectedImageUri.collectAsState()
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -368,6 +373,34 @@ private fun OcrStepScanning(isScanning: Boolean, error: String?) {
                 message = error,
                 type = ArcAlertType.Danger
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ArcButton(
+                    text = "Geri Dön",
+                    onClick = {
+                        viewModel.ocrError.value = null
+                        viewModel.ocrStep.value = 0
+                    },
+                    variant = ArcButtonVariant.Outline
+                )
+                ArcButton(
+                    text = "Yeniden Dene",
+                    enabled = selectedUri != null && !isScanning,
+                    onClick = {
+                        val uri = selectedUri ?: return@ArcButton
+                        viewModel.ocrError.value = null
+                        scope.launch {
+                            try {
+                                viewModel.startOcrFromBitmap(decodeOcrImage(context, uri))
+                            } catch (cancel: CancellationException) {
+                                throw cancel
+                            } catch (error: Exception) {
+                                viewModel.reportOcrImageError("Fotoğraf yeniden okunamadı: ${error.message}")
+                            }
+                        }
+                    },
+                    variant = ArcButtonVariant.Primary
+                )
+            }
         } else {
             CircularProgressIndicator(
                 color = ArcTheme.colors.accent,
@@ -416,6 +449,12 @@ private fun OcrStepVerification(
             currentStudents.map { OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName) }
         )
     }
+    val reliableCandidateIndices = remember(candidates, currentStudents) {
+        OcrImportDuplicateDetector.reliableCandidateIndices(
+            candidates,
+            currentStudents.map { OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName) }
+        )
+    }
     val selectedNumberConflicts = duplicateValidation.schoolNumberConflicts.size
     val selectedSourceRowConflicts = duplicateValidation.sourceRowConflicts.size
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
@@ -445,6 +484,25 @@ private fun OcrStepVerification(
                     text = "Lütfen aktarılacak öğrencileri gözden geçirin. Değerleri doğrudan düzenleyebilirsiniz.",
                     fontSize = 13.sp,
                     color = ArcTheme.colors.textSecondary
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ArcButton(
+                    text = "Güvenilirleri Onayla (${reliableCandidateIndices.size})",
+                    onClick = { viewModel.bulkSetOcrApproval(true) },
+                    enabled = reliableCandidateIndices.isNotEmpty(),
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Sm,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ArcButton(
+                    text = "Tüm Onayları Kaldır",
+                    onClick = { viewModel.bulkSetOcrApproval(false) },
+                    enabled = candidates.any { it.isApproved },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -841,6 +899,13 @@ private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
             Bitmap.createBitmap(
                 bitmap, cropLeft, cropTop, cropRight - cropLeft, cropBottom - cropTop
             )
+        }
+    }
+    // Cropping creates a second native bitmap. Release it when the selected
+    // row changes or this preview leaves composition instead of waiting for GC.
+    DisposableEffect(cropped, bitmap) {
+        onDispose {
+            if (cropped !== bitmap && !cropped.isRecycled) cropped.recycle()
         }
     }
     Row(

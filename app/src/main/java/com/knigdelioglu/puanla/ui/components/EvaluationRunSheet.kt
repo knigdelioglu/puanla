@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,6 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
+import com.knigdelioglu.arc.compose.controls.ArcInput
+import com.knigdelioglu.arc.compose.controls.ArcCheckbox
+import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.arc.compose.navigation.ArcBottomSheet
@@ -93,28 +94,19 @@ fun EvaluationRunSheet(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("Yeni değerlendirme", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
-                            OutlinedTextField(
+                            ArcInput(
                                 value = newTitle, onValueChange = { newTitle = it },
-                                label = { Text("Değerlendirme adı") },
-                                singleLine = true, modifier = Modifier.fillMaxWidth()
+                                label = "Değerlendirme adı"
                             )
                             Text("Bu değerlendirmeyi kullanacak sınıflar", color = ArcTheme.colors.textSecondary)
                             eligible.forEach { item ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        newClassIds = if (item.id in newClassIds) newClassIds - item.id
-                                        else newClassIds + item.id
+                                ArcCheckbox(
+                                    checked = item.id in newClassIds,
+                                    onCheckedChange = { checked ->
+                                        newClassIds = if (checked) newClassIds + item.id else newClassIds - item.id
                                     },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = item.id in newClassIds,
-                                        onCheckedChange = { checked ->
-                                            newClassIds = if (checked) newClassIds + item.id else newClassIds - item.id
-                                        }
-                                    )
-                                    Text(item.name, color = ArcTheme.colors.foreground)
-                                }
+                                    label = item.name
+                                )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 ArcButton(
@@ -210,22 +202,14 @@ fun EvaluationRunSheet(
                         )
                         if (addClassForm) {
                             availableToAdd.forEach { item ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        additionalClassIds = if (item.id in additionalClassIds)
-                                            additionalClassIds - item.id else additionalClassIds + item.id
+                                ArcCheckbox(
+                                    checked = item.id in additionalClassIds,
+                                    onCheckedChange = { checked ->
+                                        additionalClassIds = if (checked) additionalClassIds + item.id
+                                        else additionalClassIds - item.id
                                     },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Checkbox(
-                                        checked = item.id in additionalClassIds,
-                                        onCheckedChange = { checked ->
-                                            additionalClassIds = if (checked) additionalClassIds + item.id
-                                            else additionalClassIds - item.id
-                                        }
-                                    )
-                                    Text(item.name, color = ArcTheme.colors.foreground)
-                                }
+                                    label = item.name
+                                )
                             }
                             ArcButton(
                                 text = "Sınıfları Ekle",
@@ -239,11 +223,22 @@ fun EvaluationRunSheet(
                             )
                         }
                     }
-                    ArcButton(
-                        text = if (run?.status == "ARCHIVED") "Arşivden çıkar" else "Tamamla ve arşivle",
-                        onClick = { run?.let { viewModel.setRunArchived(it, it.status != "ARCHIVED") } },
-                        variant = ArcButtonVariant.Outline
-                    )
+                    if (run?.status == "ARCHIVED") {
+                        ArcButton(
+                            text = "Arşivden çıkar",
+                            onClick = { run?.let { viewModel.setRunArchived(it, false) } },
+                            variant = ArcButtonVariant.Outline
+                        )
+                    } else {
+                        run?.let { activeRun ->
+                            ArcConfirmMorph(
+                                prompt = "Arşivlemek puan girişini kilitler. Eksik ölçütler puanlanmamış kalır; sonra arşivden çıkarabilirsiniz.",
+                                initialLabel = "Tamamla ve arşivle",
+                                confirmLabel = "Arşivle ve kilitle",
+                                onConfirm = { viewModel.setRunArchived(activeRun, true) }
+                            )
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))

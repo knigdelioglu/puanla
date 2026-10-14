@@ -38,4 +38,13 @@ class KeyboardShortcutMatcherTest {
             )
         )
     }
+
+    @Test
+    fun matchesTurkishPrintableKeysAndRejectsModifierOnlyBindings() {
+        assertTrue(KeyboardShortcutMatcher.matches("Ctrl+Ş", "ş", true, false, false, false))
+        assertTrue(KeyboardShortcutMatcher.matches("Alt+I", "ı", false, true, false, false))
+        assertFalse(KeyboardShortcutMatcher.matches("", "K", true, false, false, false))
+        assertFalse(KeyboardShortcutMatcher.matches("Ctrl+", "K", true, false, false, false))
+        assertFalse(KeyboardShortcutMatcher.matches("Ctrl", "Ctrl", false, false, false, false))
+    }
 }

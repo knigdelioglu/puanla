@@ -4,11 +4,28 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
 class MutationCoordinatorTest {
+    @Test fun backupSnapshotWaitsForDebouncedObservationWrite() = runTest {
+        val coordinator = MutationCoordinator()
+        var persistedNote = ""
+        coordinator.launchWrite(backgroundScope) {
+            kotlinx.coroutines.delay(500)
+            persistedNote = "Sahne yönergesini kullandı"
+        }
+        runCurrent()
+        val snapshot = async { coordinator.snapshot { persistedNote } }
+        runCurrent()
+        assertFalse(snapshot.isCompleted)
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals("Sahne yönergesini kullandı", snapshot.await())
+    }
+
     @Test fun snapshotWaitsForQueuedWriteAndRejectsNewWrites() = runTest {
         val coordinator = MutationCoordinator()
         val allowedToFinish = CompletableDeferred<Unit>()

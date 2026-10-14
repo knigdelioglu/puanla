@@ -18,6 +18,7 @@ class UndoHistory<T>(private val maxEntries: Int = 64) {
     }
 
     fun latestId(): String? = entries.lastOrNull()?.id
+    fun latest(): T? = entries.lastOrNull()?.action
 
     /** Stale toast actions cannot undo another edit, even on a different pupil. */
     fun takeIfLatest(id: String): T? {

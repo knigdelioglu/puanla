@@ -15,6 +15,28 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class GroupModeScoringTest {
     @Test
+    fun classroomDeletionPreservesStudentsAndAllowsOnlyEmptyClassrooms() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            val classroom = ClassroomEntity("classroom", 11, "A", "11-A", "2026-2027")
+            db.classroomDao().insertClassroom(classroom)
+            db.studentDao().insertStudent(StudentEntity("student", classroom.id, "1", "Ada", "Kaya"))
+            val repo = PuanlaRepository(db) { "{}" }
+            try {
+                repo.deleteClassroom(classroom)
+                fail("A classroom with students must not cascade-delete them")
+            } catch (_: IllegalArgumentException) { }
+            assertEquals("student", db.studentDao().getStudentById("student")?.id)
+            repo.deleteStudent(db.studentDao().getStudentById("student")!!)
+            repo.deleteClassroom(classroom)
+            assertNull(db.classroomDao().getClassroomById(classroom.id))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun groupScorePropagatesAtomicallyAndSessionsDoNotOverwriteOneAnother() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
@@ -62,13 +84,26 @@ class GroupModeScoringTest {
             val corrected = repo.scoreGroup(first.id, group.id, "c1", 8)
             assertEquals(78, corrected.definitiveTotal)
             assertTrue(repo.getGroupMemberResults(corrected.id).all { it.definitiveTotal == 78 })
+            assertTrue(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 8, 10))
+            assertEquals(80, repo.getGroupAssessment(first.id, group.id)?.definitiveTotal)
+            assertFalse(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 8, null))
 
             val second = repo.createGroupSession("class", "rubric1", "19 Ekim Draması")
             val different = repo.scoreGroup(second.id, group.id, "c1", 5)
             assertNull(different.definitiveTotal)
-            assertEquals(78, repo.getGroupMemberResults(corrected.id).first().definitiveTotal)
+            assertFalse(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 5, null))
+            assertEquals(80, repo.getGroupMemberResults(corrected.id).first().definitiveTotal)
+            assertEquals(5, repo.getGroupScores(different.id).single().points)
             assertEquals(1, repo.getGroupAssessmentsFlow(first.id).first().size)
             assertEquals(1, repo.getGroupAssessmentsFlow(second.id).first().size)
+
+            val emptySession = repo.createGroupSession("class", "rubric1", "Geri alınan oturum")
+            val firstScore = repo.scoreGroup(emptySession.id, group.id, "c1", 4)
+            assertTrue(repo.undoGroupScoreIfCurrent(
+                emptySession.id, group.id, "c1", 4, null, removeAssessmentIfEmpty = true
+            ))
+            assertNull(repo.getGroupAssessment(emptySession.id, group.id))
+            assertTrue(repo.getGroupMemberResults(firstScore.id).isEmpty())
 
             assertNull(repo.getAssessmentForStudent(s1.id, "rubric1"))
         } finally {

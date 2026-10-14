@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -75,9 +76,16 @@ enum class AppDestination(val label: String, val iconName: String) {
 
 data class UndoAction(
     val title: String,
+    val contextId: String? = null,
     // False means a later edit superseded the original score. Never undo it blindly.
     val undoBlock: suspend () -> Boolean
 )
+
+data class EvidenceNoteSaveState(val key: String, val status: Status) {
+    enum class Status(val label: String) {
+        SAVING("Kaydediliyor…"), SAVED("Kaydedildi"), ERROR("Kaydedilemedi")
+    }
+}
 
 class PuanlaViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -136,6 +144,13 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         arcPrefs.edit().apply {
             if (enabled == null) remove("dark_mode") else putBoolean("dark_mode", enabled)
         }.apply()
+    }
+
+    fun toggleDarkMode() {
+        val systemDark = (getApplication<Application>().resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        setDarkMode(!(darkMode.value ?: systemDark))
     }
 
     fun setReducedMotion(preference: MotionPreference) {
@@ -217,7 +232,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
     // Toast stack & Undo
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
+    val canUndoGroupAction = MutableStateFlow(false)
+    val evidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
     private val undoStack = UndoHistory<UndoAction>()
+    private val groupUndoStack = UndoHistory<UndoAction>()
     private val pendingNoteWrites = mutableMapOf<String, Job>()
     // A fixed set of locks avoids retaining a mutex for every pupil/criterion ever graded.
     // Hash collisions only serialize unrelated writes; same-key writes remain ordered.
@@ -255,9 +273,6 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
     val ocrError = MutableStateFlow<String?>(null)
     val ocrSelectedImageUri = MutableStateFlow<Uri?>(null)
     val ocrImportedCount = MutableStateFlow(0)
-
-    // Quick Search filter
-    val studentSearchQuery = MutableStateFlow("")
 
     init {
         viewModelScope.launch {
@@ -329,6 +344,7 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             selectedGroupSession.collect {
+                refreshGroupUndoAvailability()
                 loadGroupAssessments()
                 loadCurrentGroupAssessment()
             }
@@ -675,7 +691,11 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         if (run.status != "ACTIVE" || run.rubricId != rubric.id) return
         val key = "${student.id}/${run.id}/$criterionId"
         pendingNoteWrites.remove(key)?.cancel()
-        val writeJob = launchMutation {
+        evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVING)
+        val writeJob = launchMutation(onBlocked = {
+            evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.ERROR)
+            showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemedi.")
+        }) {
             try {
                 delay(500)
                 scoreMutex(student.id, run.id, criterionId).withLock {
@@ -691,16 +711,26 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                         )
                         refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                     }
+                    evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVED)
                 }
             } catch (cancel: CancellationException) {
+                if (pendingNoteWrites[key] == currentCoroutineContext()[Job] &&
+                    evidenceNoteSaveState.value?.key == key
+                ) evidenceNoteSaveState.value = null
                 throw cancel
             } catch (e: Exception) {
+                evidenceNoteSaveState.value = EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.ERROR)
                 showToast("Gözlem notu kaydedilemedi: ${e.message}")
             } finally {
                 if (pendingNoteWrites[key] == currentCoroutineContext()[Job]) pendingNoteWrites.remove(key)
             }
         }
         if (writeJob != null) pendingNoteWrites[key] = writeJob
+    }
+
+    /** Waits for the currently debounced note writes when the app leaves foreground. */
+    suspend fun flushPendingEvidenceNotes() {
+        pendingNoteWrites.values.toList().joinAll()
     }
 
     fun nextStudent() {
@@ -726,7 +756,22 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         undoAction(latestId)
     }
 
-    private suspend fun undoAction(id: String) {
+    suspend fun undoLastGroupAction() {
+        val action = groupUndoStack.latest() ?: return
+        if (action.contextId != selectedGroupSession.value?.id) {
+            refreshGroupUndoAvailability()
+            showToast("Geri almak için puanlanan grup oturumunu seçin.")
+            return
+        }
+        val latestId = groupUndoStack.latestId() ?: return
+        undoAction(latestId, groupUndoStack)
+    }
+
+    private fun refreshGroupUndoAvailability() {
+        canUndoGroupAction.value = groupUndoStack.latest()?.contextId == selectedGroupSession.value?.id
+    }
+
+    private suspend fun undoAction(id: String, history: UndoHistory<UndoAction> = undoStack) {
         val undoJob = currentCoroutineContext()[Job]
         if (mutations.isPaused()) {
             showToast("Yedekleme veya geri yükleme sırasında puan geri alınamaz.")
@@ -737,14 +782,16 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             showToast("Puan kaydı sürüyor; tamamlandıktan sonra geri alabilirsiniz.")
             return
         }
-        val action = undoStack.takeIfLatest(id)
+        val action = history.takeIfLatest(id)
         if (action == null) {
             showToast("Bu geri alma işlemi güncel değil; daha yeni bir puanlama yapıldı.")
             return
         }
+        if (history === groupUndoStack) refreshGroupUndoAvailability()
         // Undo itself is a tracked mutation; restore cannot race it.
         if (undoJob == null || !mutations.track(undoJob)) {
-            undoStack.restore(id, action)
+            history.restore(id, action)
+            if (history === groupUndoStack) refreshGroupUndoAvailability()
             showToast("Yedekleme veya geri yükleme sırasında geri alma yapılamaz.")
             return
         }
@@ -752,10 +799,12 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             if (action.undoBlock()) showToast("Geri alındı: ${action.title}")
             else showToast("Geri alınmadı: puan daha sonra değiştirilmiş.")
         } catch (cancel: CancellationException) {
-            undoStack.restore(id, action)
+            history.restore(id, action)
+            if (history === groupUndoStack) refreshGroupUndoAvailability()
             throw cancel
         } catch (e: Exception) {
-            undoStack.restore(id, action)
+            history.restore(id, action)
+            if (history === groupUndoStack) refreshGroupUndoAvailability()
             showToast("Geri alma başarısız: ${e.message}")
         } finally {
             mutations.untrack(undoJob)
@@ -788,6 +837,38 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 onResult(false, e.message ?: "Sınıf oluşturulamadı.")
             }
+        }
+    }
+
+    fun updateClassroomDetails(
+        classroom: ClassroomEntity,
+        section: String,
+        academicYear: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        launchMutation(onBlocked = { onResult(false, "Yedekleme veya geri yükleme sırasında sınıf düzenlenemez.") }) {
+            try {
+                val updated = repository.updateClassroomDetails(classroom, section, academicYear)
+                if (selectedClassroom.value?.id == classroom.id) selectedClassroom.value = updated
+                onResult(true, "${updated.name} sınıfı güncellendi.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { onResult(false, e.message ?: "Sınıf güncellenemedi.") }
+        }
+    }
+
+    fun deleteClassroom(classroom: ClassroomEntity, onResult: (Boolean, String) -> Unit) {
+        launchMutation(onBlocked = { onResult(false, "Yedekleme veya geri yükleme sırasında sınıf silinemez.") }) {
+            try {
+                repository.deleteClassroom(classroom)
+                if (selectedClassroom.value?.id == classroom.id) {
+                    selectedClassroom.value = null
+                    selectedStudent.value = null
+                    currentAssessment.value = null
+                    currentScores.value = emptyMap()
+                }
+                onResult(true, "${classroom.name} sınıfı silindi.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { onResult(false, e.message ?: "Sınıf silinemedi.") }
         }
     }
 
@@ -905,6 +986,34 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             ocrCandidates.value = list
+        }
+    }
+
+    fun bulkSetOcrApproval(approveReliable: Boolean) {
+        val current = ocrCandidates.value
+        if (!approveReliable) {
+            ocrCandidates.value = current.map { it.copy(isApproved = false) }
+            showToast("OCR satırlarının onayları kaldırıldı.")
+            return
+        }
+        val classroomId = selectedClassroom.value?.id ?: return
+        val roster = students.value.map { OcrRosterIdentity(it.studentNumber, it.firstName, it.lastName) }
+        val reliable = OcrImportDuplicateDetector.reliableCandidateIndices(current, roster)
+        if (reliable.isEmpty()) {
+            showToast("Toplu onaylanabilecek güvenilir satır bulunamadı.")
+            return
+        }
+        val proposed = current.mapIndexed { index, candidate ->
+            if (index in reliable) candidate.copy(isApproved = true) else candidate
+        }
+        val validation = OcrImportDuplicateDetector.validateSelectedCandidates(proposed, roster)
+        if (!validation.canImport) {
+            showToast("Toplu onay çakışmaları aşamaz. Belirsiz veya çakışmalı satırları tek tek düzeltin.")
+            return
+        }
+        if (selectedClassroom.value?.id == classroomId) {
+            ocrCandidates.value = proposed
+            showToast("${reliable.size} güvenilir OCR satırı onaylandı.")
         }
     }
 
@@ -1073,6 +1182,34 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateGroupTask(task: GroupTaskEntity, title: String, memberIds: List<String>) {
+        val classroom = selectedClassroom.value ?: return
+        if (task.classroomId != classroom.id) return
+        launchMutation {
+            try {
+                require(title.isNotBlank()) { "Grup adı boş olamaz." }
+                require(memberIds.isNotEmpty() && memberIds.distinct().size == memberIds.size)
+                val updated = task.copy(
+                    title = title.trim(),
+                    memberStudentIdsJson = JSONArray(memberIds).toString()
+                )
+                repository.saveGroupTask(updated)
+                showToast("Grup güncellendi. Geçmiş değerlendirmelerdeki üye kayıtları korunuyor.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup güncellenemedi: ${e.message}") }
+        }
+    }
+
+    fun deleteGroupTask(task: GroupTaskEntity) {
+        launchMutation {
+            try {
+                repository.deleteGroupTask(task)
+                showToast("Grup silindi.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup silinemedi: ${e.message}") }
+        }
+    }
+
     fun syncGroupMemberships() {
         val session = selectedGroupSession.value ?: return
         launchMutation {
@@ -1109,11 +1246,37 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         val session = selectedGroupSession.value ?: return
         val rubric = selectedRubric.value ?: return
         if (session.rubricId != rubric.id) return
+        if (session.classroomId != selectedClassroom.value?.id || group.classroomId != session.classroomId) return
         val lock = scoreMutex(group.id, session.id, criterionId)
         launchMutation {
             try {
                 lock.withLock {
-                    repository.scoreGroup(session.id, group.id, criterionId, points)
+                    val before = repository.getGroupAssessment(session.id, group.id)
+                    val oldScore = before?.let { repository.getGroupScores(it.id)
+                        .firstOrNull { score -> score.criterionId == criterionId } }
+                    if (oldScore?.points != points) {
+                        repository.scoreGroup(session.id, group.id, criterionId, points)
+                        val title = criteria.value.firstOrNull { it.id == criterionId }?.title ?: "Ölçüt"
+                        val undoId = UUID.randomUUID().toString()
+                        groupUndoStack.push(undoId, UndoAction("${group.title} · $title", contextId = session.id) {
+                            lock.withLock {
+                                val undone = repository.undoGroupScoreIfCurrent(
+                                    sessionId = session.id,
+                                    groupId = group.id,
+                                    criterionId = criterionId,
+                                    expectedCurrentPoints = points,
+                                    restorePoints = oldScore?.points,
+                                    removeAssessmentIfEmpty = before == null
+                                )
+                                if (!undone) return@withLock false
+                                if (selectedGroup.value?.id == group.id && selectedGroupSession.value?.id == session.id) {
+                                    loadCurrentGroupAssessment()
+                                }
+                                true
+                            }
+                        })
+                        refreshGroupUndoAvailability()
+                    }
                     if (selectedGroup.value?.id == group.id && selectedGroupSession.value?.id == session.id) {
                         loadCurrentGroupAssessment()
                     }
@@ -1173,7 +1336,10 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
         if (result.isSuccess) {
             withContext(Dispatchers.Main.immediate) {
                 pendingNoteWrites.clear()
+                evidenceNoteSaveState.value = null
                 undoStack.clear()
+                groupUndoStack.clear()
+                canUndoGroupAction.value = false
                 // scoreLocks is a fixed Array<Mutex>; no clearing is needed or supported.
                 selectedStudent.value = null
                 selectedClassroom.value = null
@@ -1184,6 +1350,18 @@ class PuanlaViewModel(application: Application) : AndroidViewModel(application) 
                 criteria.value = emptyList()
                 currentScores.value = emptyMap()
                 currentAssessment.value = null
+                groupFlowJob?.cancel()
+                groupSessionFlowJob?.cancel()
+                groupAssessmentFlowJob?.cancel()
+                currentGroupScoreJob?.cancel()
+                groupTasks.value = emptyList()
+                selectedGroup.value = null
+                groupSessions.value = emptyList()
+                selectedGroupSession.value = null
+                groupAssessments.value = emptyList()
+                currentGroupAssessment.value = null
+                currentGroupScores.value = emptyMap()
+                currentGroupMembers.value = emptyList()
                 // Room flows repopulate selections once the transaction completes.
             }
         }

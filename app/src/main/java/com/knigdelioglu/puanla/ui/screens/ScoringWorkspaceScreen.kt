@@ -118,6 +118,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
+    val noteSaveState by viewModel.evidenceNoteSaveState.collectAsState()
     val studentGroupGrades by viewModel.currentStudentGroupGrades.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
     val scope = rememberCoroutineScope()
@@ -164,6 +165,8 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     }
 
     val activeCriterion = criteria.getOrNull(activeCriterionIndex) ?: criteria.firstOrNull()
+    val noteKey = listOfNotNull(selectedStudent?.id, selectedRun?.id, activeCriterion?.id).joinToString("/")
+    val noteSaveMessage = noteSaveState?.takeIf { it.key == noteKey }?.status?.label
 
     // Map student ID to assessment completion status
     val assessmentMap = remember(classAssessments) {
@@ -216,6 +219,10 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                     CriteriaExplorerPane(
                         criteria = criteria,
                         activeCriterion = activeCriterion,
+                        scoreSummary = criteria.associate { criterion ->
+                            criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                                ?: "Puanlanmadı / ${criterion.maxPoints}")
+                        },
                         onSelectCriterion = { crit ->
                             activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
                         }
@@ -228,6 +235,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                         criteria = criteria,
                         currentAssessment = currentAssessment,
                         currentScores = currentScores,
+                        noteSaveMessage = noteSaveMessage,
                         groupGrades = studentGroupGrades,
                         levels = levels.filter { it.criterionId == activeCriterion?.id },
                         autoAdvanceQuickScore = autoAdvanceQuickScore,
@@ -265,6 +273,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 activeCriterion = activeCriterion,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
+                noteSaveMessage = noteSaveMessage,
                 groupGrades = studentGroupGrades,
                 levels = levels,
                 searchQuery = searchQuery,
@@ -420,6 +429,7 @@ private fun StudentRosterPane(
 internal fun CriteriaExplorerPane(
     criteria: List<CriterionEntity>,
     activeCriterion: CriterionEntity?,
+    scoreSummary: Map<String, String> = emptyMap(),
     onSelectCriterion: (CriterionEntity) -> Unit
 ) {
     val colors = ArcTheme.colors
@@ -471,6 +481,7 @@ internal fun CriteriaExplorerPane(
                                 CriterionSelectionRow(
                                     criterion = criterion,
                                     isActive = criterion.id == activeCriterion?.id,
+                                    scoreSummary = scoreSummary[criterion.id],
                                     onClick = { onSelectCriterion(criterion) },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -485,6 +496,7 @@ internal fun CriteriaExplorerPane(
                                 CriterionSelectionRow(
                                     criterion = criterion,
                                     isActive = criterion.id == activeCriterion?.id,
+                                    scoreSummary = scoreSummary[criterion.id],
                                     onClick = { onSelectCriterion(criterion) },
                                     modifier = Modifier.heightIn(min = minimumItemHeight)
                                 )
@@ -501,6 +513,7 @@ internal fun CriteriaExplorerPane(
 private fun CriterionSelectionRow(
     criterion: CriterionEntity,
     isActive: Boolean,
+    scoreSummary: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -529,8 +542,14 @@ private fun CriterionSelectionRow(
                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                 color = colors.foreground,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
+            if (scoreSummary != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(scoreSummary, fontSize = 12.sp, color = colors.textSecondary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -542,6 +561,7 @@ private fun ScoringControlPane(
     criteria: List<CriterionEntity>,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
+    noteSaveMessage: String?,
     groupGrades: List<StudentGroupGrade>,
     levels: List<CriterionLevelEntity>,
     autoAdvanceQuickScore: Boolean,
@@ -829,6 +849,15 @@ private fun ScoringControlPane(
                             characterCountLabel = { "$it karakter" },
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (noteSaveMessage != null) {
+                            Text(noteSaveMessage, fontSize = 12.sp,
+                                color = if (noteSaveMessage == "Kaydedilemedi") ArcTheme.colors.danger
+                                    else ArcTheme.colors.textSecondary)
+                        }
+                    } else if (noteText.isNotBlank()) {
+                        Text(noteText.take(140) + if (noteText.length > 140) "…" else "",
+                            fontSize = 12.sp, color = ArcTheme.colors.textSecondary,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
 
@@ -942,6 +971,7 @@ private fun CompactScoringLayout(
     activeCriterion: CriterionEntity?,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
+    noteSaveMessage: String?,
     groupGrades: List<StudentGroupGrade>,
     levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
     searchQuery: String,
@@ -959,7 +989,7 @@ private fun CompactScoringLayout(
     onNextCriterion: () -> Unit,
     onUndo: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
 
     Column(modifier = Modifier.fillMaxSize()) {
         ArcExpandingButtonGroup(
@@ -988,6 +1018,10 @@ private fun CompactScoringLayout(
             1 -> CriteriaExplorerPane(
                 criteria = criteria,
                 activeCriterion = activeCriterion,
+                scoreSummary = criteria.associate { criterion ->
+                    criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                        ?: "Puanlanmadı / ${criterion.maxPoints}")
+                },
                 onSelectCriterion = {
                     onSelectCriterion(it)
                     selectedTab = 2 // jump to scoring
@@ -999,6 +1033,7 @@ private fun CompactScoringLayout(
                 criteria = criteria,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
+                noteSaveMessage = noteSaveMessage,
                 groupGrades = groupGrades,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,

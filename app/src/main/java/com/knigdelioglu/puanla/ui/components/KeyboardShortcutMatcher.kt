@@ -76,7 +76,7 @@ object KeyboardShortcutMatcher {
             index++
         }
         val key = pieces.drop(index).joinToString("+").trim()
-        if (key.isEmpty()) return null
+        if (key.isEmpty() || normalize(key) in modifiers) return null
         return expectedModifiers to normalize(key)
     }
 

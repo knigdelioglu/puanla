@@ -30,6 +30,14 @@ class QuickGradingPreferencesTest {
     }
 
     @Test
+    fun lowMaximumOffersOnlyUniqueIntegerScoresForBothModes() {
+        assertEquals(listOf(0, 1), qualitativeQuickOptions(1, 4, QuickGradeAppearance.Text).map { it.points })
+        assertEquals(listOf(0, 1, 2), qualitativeQuickOptions(2, 4, QuickGradeAppearance.Text).map { it.points })
+        assertEquals(listOf(0), qualitativeQuickOptions(0, 4, QuickGradeAppearance.Text).map { it.points })
+        assertEquals(listOf(0, 1), qualitativeQuickOptions(1, 3, QuickGradeAppearance.Faces).map { it.points })
+    }
+
+    @Test
     fun smileFacesRetainTheSameNumericScores() {
         val stars = qualitativeQuickOptions(10, 3, QuickGradeAppearance.Stars)
         val faces = qualitativeQuickOptions(10, 3, QuickGradeAppearance.Faces)

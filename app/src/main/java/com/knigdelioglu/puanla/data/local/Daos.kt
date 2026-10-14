@@ -56,6 +56,8 @@ interface ClassroomDao {
 
 @Dao
 interface StudentDao {
+    @Query("SELECT COUNT(*) FROM students WHERE classroomId = :classroomId")
+    suspend fun countForClassroom(classroomId: String): Int
     @Query("SELECT * FROM students WHERE classroomId = :classroomId ORDER BY CAST(studentNumber AS INTEGER) ASC, lastName ASC")
     fun getStudentsForClassroomFlow(classroomId: String): Flow<List<StudentEntity>>
 
@@ -314,6 +316,10 @@ interface GroupAssessmentDao {
     @Query("SELECT * FROM group_criterion_scores WHERE groupAssessmentId = :assessmentId")
     suspend fun getScores(assessmentId: String): List<GroupCriterionScoreEntity>
     @Upsert suspend fun upsertScore(row: GroupCriterionScoreEntity)
+    @Query("DELETE FROM group_criterion_scores WHERE groupAssessmentId = :assessmentId")
+    suspend fun deleteScores(assessmentId: String)
+    @Query("DELETE FROM group_assessments WHERE id = :assessmentId")
+    suspend fun deleteAssessment(assessmentId: String)
     @Query("SELECT * FROM group_member_results WHERE groupAssessmentId = :assessmentId")
     suspend fun getMemberResults(assessmentId: String): List<GroupMemberResultEntity>
     @Query("DELETE FROM group_member_results WHERE groupAssessmentId = :assessmentId")

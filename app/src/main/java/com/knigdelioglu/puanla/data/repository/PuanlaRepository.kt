@@ -111,11 +111,12 @@ class PuanlaRepository(
 
     suspend fun deleteClassroom(classroom: ClassroomEntity) = db.withTransaction {
         require(
+            studentDao.countForClassroom(classroom.id) == 0 &&
             db.groupAssessmentDao().countSessionsForClassroom(classroom.id) == 0 &&
                 groupTaskDao.getGroupTasksFlow(classroom.id).first().isEmpty() &&
                 runDao.countAssignmentsForClassroom(classroom.id) == 0
         ) {
-            "Bu sınıfa bağlı değerlendirme veya grup kaydı var. Not kaybını önlemek için sınıf silinemez."
+            "Bu sınıfta öğrenci, değerlendirme veya grup kaydı var. Veri kaybını önlemek için sınıf silinemez."
         }
         classroomDao.deleteClassroom(classroom)
         auditLogDao.insertLog(
@@ -125,6 +126,32 @@ class PuanlaRepository(
                 details = "Sınıf silindi: ${classroom.name}"
             )
         )
+    }
+
+    suspend fun updateClassroomDetails(
+        classroom: ClassroomEntity,
+        section: String,
+        academicYear: String
+    ): ClassroomEntity = db.withTransaction {
+        val current = requireNotNull(classroomDao.getClassroomById(classroom.id)) { "Sınıf bulunamadı." }
+        val normalizedSection = section.trim().uppercase()
+        require(normalizedSection.isNotBlank()) { "Şube adı boş olamaz." }
+        require(academicYear.isNotBlank()) { "Öğretim yılı boş olamaz." }
+        require(classroomDao.getAllClassrooms().none {
+            it.id != current.id && it.grade == current.grade && it.section.equals(normalizedSection, ignoreCase = true)
+        }) { "${current.grade}-$normalizedSection sınıfı zaten mevcut." }
+        val updated = current.copy(
+            section = normalizedSection,
+            name = "${current.grade}-$normalizedSection",
+            academicYear = academicYear.trim()
+        )
+        classroomDao.updateClassroom(updated)
+        auditLogDao.insertLog(AuditLogEntity(
+            id = UUID.randomUUID().toString(),
+            action = "UPDATE_CLASSROOM",
+            details = "Sınıf bilgileri güncellendi: ${current.name} → ${updated.name}"
+        ))
+        updated
     }
 
     // Students
@@ -749,6 +776,9 @@ class PuanlaRepository(
     suspend fun getGroupScores(assessmentId: String): List<GroupCriterionScoreEntity> =
         db.groupAssessmentDao().getScores(assessmentId)
 
+    suspend fun getGroupAssessment(sessionId: String, groupId: String): GroupAssessmentEntity? =
+        db.groupAssessmentDao().getAssessment(sessionId, groupId)
+
     suspend fun getGroupMemberResults(assessmentId: String): List<GroupMemberResultEntity> =
         db.groupAssessmentDao().getMemberResults(assessmentId)
 
@@ -840,6 +870,30 @@ class PuanlaRepository(
                 ": " + (previous?.points?.toString() ?: "Boş") + " → " + (points?.toString() ?: "Boş")
         ))
         updated
+    }
+
+    /** Conditional group-only undo; validation and restoration share one Room transaction. */
+    suspend fun undoGroupScoreIfCurrent(
+        sessionId: String,
+        groupId: String,
+        criterionId: String,
+        expectedCurrentPoints: Int?,
+        restorePoints: Int?,
+        removeAssessmentIfEmpty: Boolean = false
+    ): Boolean = db.withTransaction {
+        val dao = db.groupAssessmentDao()
+        val assessment = dao.getAssessment(sessionId, groupId) ?: return@withTransaction false
+        val current = dao.getScores(assessment.id).firstOrNull { it.criterionId == criterionId }
+        if (current?.points != expectedCurrentPoints) return@withTransaction false
+        val otherScores = dao.getScores(assessment.id).filterNot { it.criterionId == criterionId }
+        if (removeAssessmentIfEmpty && restorePoints == null && otherScores.none { it.points != null }) {
+            dao.deleteScores(assessment.id)
+            dao.deleteMemberResults(assessment.id)
+            dao.deleteAssessment(assessment.id)
+            return@withTransaction true
+        }
+        scoreGroup(sessionId, groupId, criterionId, restorePoints)
+        true
     }
 
     // Full JSON backup/restore: every table, prevalidation and a single Room transaction.

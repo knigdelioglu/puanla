@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import com.knigdelioglu.arc.compose.navigation.ArcCommandAction
 import com.knigdelioglu.arc.compose.navigation.ArcCommandPalette
+import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -18,6 +19,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     val rubrics by viewModel.rubrics.collectAsState()
     val students by viewModel.students.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
+    val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val scope = rememberCoroutineScope()
 
     val actions = mutableListOf<ArcCommandAction>()
@@ -28,7 +30,6 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_workspace",
             title = "Puanlamaya Git (Bireysel)",
             category = "Gezinme",
-            shortcut = "1",
             onExecute = { viewModel.currentDestination.value = AppDestination.WORKSPACE }
         )
     )
@@ -37,7 +38,6 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_classrooms",
             title = "Sınıflara Git",
             category = "Gezinme",
-            shortcut = "2",
             onExecute = { viewModel.currentDestination.value = AppDestination.CLASSROOMS }
         )
     )
@@ -46,7 +46,6 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_group",
             title = "Puanlama / Grup Çalışmaları",
             category = "Gezinme",
-            shortcut = "3",
             onExecute = { viewModel.currentDestination.value = AppDestination.GROUP_WORK }
         )
     )
@@ -55,7 +54,6 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_reports",
             title = "Raporlara Git / CSV Dışa Aktar",
             category = "Gezinme",
-            shortcut = "4",
             onExecute = { viewModel.currentDestination.value = AppDestination.REPORTS }
         )
     )
@@ -64,7 +62,6 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "nav_settings",
             title = "Ayarlar",
             category = "Gezinme",
-            shortcut = "5",
             onExecute = { viewModel.currentDestination.value = AppDestination.SETTINGS }
         )
     )
@@ -73,9 +70,13 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     actions.add(
         ArcCommandAction(
             id = "action_toggle_dark",
-            title = if (darkMode == true) "Aydınlık Moda Geç" else "Karanlık Moda Geç",
+            title = when (darkMode) {
+                true -> "Aydınlık Moda Geç"
+                false -> "Karanlık Moda Geç"
+                null -> "Sistem temasını değiştir (${if (ArcTheme.colors.isDark) "koyu" else "açık"} → ${if (ArcTheme.colors.isDark) "açık" else "koyu"})"
+            },
             category = "Ayarlar",
-            onExecute = { viewModel.darkMode.value = !(darkMode ?: false) }
+            onExecute = viewModel::toggleDarkMode
         )
     )
     actions.add(
@@ -83,9 +84,12 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
             id = "action_undo",
             title = "Son Puanı Geri Al",
             category = "İşlemler",
-            shortcut = "Cmd+Z",
             onExecute = {
-                scope.launch { viewModel.undoLastAction() }
+                scope.launch {
+                    if (viewModel.currentDestination.value == AppDestination.GROUP_WORK) {
+                        viewModel.undoLastGroupAction()
+                    } else viewModel.undoLastAction()
+                }
             }
         )
     )
@@ -106,7 +110,7 @@ fun AppCommandPaletteModal(viewModel: PuanlaViewModel) {
     }
 
     // Rubrics
-    rubrics.forEach { rubric ->
+    rubrics.filter { rubric -> selectedClassroom?.grade == rubric.grade }.forEach { rubric ->
         actions.add(
             ArcCommandAction(
                 id = "rubric_${rubric.id}",

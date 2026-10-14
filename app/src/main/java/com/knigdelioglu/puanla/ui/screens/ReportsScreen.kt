@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.knigdelioglu.arc.compose.controls.ArcButton
+import com.knigdelioglu.arc.compose.controls.ArcInput
+import com.knigdelioglu.arc.compose.controls.ArcCheckbox
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
@@ -81,6 +83,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -114,6 +117,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var csvActionsOpen by remember { mutableStateOf(false) }
     var isCsvPreviewDialogOpen by remember { mutableStateOf(false) }
     var generatedCsvContent by remember { mutableStateOf("") }
+    var csvSuggestedFilename by remember { mutableStateOf("puanla-degerlendirme-${LocalDate.now()}.csv") }
     var csvGenerating by remember { mutableStateOf(false) }
     var showDateFilter by remember { mutableStateOf(false) }
     var calendarTarget by remember { mutableStateOf<String?>(null) }
@@ -384,6 +388,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                         generatedCsvContent = withContext(Dispatchers.IO) {
                                             viewModel.repository.generateGroupCsvExport(sessionId)
                                         }
+                                        val sessionTitle = selectedGroupSession?.title.orEmpty()
+                                        val className = selectedClassroom?.name.orEmpty()
+                                        val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"))
+                                        csvSuggestedFilename = "puanla-grup-${filenamePart(className)}-${filenamePart(sessionTitle)}-$stamp.csv"
                                         isCsvPreviewDialogOpen = true
                                     } catch (e: Exception) {
                                         viewModel.showToast("Grup CSV hazırlanamadı: ${e.message}")
@@ -513,17 +521,18 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
         )
 
         // Metric Cards Grid
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 700.dp
+            val cardModifier = if (compact) Modifier.fillMaxWidth()
+                else Modifier.width((maxWidth - 28.dp) / 3)
+            val cards = @Composable {
             ArcMetricCard(
                 title = "En Yüksek Puan",
                 value = if (validScores.isNotEmpty()) "$maxScore" else "-",
                 subtitle = "Sınıf birincisi",
                 badgeText = "Maksimum",
                 badgeVariant = ArcBadgeVariant.Success,
-                modifier = Modifier.weight(1f)
+                modifier = cardModifier
             )
             ArcMetricCard(
                 title = "En Düşük Puan",
@@ -531,7 +540,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 subtitle = "Geliştirilmeli",
                 badgeText = "Minimum",
                 badgeVariant = ArcBadgeVariant.Warning,
-                modifier = Modifier.weight(1f)
+                modifier = cardModifier
             )
             ArcMetricCard(
                 title = "Tamamlanma Oranı",
@@ -539,30 +548,37 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 subtitle = "$completedCount / $totalStudents öğrenci",
                 badgeText = if (completionRate == 1f) "Eksiksiz" else "Sürüyor",
                 badgeVariant = if (completionRate == 1f) ArcBadgeVariant.Success else ArcBadgeVariant.Accent,
-                modifier = Modifier.weight(1f)
+                modifier = cardModifier
             )
+            }
+            if (compact) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { cards() }
+            else Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { cards() }
         }
 
         // Charts Row: Bar Chart, Donut Chart, and Gauge
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 760.dp
+            val chartModifier = Modifier.fillMaxWidth().height(if (compact) 250.dp else 320.dp)
+            val wideChartModifier = Modifier.width((maxWidth - 28.dp) / 3).height(320.dp)
+            val charts = @Composable {
             ArcBarChart(
                 data = barData,
-                modifier = Modifier.weight(1.4f)
+                modifier = if (compact) chartModifier else wideChartModifier
             )
             ArcDonutChart(
                 segments = donutSegments,
                 centerTitle = "Öğrenci",
                 centerSubtitle = "$totalStudents",
-                modifier = Modifier.weight(1.2f)
+                modifier = if (compact) chartModifier else wideChartModifier
             )
             ArcGauge(
                 percentage = completionRate,
                 label = "Rubrik Doluluk Oranı",
-                modifier = Modifier.weight(1f)
+                modifier = if (compact) chartModifier else wideChartModifier
             )
+            }
+            if (compact) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { charts() }
+            else Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { charts() }
         }
 
         // CSV BOM Info Banner
@@ -655,38 +671,28 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         fontSize = 12.sp,
                         color = colors.textSecondary
                     )
-                    OutlinedTextField(
+                    ArcInput(
                         value = pdfCourse,
                         onValueChange = { pdfCourse = it },
-                        label = { Text("Ders adı") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        label = "Ders adı"
                     )
-                    OutlinedTextField(
+                    ArcInput(
                         value = pdfTeacher,
                         onValueChange = { pdfTeacher = it },
-                        label = { Text("Öğretmenin adı soyadı") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        label = "Öğretmenin adı soyadı"
                     )
                     if (!groupReportMode) Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Checkbox(
+                        ArcCheckbox(
                             checked = pdfAllClasses,
-                            onCheckedChange = { pdfAllClasses = it }
-                        )
-                        Text(
-                            "Bu değerlendirmedeki bütün sınıflar",
-                            color = colors.foreground
+                            onCheckedChange = { pdfAllClasses = it },
+                            label = "Bu değerlendirmedeki bütün sınıflar"
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Checkbox(
+                        ArcCheckbox(
                             checked = pdfSummaryOnly,
-                            onCheckedChange = { pdfSummaryOnly = it }
-                        )
-                        Text(
-                            "Yalnızca özet ve grafikler (ölçüt tablosu olmadan)",
-                            color = colors.foreground
+                            onCheckedChange = { pdfSummaryOnly = it },
+                            label = "Yalnızca özet ve grafikler (ölçüt tablosu olmadan)"
                         )
                     }
                     Text(
@@ -811,7 +817,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         Spacer(Modifier.width(10.dp))
                         ArcButton(
                             text = "CSV Dosyası Kaydet",
-                            onClick = { saveCsv.launch("puanla-degerlendirme.csv") },
+                            onClick = { saveCsv.launch(csvSuggestedFilename) },
                             variant = ArcButtonVariant.Primary
                         )
                     }
@@ -820,3 +826,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
         }
     }
 }
+
+private fun filenamePart(value: String): String = value.trim()
+    .replace(Regex("[^\\p{L}\\p{N}_-]+"), "-")
+    .trim('-')
+    .take(40)
+    .ifEmpty { "rapor" }

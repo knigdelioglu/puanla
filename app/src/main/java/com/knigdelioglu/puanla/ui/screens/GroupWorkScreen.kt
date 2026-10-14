@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -48,6 +49,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import kotlin.math.roundToInt
@@ -74,6 +76,7 @@ import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 import org.json.JSONArray
+import kotlinx.coroutines.launch
 
 
 /**
@@ -82,6 +85,7 @@ import org.json.JSONArray
  */
 @Composable
 fun GroupWorkScreen(viewModel: PuanlaViewModel) {
+    val scope = rememberCoroutineScope()
     val classroom by viewModel.selectedClassroom.collectAsState()
     val rubric by viewModel.selectedRubric.collectAsState()
     val students by viewModel.students.collectAsState()
@@ -96,8 +100,11 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val criteria by viewModel.criteria.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
+    val canUndoGroupAction by viewModel.canUndoGroupAction.collectAsState()
 
     var createGroup by remember { mutableStateOf(false) }
+    var editingGroup by remember { mutableStateOf<GroupTaskEntity?>(null) }
+    var deletingGroup by remember { mutableStateOf<GroupTaskEntity?>(null) }
     var createRandomGroups by remember { mutableStateOf(false) }
     var confirmMembershipSync by remember { mutableStateOf(false) }
     val assignedStudentIds = remember(groups) {
@@ -166,7 +173,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                     items(groups, key = { it.id }) { group ->
                         GroupTaskCard(
                             task = group, students = students,
-                            onToggleChecklist = { idx -> viewModel.toggleChecklistItem(group, idx) }
+                            onToggleChecklist = { idx -> viewModel.toggleChecklistItem(group, idx) },
+                            onEdit = { editingGroup = group },
+                            onDelete = { deletingGroup = group }
                         )
                     }
                 }
@@ -221,6 +230,10 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                             secondPane = {
                                 CriteriaExplorerPane(
                                     criteria = criteria, activeCriterion = activeCriterion,
+                                    scoreSummary = criteria.associate { criterion ->
+                                        criterion.id to (scores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                                            ?: "Puanlanmadı / ${criterion.maxPoints}")
+                                    },
                                     onSelectCriterion = {
                                         activeCriterionIndex = criteria.indexOfFirst { c -> c.id == it.id }.coerceAtLeast(0)
                                     }
@@ -232,6 +245,8 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                     modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                                     criterion = activeCriterion, criteria = criteria,
                                     scores = scores, students = students, memberResults = memberResults,
+                                    onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
+                                    canUndo = canUndoGroupAction,
                                     quickGrading = quickGrading,
                                     levels = levels.filter { it.criterionId == activeCriterion?.id },
                                     autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
@@ -280,6 +295,8 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 group = selectedGroup, assessment = assessment,
                                 criterion = activeCriterion, criteria = criteria,
                                 scores = scores, students = students, memberResults = memberResults,
+                                onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
+                                canUndo = canUndoGroupAction,
                                 quickGrading = quickGrading,
                                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                                 autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
@@ -337,8 +354,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             }
         }
     }
-    if (createGroup) {
+    if (createGroup && editingGroup == null) {
         CreateGroupDialog(
+            initialTask = null,
             students = students,
             assignedStudentIds = assignedStudentIds,
             onDismiss = { createGroup = false },
@@ -347,6 +365,48 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 createGroup = false
             }
         )
+    }
+    editingGroup?.let { group ->
+        val groupMemberIds = remember(group.id, group.memberStudentIdsJson) {
+            try {
+                val array = JSONArray(group.memberStudentIdsJson)
+                (0 until array.length()).map { array.getString(it) }.toSet()
+            } catch (_: Exception) { emptySet() }
+        }
+        CreateGroupDialog(
+            initialTask = group,
+            students = students,
+            assignedStudentIds = assignedStudentIds - groupMemberIds,
+            onDismiss = { editingGroup = null },
+            onConfirm = { title, memberIds ->
+                viewModel.updateGroupTask(group, title, memberIds)
+                editingGroup = null
+            }
+        )
+    }
+    deletingGroup?.let { group ->
+        Dialog(onDismissRequest = { deletingGroup = null }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = ArcTheme.colors.surfaceRaised,
+                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp)
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Grubu sil?", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                    Text(
+                        "‘${group.title}’ grubunu silme isteği gönderilecek. Geçmiş değerlendirmesi varsa puanları ve üye kayıtlarını korumak için silme engellenir.",
+                        color = ArcTheme.colors.textSecondary
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        ArcButton(text = "Vazgeç", onClick = { deletingGroup = null }, variant = ArcButtonVariant.Ghost)
+                        ArcButton(text = "Grubu Sil", onClick = {
+                            viewModel.deleteGroupTask(group)
+                            deletingGroup = null
+                        }, variant = ArcButtonVariant.Outline)
+                    }
+                }
+            }
+        }
     }
     if (createRandomGroups) {
         RandomGroupsDialog(
@@ -363,9 +423,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
         Dialog(onDismissRequest = { createSession = false }) {
             Surface(
                 shape = ArcTheme.shapes.panel, color = ArcTheme.colors.surfaceRaised,
-                modifier = Modifier.width(440.dp)
+                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).heightIn(max = 700.dp)
             ) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Yeni grup değerlendirmesi", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     ArcInput(value = title, onValueChange = { title = it },
                         label = "Oturum adı", placeholder = "Örn. Drama - 12 Ekim")
@@ -431,6 +491,8 @@ private fun GroupScoringPane(
     scores: Map<String, GroupCriterionScoreEntity>,
     students: List<StudentEntity>,
     memberResults: List<GroupMemberResultEntity>,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
     quickGrading: com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference,
     levels: List<CriterionLevelEntity>,
     autoAdvance: Boolean,
@@ -468,6 +530,14 @@ private fun GroupScoringPane(
             text = "Üyelikleri Eşitle",
             onClick = onSyncMembership,
             variant = ArcButtonVariant.Outline,
+            size = ArcButtonSize.Sm,
+            modifier = Modifier.fillMaxWidth()
+        )
+        ArcButton(
+            text = "Son grup puanını geri al",
+            onClick = onUndo,
+            enabled = canUndo,
+            variant = ArcButtonVariant.Ghost,
             size = ArcButtonSize.Sm,
             modifier = Modifier.fillMaxWidth()
         )
@@ -557,7 +627,9 @@ private fun GroupScoringPane(
 private fun GroupTaskCard(
     task: GroupTaskEntity,
     students: List<StudentEntity>,
-    onToggleChecklist: (Int) -> Unit
+    onToggleChecklist: (Int) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val studentMap = remember(students) { students.associateBy { it.id } }
 
@@ -602,10 +674,16 @@ private fun GroupTaskCard(
         initiallyExpanded = true
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                ArcButton(text = "Düzenle", onClick = onEdit,
+                    variant = ArcButtonVariant.Outline, size = ArcButtonSize.Sm)
+                ArcButton(text = "Sil", onClick = onDelete,
+                    variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
+            }
             // Member tags
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
                     text = "Grup Üyeleri: ",
@@ -613,8 +691,7 @@ private fun GroupTaskCard(
                     fontWeight = FontWeight.SemiBold,
                     color = ArcTheme.colors.textSecondary
                 )
-                Spacer(Modifier.width(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     members.forEach { m ->
                         ArcBadge(
                             text = "${m.studentNumber} ${m.fullName}",
@@ -654,8 +731,7 @@ private fun GroupTaskCard(
                     checklist.forEachIndexed { idx, (itemTitle, isChecked) ->
                         Surface(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggleChecklist(idx) },
+                                .fillMaxWidth(),
                             shape = ArcTheme.shapes.control,
                             color = if (isChecked) ArcTheme.colors.surfaceMuted else ArcTheme.colors.surface,
                             border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle)
@@ -666,14 +742,8 @@ private fun GroupTaskCard(
                             ) {
                                 ArcCheckbox(
                                     checked = isChecked,
-                                    onCheckedChange = { onToggleChecklist(idx) }
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    text = itemTitle,
-                                    fontSize = 14.sp,
-                                    color = if (isChecked) ArcTheme.colors.textSecondary else ArcTheme.colors.foreground,
-                                    fontWeight = if (isChecked) FontWeight.Normal else FontWeight.Medium
+                                    onCheckedChange = { onToggleChecklist(idx) },
+                                    label = itemTitle
                                 )
                             }
                         }
@@ -686,13 +756,20 @@ private fun GroupTaskCard(
 
 @Composable
 private fun CreateGroupDialog(
+    initialTask: GroupTaskEntity?,
     students: List<StudentEntity>,
     assignedStudentIds: Set<String>,
     onDismiss: () -> Unit,
     onConfirm: (String, List<String>) -> Unit
 ) {
-    var groupTitle by remember { mutableStateOf("") }
-    var selectedStudentIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val initialMembers = remember(initialTask?.id, initialTask?.memberStudentIdsJson) {
+        try {
+            val array = JSONArray(initialTask?.memberStudentIdsJson ?: "[]")
+            (0 until array.length()).map { array.getString(it) }.toSet()
+        } catch (_: Exception) { emptySet() }
+    }
+    var groupTitle by remember(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
+    var selectedStudentIds by remember(initialTask?.id) { mutableStateOf(initialMembers) }
     var showAllStudents by remember { mutableStateOf(false) }
     val visibleStudents = remember(students, assignedStudentIds, showAllStudents) {
         if (showAllStudents) students else students.filterNot { it.id in assignedStudentIds }
@@ -704,11 +781,11 @@ private fun CreateGroupDialog(
             color = ArcTheme.colors.surfaceRaised,
             border = BorderStroke(1.dp, ArcTheme.colors.border),
             shadowElevation = 8.dp,
-            modifier = Modifier.width(460.dp)
+            modifier = Modifier.fillMaxWidth().widthIn(max = 460.dp).heightIn(max = 700.dp)
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
                 Text(
-                    text = "Yeni Grup Oluştur",
+                    text = if (initialTask == null) "Yeni Grup Oluştur" else "Grubu Düzenle",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = ArcTheme.colors.foreground
@@ -789,7 +866,7 @@ private fun CreateGroupDialog(
                     )
                     Spacer(Modifier.width(8.dp))
                     ArcButton(
-                        text = "Grubu Kur",
+                        text = if (initialTask == null) "Grubu Kur" else "Değişiklikleri Kaydet",
                         onClick = {
                             if (groupTitle.isNotBlank() && selectedStudentIds.isNotEmpty()) {
                                 onConfirm(groupTitle.trim(), selectedStudentIds.toList())
@@ -824,9 +901,9 @@ private fun RandomGroupsDialog(
             shape = ArcTheme.shapes.panel,
             color = ArcTheme.colors.surfaceRaised,
             border = BorderStroke(1.dp, ArcTheme.colors.border),
-            modifier = Modifier.width(440.dp)
+            modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).heightIn(max = 700.dp)
         ) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Rastgele Grup Oluştur", fontSize = 18.sp,
                     fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
                 Text(

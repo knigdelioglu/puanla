@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -55,6 +54,7 @@ import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.controls.ArcShortcutRecorder
+import com.knigdelioglu.arc.compose.controls.ArcInput
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
 import com.knigdelioglu.arc.compose.datavis.ArcActivityHeatmap
@@ -205,25 +205,21 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     "PDF imza alanına otomatik eklenir. Bir kez yazmanız yeterlidir.",
                     color = ArcTheme.colors.textSecondary
                 )
-                OutlinedTextField(
+                ArcInput(
                     value = reportTeacherName,
                     onValueChange = {
                         reportTeacherName = it
                         reportPrefs.edit().putString("teacher", it).apply()
                     },
-                    label = { Text("Öğretmenin adı soyadı") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    label = "Öğretmenin adı soyadı"
                 )
-                OutlinedTextField(
+                ArcInput(
                     value = reportCourseName,
                     onValueChange = {
                         reportCourseName = it
                         reportPrefs.edit().putString("course", it).apply()
                     },
-                    label = { Text("Ders adı") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    label = "Ders adı"
                 )
             }
         }
@@ -249,7 +245,15 @@ fun SettingsScreen(viewModel: PuanlaViewModel) {
                     ) {
                         Column {
                             Text("Tema Tercihi", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
-                            Text(if (darkMode == true) "Karanlık Mod Etkin" else "Aydınlık Mod Etkin", fontSize = 12.sp, color = ArcTheme.colors.textSecondary)
+                            Text(
+                                when (darkMode) {
+                                    true -> "Karanlık Mod Etkin"
+                                    false -> "Aydınlık Mod Etkin"
+                                    null -> "Sistem teması izleniyor · ${if (ArcTheme.colors.isDark) "Koyu" else "Açık"}"
+                                },
+                                fontSize = 12.sp,
+                                color = ArcTheme.colors.textSecondary
+                            )
                         }
                         ArcThemeSwitch(
                             isDark = darkMode ?: ArcTheme.colors.isDark,
