@@ -20,7 +20,8 @@ on:
 # version; Compose's moving main can never change an ordinary release.
 concurrency:
   group: puanla-android-${{ github.ref }}
-  cancel-in-progress: false
+  # Keep every main/release build; cancel superseded PR commits only.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
@@ -88,9 +89,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Install Android SDK 36
+      - name: Install Android SDK 36 only when missing
+        shell: bash
         run: |
+          set -euo pipefail
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [[ -f "$SDK_ROOT/platforms/android-36/android.jar" &&
+                -f "$SDK_ROOT/build-tools/35.0.0/aapt2" ]]; then
+            echo "Android SDK 36 and build-tools 35.0.0 already installed."
+            exit 0
+          fi
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -n "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0"
@@ -100,7 +108,7 @@ jobs:
           EXPECTED_VERSION: ${{ steps.dependency.outputs.version }}
         run: |
           set -euo pipefail
-          ./gradlew :app:dependencyInsight --dependency compose-design-system --configuration debugRuntimeClasspath --no-daemon > compose-dependency-resolution.txt
+          ./gradlew :app:dependencyInsight --dependency compose-design-system --configuration debugRuntimeClasspath > compose-dependency-resolution.txt
           grep -F "com.knigdelioglu:compose-design-system:$EXPECTED_VERSION" compose-dependency-resolution.txt || {
             echo "::error::Gradle did not resolve the selected Compose AAR $EXPECTED_VERSION"
             cat compose-dependency-resolution.txt
@@ -116,12 +124,34 @@ jobs:
           if [[ "$MODE" == "source" ]]; then
             args+=("-PcomposeUsePublishedByDefault=false" "-PcomposeDesignSystemDir=$GITHUB_WORKSPACE/compose-design-system/design-system")
           fi
-          ./gradlew test :app:assembleDebug :app:assembleRelease --no-daemon "${args[@]}"
+          ./gradlew test :app:assembleDebug :app:assembleRelease "${args[@]}"
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # Keep a clean AVD quick-boot snapshot between CI runs. Unlike the
+      # Gradle user-home cache, this avoids rebuilding emulator state.
+      - name: Cache Android emulator snapshot
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: puanla-avd-${{ runner.os }}-api36-googleapis-x86_64-pixel7pro-v1
+      - name: Prepare clean emulator snapshot on cache miss
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Clean AVD snapshot created for reuse."
       - name: Verify tablet UI tests before publishing
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -131,12 +161,13 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7_pro
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           emulator-boot-timeout: 900
           disable-animations: true
           # android-emulator-runner calls /bin/sh -c with one shell command.
           # Keep the whole conditional on ONE line; multiline scripts get cut at the first line.
-          script: if [ "$MODE" = "source" ]; then ./gradlew :app:connectedDebugAndroidTest --no-daemon -PcomposeUsePublishedByDefault=false -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"; else ./gradlew :app:connectedDebugAndroidTest --no-daemon; fi
+          script: if [ "$MODE" = "source" ]; then ./gradlew :app:connectedDebugAndroidTest -PcomposeUsePublishedByDefault=false -PcomposeDesignSystemDir="$GITHUB_WORKSPACE/compose-design-system/design-system"; else ./gradlew :app:connectedDebugAndroidTest; fi
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
