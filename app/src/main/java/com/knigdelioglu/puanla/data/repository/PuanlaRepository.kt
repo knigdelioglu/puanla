@@ -882,6 +882,13 @@ class PuanlaRepository(
         sessionId: String, groupId: String, criterionId: String, note: String
     ): Unit = db.withTransaction {
         val dao = db.groupAssessmentDao()
+        val session = requireNotNull(dao.getSession(sessionId)) { "Oturum yok." }
+        val group = requireNotNull(groupTaskDao.getGroupTaskById(groupId)) { "Grup yok." }
+        require(group.classroomId == session.classroomId) { "Grup sınıfı farklı." }
+        val rubric = requireNotNull(rubricDao.getRubricById(session.rubricId)) { "Rubrik yok." }
+        require(rubric.id !in RubricSeeder.unverifiedLegacyIds)
+        val criterion = requireNotNull(rubricDao.getCriterionById(criterionId)) { "Ölçüt yok." }
+        require(criterion.rubricId == rubric.id) { "Ölçüt seçili rubriğe ait değil." }
         val assessment = dao.getAssessment(sessionId, groupId)
             ?: scoreGroup(sessionId, groupId, criterionId, null)
         val row = dao.getScores(assessment.id).firstOrNull { it.criterionId == criterionId }
