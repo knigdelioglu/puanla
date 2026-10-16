@@ -111,6 +111,9 @@ class PuanlaViewModel internal constructor(
 
     // Navigation & Global UI State
     val currentDestination = MutableStateFlow(AppDestination.WORKSPACE)
+    // Reflects the last scoring mode; Reports can also change it independently.
+    // This is presentation state, not a merged individual/group session model.
+    val reportsGroupMode = MutableStateFlow(false)
     val isCommandPaletteOpen = MutableStateFlow(false)
     val isNotificationCenterOpen = MutableStateFlow(false)
     val darkMode = MutableStateFlow<Boolean?>(
