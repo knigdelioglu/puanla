@@ -676,7 +676,10 @@ class PuanlaViewModel internal constructor(
                     )
                     refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                     val undoId = UUID.randomUUID().toString()
-                    undoStack.push(undoId, UndoAction("${student.fullName} - $criterionTitle") {
+                    undoStack.push(undoId, UndoAction(
+                        title = "${student.fullName} - $criterionTitle",
+                        contextId = "${classroom.id}/${run.id}"
+                    ) {
                         lock.withLock {
                             // Undo only the intended edit, never a later score or note.
                             val latestAssessment = repository.getRunAssessmentForStudent(student.id, run.id)
@@ -829,6 +832,13 @@ class PuanlaViewModel internal constructor(
     }
 
     suspend fun undoLastAction() {
+        val action = undoStack.latest() ?: return
+        val classroomId = selectedClassroom.value?.id ?: return
+        val runId = selectedRun.value?.id ?: return
+        if (action.contextId != "$classroomId/$runId") {
+            showToast("Geri almak için son puanlanan sınıf ve değerlendirmeyi seçin.")
+            return
+        }
         val latestId = undoStack.latestId() ?: return
         undoAction(latestId)
     }
