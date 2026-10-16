@@ -58,6 +58,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
+import com.knigdelioglu.puanla.domain.report.canExportSelectedReport
 import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
 import com.knigdelioglu.puanla.domain.export.PdfReportWriter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
@@ -110,6 +111,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
     var showPdfDialog by remember { mutableStateOf(false) }
     var groupReportMode by remember { mutableStateOf(false) }
+    var pdfRequestedGroupSessionId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedGroupSessionTitle by remember { mutableStateOf<String?>(null) }
     var pdfGenerating by remember { mutableStateOf(false) }
     var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
     var pdfAllClasses by remember { mutableStateOf(false) }
@@ -299,12 +302,19 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                val hasReportSession = selectedClassroom != null && selectedRubric != null &&
-                    (if (reportsGroupMode) selectedGroupSession != null else selectedRun != null)
+                val hasReportSession = canExportSelectedReport(
+                    groupMode = reportsGroupMode,
+                    classroomId = selectedClassroom?.id,
+                    rubricId = selectedRubric?.id,
+                    individualRunId = selectedRun?.id,
+                    groupSessionId = selectedGroupSession?.id
+                )
                 ArcButton(
                     text = "PDF Raporu",
                     onClick = {
                         groupReportMode = reportsGroupMode
+                        pdfRequestedGroupSessionId = if (reportsGroupMode) selectedGroupSession?.id else null
+                        pdfRequestedGroupSessionTitle = if (reportsGroupMode) selectedGroupSession?.title else null
                         if (reportsGroupMode) pdfAllClasses = false
                         showPdfDialog = true
                     },
@@ -315,11 +325,15 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                 Box {
                     ArcSplitButton(
                         onPrimaryClick = {
+                            val requestedGroupMode = reportsGroupMode
+                            val requestedGroupSessionId = selectedGroupSession?.id
+                            val requestedGroupTitle = selectedGroupSession?.title.orEmpty()
+                            val requestedClassName = selectedClassroom?.name.orEmpty()
                             if (!csvGenerating && hasReportSession) scope.launch {
                                 csvGenerating = true
                                 try {
-                                    val csv = if (reportsGroupMode) {
-                                        val sessionId = requireNotNull(selectedGroupSession?.id) {
+                                    val csv = if (requestedGroupMode) {
+                                        val sessionId = requireNotNull(requestedGroupSessionId) {
                                             "Grup oturumu seçilmedi."
                                         }
                                         withContext(Dispatchers.IO) {
@@ -333,9 +347,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                     val stamp = LocalDateTime.now().format(
                                         DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
                                     )
-                                    csvSuggestedFilename = if (reportsGroupMode) {
-                                        "puanla-grup-${filenamePart(selectedClassroom?.name.orEmpty())}-" +
-                                            "${filenamePart(selectedGroupSession?.title.orEmpty())}-$stamp.csv"
+                                    csvSuggestedFilename = if (requestedGroupMode) {
+                                        "puanla-grup-${filenamePart(requestedClassName)}-" +
+                                            "${filenamePart(requestedGroupTitle)}-$stamp.csv"
                                     } else {
                                         "puanla-degerlendirme-${LocalDate.now()}.csv"
                                     }
@@ -361,11 +375,13 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                             text = { Text("CSV'yi panoya kopyala") },
                             onClick = {
                                 csvActionsOpen = false
+                                val requestedGroupMode = reportsGroupMode
+                                val requestedGroupSessionId = selectedGroupSession?.id
                                 if (!csvGenerating && hasReportSession) scope.launch {
                                     csvGenerating = true
                                     try {
-                                        val csv = if (reportsGroupMode) {
-                                            val sessionId = requireNotNull(selectedGroupSession?.id) {
+                                        val csv = if (requestedGroupMode) {
+                                            val sessionId = requireNotNull(requestedGroupSessionId) {
                                                 "Grup oturumu seçilmedi."
                                             }
                                             withContext(Dispatchers.IO) {
@@ -743,7 +759,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                     try {
                                         val snapshots = withContext(Dispatchers.IO) {
                                             if (groupReportMode) {
-                                                val sessionId = requireNotNull(selectedGroupSession?.id) {
+                                                val sessionId = requireNotNull(pdfRequestedGroupSessionId) {
                                                     "Grup oturumu seçilmedi."
                                                 }
                                                 listOf(viewModel.repository.generateGroupPdfReportSnapshot(sessionId))
@@ -761,7 +777,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${if (groupReportMode) "grup" else if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (groupReportMode) selectedGroupSession?.title else selectedRun?.title)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${if (groupReportMode) "grup" else if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (groupReportMode) pdfRequestedGroupSessionTitle else selectedRun?.title)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
