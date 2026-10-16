@@ -229,7 +229,7 @@ class PuanlaViewModelRestoreAndEvidenceTest {
             db.studentDao().insertStudent(StudentEntity("sgroup", "cgroup", "1", "Ece", "Kaya"))
             db.rubricDao().insertRubric(RubricEntity("rgroup", "Drama", "", 11, "Drama"))
             db.rubricDao().insertCriteria(listOf(CriterionEntity("kgroup", "rgroup", "İçerik", "", 100, 0)))
-            repo.saveGroupTask(GroupTaskEntity("ggroup", "cgroup", "", "Grup A", "[\\"sgroup\\"]", "[]"))
+            repo.saveGroupTask(GroupTaskEntity("ggroup", "cgroup", "", "Grup A", "[\"sgroup\"]", "[]"))
             val first = repo.createGroupSession("cgroup", "rgroup", "1. oturum")
             val second = repo.createGroupSession("cgroup", "rgroup", "2. oturum")
             val pair = viewModel(db, repo); val vm = pair.first; store = pair.second
