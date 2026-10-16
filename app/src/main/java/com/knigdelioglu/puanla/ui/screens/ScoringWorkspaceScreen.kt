@@ -231,6 +231,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
         },
         scoringPane = {
             ScoringControlPane(
+                runId = selectedRun?.id.orEmpty(),
                 student = selectedStudent,
                 criterion = activeCriterion,
                 criteria = criteria,
@@ -509,6 +510,7 @@ private fun CriterionSelectionRow(
 
 @Composable
 private fun ScoringControlPane(
+    runId: String,
     student: StudentEntity?,
     criterion: CriterionEntity?,
     criteria: List<CriterionEntity>,
@@ -661,7 +663,9 @@ private fun ScoringControlPane(
 
                     val hasNextCriterion =
                         criteria.indexOfFirst { it.id == criterion.id } in 0 until criteria.lastIndex
-                    var showPrecision by remember(student.id, criterion.id) { mutableStateOf(false) }
+                    var showNoteEditor by remember(student.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
 
                     ArcCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(14.dp)) {
@@ -684,75 +688,22 @@ private fun ScoringControlPane(
                             }
 
                             Spacer(Modifier.height(14.dp))
-                            QuickScoreControls(
-                                maxPoints = maxPoints,
+                            CriterionGradingEditor(
+                                contextKey = "individual/$runId/${student.id}/${criterion.id}",
+                                criterion = criterion,
                                 points = points,
                                 levels = levels,
                                 quickGrading = quickGrading,
                                 autoAdvance = autoAdvanceQuickScore,
                                 onAutoAdvanceChange = onAutoAdvanceQuickScoreChange,
                                 hasNextCriterion = hasNextCriterion,
+                                noteEditorOpen = showNoteEditor,
                                 onNextCriterion = onNextCriterion,
-                                onChooseScore = { chosen ->
-                                    // setScore owns the original student/rubric/criterion IDs.
-                                    // Navigation only changes the selected criterion after dispatch.
+                                onScore = { chosen ->
                                     onScore(chosen, currentScore?.evidenceNote)
-                                    if (autoAdvanceQuickScore && hasNextCriterion) onNextCriterion()
-                                }
+                                },
+                                onClearScore = onClearScore
                             )
-
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                ArcButton(
-                                    text = if (showPrecision) "Hassas ayarı gizle" else "Hassas puan",
-                                    onClick = { showPrecision = !showPrecision },
-                                    size = ArcButtonSize.Sm,
-                                    variant = ArcButtonVariant.Outline,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                ArcButton(
-                                    text = "Puanı kaldır",
-                                    onClick = onClearScore,
-                                    enabled = points != null,
-                                    size = ArcButtonSize.Sm,
-                                    variant = ArcButtonVariant.Ghost
-                                )
-                            }
-
-                            if (showPrecision) {
-                                Spacer(Modifier.height(12.dp))
-                                // Preview is local. Room is updated only on slider release.
-                                var sliderPreview by remember(student.id, criterion.id) {
-                                    mutableFloatStateOf((points ?: 0).toFloat())
-                                }
-                                LaunchedEffect(student.id, criterion.id, points) {
-                                    sliderPreview = (points ?: 0).toFloat()
-                                }
-                                if (maxPoints > 0) {
-                                    ArcElasticSlider(
-                                        value = sliderPreview,
-                                        onValueChange = { sliderPreview = it },
-                                        onValueCommit = { onScore(it.roundToInt(), currentScore?.evidenceNote) },
-                                        step = 1f,
-                                        valueRange = 0f..maxPoints.toFloat(),
-                                        label = "Hassas puan",
-                                        formatValue = { "${it.roundToInt()} / $maxPoints" }
-                                    )
-                                }
-                                key(student.id, criterion.id) {
-                                    ArcNumberField(
-                                        value = points,
-                                        onValueChange = { onScore(it, currentScore?.evidenceNote) },
-                                        min = 0,
-                                        max = maxPoints,
-                                        label = "Tam sayı"
-                                    )
-                                }
-                            }
                         }
                     }
 
@@ -777,9 +728,6 @@ private fun ScoringControlPane(
                     var noteTouched by remember(student.id, criterion.id) { mutableStateOf(false) }
                     LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
-                    }
-                    var showNoteEditor by remember(student.id, criterion.id) {
-                        mutableStateOf(false)
                     }
                     ArcButton(
                         text = if (showNoteEditor) "Gözlem notunu gizle"
