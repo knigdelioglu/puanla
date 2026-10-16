@@ -220,4 +220,56 @@ class PuanlaViewModelRestoreAndEvidenceTest {
             // may still be unwinding a just-cancelled Flow query on its query executor.
         }
     }
+    @Test fun groupEvidenceFlushKeepsOriginalSessionAfterSelectionChanges() = runBlocking {
+        val db = newDatabase()
+        val repo = repository(db)
+        var store: ViewModelStore? = null
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("cgroup", 11, "D", "11-D", "2026-2027"))
+            db.studentDao().insertStudent(StudentEntity("sgroup", "cgroup", "1", "Ece", "Kaya"))
+            db.rubricDao().insertRubric(RubricEntity("rgroup", "Drama", "", 11, "Drama"))
+            db.rubricDao().insertCriteria(listOf(CriterionEntity("kgroup", "rgroup", "İçerik", "", 100, 0)))
+            repo.saveGroupTask(GroupTaskEntity("ggroup", "cgroup", "", "Grup A", "[\\"sgroup\\"]", "[]"))
+            val first = repo.createGroupSession("cgroup", "rgroup", "1. oturum")
+            val second = repo.createGroupSession("cgroup", "rgroup", "2. oturum")
+            val pair = viewModel(db, repo); val vm = pair.first; store = pair.second
+            awaitState("group classroom loaded", { "class=${vm.selectedClassroom.value?.id}" }) {
+                vm.selectedClassroom.value?.id == "cgroup"
+            }
+            selectRubric(vm, "rgroup")
+            awaitState("group session loaded", {
+                "group=${vm.selectedGroup.value?.id}; session=${vm.selectedGroupSession.value?.id}"
+            }) {
+                vm.selectedGroup.value?.id == "ggroup" &&
+                    vm.groupSessions.value.any { it.id == first.id } &&
+                    vm.groupSessions.value.any { it.id == second.id }
+            }
+            vm.selectGroupSession(first)
+            vm.setGroupEvidenceNote("kgroup", "başlangıç")
+            delay(130)
+            vm.setGroupEvidenceNote("kgroup", "son kanıt")
+            assertEquals(EvidenceNoteSaveState.Status.SAVING, vm.groupEvidenceNoteSaveState.value?.status)
+            vm.selectGroupSession(second)
+            vm.flushPendingEvidenceNotes()
+            val assessment = requireNotNull(repo.getGroupAssessment(first.id, "ggroup"))
+            val note = repo.getGroupScores(assessment.id).single()
+            assertEquals("son kanıt", note.evidenceNote)
+            assertNull(note.points)
+            assertEquals(0, assessment.scoredCount)
+            assertNull(repo.getGroupAssessment(second.id, "ggroup"))
+            assertEquals(EvidenceNoteSaveState.Status.SAVED, vm.groupEvidenceNoteSaveState.value?.status)
+
+            vm.setGroupScore("kgroup", 0)
+            awaitState("second group score saved", {
+                "score=${repo.getGroupAssessment(second.id, "ggroup")?.scoredCount}"
+            }) {
+                repo.getGroupAssessment(second.id, "ggroup")?.scoredCount == 1
+            }
+            assertEquals("son kanıt", repo.getGroupScores(assessment.id).single().evidenceNote)
+            assertNull(repo.getGroupScores(assessment.id).single().points)
+        } finally {
+            store?.clear()
+        }
+    }
+
 }
