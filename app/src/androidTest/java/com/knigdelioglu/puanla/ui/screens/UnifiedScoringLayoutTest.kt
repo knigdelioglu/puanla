@@ -118,7 +118,10 @@ class UnifiedScoringLayoutTest {
 
         rule.onNodeWithTag("unifiedScoringLayoutCompact").assertExists()
         rule.onNodeWithText("Hedef seç").performClick()
-        rule.onNodeWithText("Puanlama ekranı").assertIsDisplayed()
+        // The 820dp fixture is intentionally wider than the CI phone viewport.
+        // Verify that the active pane is composed, not clipped offscreen.
+        rule.onNodeWithText("Puanlama ekranı").assertExists()
+        rule.onNodeWithText("Hedef seç").assertDoesNotExist()
 
         rule.runOnIdle { paneWidth.value = 1000.dp }
         rule.onNodeWithTag("unifiedScoringLayoutWide").assertExists()
