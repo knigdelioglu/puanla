@@ -288,7 +288,20 @@ class GroupModeScoringTest {
             assertTrue(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 0, null, removeAssessmentIfEmpty = true))
             assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
 
+            // Reverting a group's only non-null score must not delete existing evidence.
+            val noteOnly = repo.createGroupSession("c", "r", "Yalnızca not")
+            repo.saveGroupEvidenceNote(noteOnly.id, group.id, "c1", "Kalıcı gözlem")
+            repo.scoreGroup(noteOnly.id, group.id, "c1", 8)
+            assertTrue(repo.undoGroupScoreIfCurrent(
+                noteOnly.id, group.id, "c1", 8, null, removeAssessmentIfEmpty = true
+            ))
+            val retained = requireNotNull(repo.getGroupAssessment(noteOnly.id, group.id))
+            assertEquals(0, retained.scoredCount)
+            assertEquals("Kalıcı gözlem", repo.getGroupScores(retained.id).single().evidenceNote)
+            assertNull(repo.getGroupScores(retained.id).single().points)
+
             val backup = repo.generateFullBackupJson()
+            assertTrue(backup.contains("Kalıcı gözlem"))
             assertTrue(backup.contains("Hazırlıklıydı"))
             assertTrue(backup.contains("İkinci oturum notu"))
         } finally { db.close() }
