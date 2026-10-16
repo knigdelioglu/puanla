@@ -52,6 +52,7 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     var showEvaluationRuns by remember { mutableStateOf(false) }
     val selectedRun by viewModel.selectedRun.collectAsState()
     val selectedGroupSession by viewModel.selectedGroupSession.collectAsState()
+    val reportsGroupMode by viewModel.reportsGroupMode.collectAsState()
     val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
     ArcPageHeader(
@@ -98,7 +99,8 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
                     currentDestination == AppDestination.GROUP_WORK ||
                     currentDestination == AppDestination.REPORTS
                 ) {
-                    val activeTitle = if (currentDestination == AppDestination.GROUP_WORK) {
+                    val activeTitle = if (currentDestination == AppDestination.GROUP_WORK ||
+                        (currentDestination == AppDestination.REPORTS && reportsGroupMode)) {
                         selectedGroupSession?.title
                     } else {
                         selectedRun?.title
@@ -157,7 +159,8 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     EvaluationRunSheet(
         viewModel = viewModel,
         isOpen = showEvaluationRuns,
-        groupMode = currentDestination == AppDestination.GROUP_WORK,
+        groupMode = currentDestination == AppDestination.GROUP_WORK ||
+            (currentDestination == AppDestination.REPORTS && reportsGroupMode),
         onDismiss = { showEvaluationRuns = false }
     )
     ArcBottomSheet(
