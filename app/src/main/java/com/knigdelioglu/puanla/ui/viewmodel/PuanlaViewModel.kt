@@ -1486,6 +1486,10 @@ class PuanlaViewModel internal constructor(
     }
 
     fun setGroupScore(criterionId: String, points: Int?) {
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında puan kaydedilemez.")
+            return
+        }
         val group = selectedGroup.value ?: return
         val session = selectedGroupSession.value ?: return
         val rubric = selectedRubric.value ?: return
