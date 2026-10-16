@@ -766,30 +766,13 @@ private fun ScoringControlPane(
 
             Spacer(Modifier.height(12.dp))
 
-            // P0 Arc tablet toolbar: visible navigation + actual undo action.
-            // Kept outside the scrolling criterion content.
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                ArcFloatingButtonGroup {
-                    ArcButton(
-                        text = "Önceki",
-                        onClick = onPrevStudent,
-                        variant = ArcButtonVariant.Outline,
-                        size = ArcButtonSize.Sm
-                    )
-                    ArcButton(
-                        text = "Geri Al",
-                        onClick = onUndo,
-                        variant = ArcButtonVariant.Secondary,
-                        size = ArcButtonSize.Sm
-                    )
-                    ArcButton(
-                        text = "Sonraki",
-                        onClick = onNextStudent,
-                        variant = ArcButtonVariant.Primary,
-                        size = ArcButtonSize.Sm
-                    )
-                }
-            }
+            // Footer stays visible while the criterion body scrolls.
+            ScoringTargetToolbar(
+                mode = ScoringTargetMode.INDIVIDUAL,
+                onPrevious = onPrevStudent,
+                onUndo = onUndo,
+                onNext = onNextStudent
+            )
         }
     }
 }
