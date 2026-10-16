@@ -663,7 +663,7 @@ private fun ScoringControlPane(
 
                     val hasNextCriterion =
                         criteria.indexOfFirst { it.id == criterion.id } in 0 until criteria.lastIndex
-                    var showNoteEditor by remember(student.id, criterion.id) {
+                    var showNoteEditor by remember(runId, student.id, criterion.id) {
                         mutableStateOf(false)
                     }
 
@@ -722,11 +722,11 @@ private fun ScoringControlPane(
                     }
 
                     // Evidence / Observation Note
-                    var noteText by remember(student.id, criterion.id) {
+                    var noteText by remember(runId, student.id, criterion.id) {
                         mutableStateOf(currentScore?.evidenceNote ?: "")
                     }
-                    var noteTouched by remember(student.id, criterion.id) { mutableStateOf(false) }
-                    LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
+                    var noteTouched by remember(runId, student.id, criterion.id) { mutableStateOf(false) }
+                    LaunchedEffect(runId, student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
                     }
                     ArcButton(
