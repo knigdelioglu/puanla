@@ -1554,6 +1554,35 @@ class PuanlaViewModel internal constructor(
     }
 
     // Export CSV
+    /**
+     * P5 export entry points capture target session identifiers at the user action,
+     * then wait for tracked mutations before reading one consistent report.
+     * They never consult the current UI selection after a suspension point.
+     */
+    suspend fun generateCsvForRun(
+        classroomId: String, rubricId: String, runId: String
+    ): String = mutations.snapshot {
+        repository.generateCsvExport(classroomId, rubricId, runId)
+    }
+
+    suspend fun generateGroupCsvForSession(sessionId: String): String =
+        mutations.snapshot { repository.generateGroupCsvExport(sessionId) }
+
+    suspend fun generateGroupPdfForSession(
+        sessionId: String
+    ): com.knigdelioglu.puanla.domain.export.PdfReportSnapshot =
+        mutations.snapshot { repository.generateGroupPdfReportSnapshot(sessionId) }
+
+    suspend fun generatePdfSnapshotsForRun(
+        classroomId: String, rubricId: String, runId: String, allClassrooms: Boolean
+    ): List<com.knigdelioglu.puanla.domain.export.PdfReportSnapshot> =
+        mutations.snapshot {
+            val linkedClassrooms = repository.getRunClassrooms(runId).map { it.classroomId }
+            require(classroomId in linkedClassrooms) { "Değerlendirme seçili sınıfa bağlı değil." }
+            val ids = if (allClassrooms) linkedClassrooms else listOf(classroomId)
+            ids.map { repository.generatePdfReportSnapshot(it, rubricId, runId) }
+        }
+
     suspend fun generateCsv(): String {
         val c = selectedClassroom.value ?: return ""
         val r = selectedRubric.value ?: return ""
