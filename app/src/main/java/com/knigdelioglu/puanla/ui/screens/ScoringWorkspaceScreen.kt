@@ -119,6 +119,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
     val noteSaveState by viewModel.evidenceNoteSaveState.collectAsState()
+    val scoreSaveState by viewModel.scoreSaveState.collectAsState()
     val studentGroupGrades by viewModel.currentStudentGroupGrades.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
     val scope = rememberCoroutineScope()
@@ -167,6 +168,9 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val activeCriterion = criteria.getOrNull(activeCriterionIndex) ?: criteria.firstOrNull()
     val noteKey = listOfNotNull(selectedStudent?.id, selectedRun?.id, activeCriterion?.id).joinToString("/")
     val noteSaveMessage = noteSaveState?.takeIf { it.key == noteKey }?.status?.label
+    val scoreSaveMessage = scoreSaveState?.takeIf {
+        it.key == "individual/${selectedClassroom?.id}/${selectedRun?.id}/${selectedStudent?.id}/${activeCriterion?.id}"
+    }?.status?.label
 
     // Map student ID to assessment completion status
     val assessmentMap = remember(classAssessments) {
@@ -238,6 +242,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
                 noteSaveMessage = noteSaveMessage,
+                scoreSaveMessage = scoreSaveMessage,
                 groupGrades = studentGroupGrades,
                 levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
@@ -517,6 +522,7 @@ private fun ScoringControlPane(
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
     noteSaveMessage: String?,
+    scoreSaveMessage: String?,
     groupGrades: List<StudentGroupGrade>,
     levels: List<CriterionLevelEntity>,
     autoAdvanceQuickScore: Boolean,
@@ -704,6 +710,14 @@ private fun ScoringControlPane(
                                 },
                                 onClearScore = onClearScore
                             )
+                            if (scoreSaveMessage != null) {
+                                Text(
+                                    "Puan: $scoreSaveMessage",
+                                    fontSize = 12.sp,
+                                    color = if (scoreSaveMessage == "Kaydedilemedi")
+                                        ArcTheme.colors.danger else ArcTheme.colors.textSecondary
+                                )
+                            }
                         }
                     }
 
