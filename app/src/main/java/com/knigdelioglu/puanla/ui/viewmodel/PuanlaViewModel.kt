@@ -690,7 +690,7 @@ class PuanlaViewModel internal constructor(
         // Take the lock before launch so rapid taps for one criterion are applied
         // sequentially, even across asynchronous Room transactions.
         val lock = scoreMutex(student.id, run.id, criterionId)
-        launchMutation {
+        val submitted = launchMutation {
             try {
                 lock.withLock {
                     // Preserve the persisted observation note when changing/clearing a
@@ -745,6 +745,7 @@ class PuanlaViewModel internal constructor(
                 showToast("Puan kaydedilemedi: ${e.message}")
             }
         }
+        if (submitted == null) finishScoreWrite(scoreKey, scoreRevision, success = false)
     }
 
     /**
@@ -1498,7 +1499,7 @@ class PuanlaViewModel internal constructor(
         val scoreKey = "group/${session.id}/${group.id}/$criterionId"
         val scoreRevision = nextScoreRevision(scoreKey)
         val lock = scoreMutex(group.id, session.id, criterionId)
-        launchMutation {
+        val submitted = launchMutation {
             try {
                 lock.withLock {
                     val before = repository.getGroupAssessment(session.id, group.id)
@@ -1538,6 +1539,7 @@ class PuanlaViewModel internal constructor(
                 showToast("Grup puanı kaydedilemedi: " + e.message)
             }
         }
+        if (submitted == null) finishScoreWrite(scoreKey, scoreRevision, success = false)
     }
 
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
