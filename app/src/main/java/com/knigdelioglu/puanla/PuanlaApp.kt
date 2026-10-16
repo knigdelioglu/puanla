@@ -108,6 +108,10 @@ fun PuanlaApp(
     var lastMainTab by remember { mutableStateOf(AppDestination.WORKSPACE) }
     LaunchedEffect(currentDestination) {
         lastMainTab = currentDestination.primaryTab(lastMainTab)
+        if (currentDestination == AppDestination.WORKSPACE ||
+            currentDestination == AppDestination.GROUP_WORK) {
+            viewModel.reportsGroupMode.value = currentDestination == AppDestination.GROUP_WORK
+        }
     }
 
     val arcToastMessages = remember(toastMessages) {
