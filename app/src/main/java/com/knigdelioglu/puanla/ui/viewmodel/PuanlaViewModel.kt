@@ -51,6 +51,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -1420,6 +1421,19 @@ class PuanlaViewModel internal constructor(
             }
             val result = repository.restoreBackupFromJson(json)
             if (result.isSuccess) {
+                // Do not rely only on Room's next Flow emission to rebuild the selection:
+                // it can arrive before we clear the old state, leaving the selection null.
+                val restoredClassrooms = repository.getAllClassrooms()
+                val restoredClassroom = restoredClassrooms.firstOrNull {
+                    it.id == arcPrefs.getString("last_classroom", null)
+                } ?: restoredClassrooms.firstOrNull()
+                val restoredRubric = restoredClassroom?.let { classroom ->
+                    val available = repository.getAllRubricsFlow().first()
+                    available.firstOrNull {
+                        it.grade == classroom.grade &&
+                            it.id == arcPrefs.getString("last_rubric_${classroom.id}", null)
+                    } ?: available.firstOrNull { it.grade == classroom.grade }
+                }
                 withContext(Dispatchers.Main.immediate) {
                     pendingNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
                     pendingNoteWrites.clear()
@@ -1458,7 +1472,11 @@ class PuanlaViewModel internal constructor(
                     currentGroupAssessment.value = null
                     currentGroupScores.value = emptyMap()
                     currentGroupMembers.value = emptyList()
-                    // Room flows repopulate selections once the transaction completes.
+                    // Start the restored classroom's existing collectors deterministically;
+                    // they repopulate students, runs, assessments and groups.
+                    selectedClassroom.value = restoredClassroom
+                    selectedRubric.value = restoredRubric
+                    // Room flows can subsequently refresh these selections normally.
                 }
             }
             result
