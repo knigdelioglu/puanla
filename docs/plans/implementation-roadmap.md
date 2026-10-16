@@ -24,3 +24,13 @@ Detaylı Arc uyarlaması: [arc-compose-adaptation.md](arc-compose-adaptation.md)
 ## 16 Ekim 2026 — Birleşik puanlama deneyimi
 
 Bireysel ve grup değerlendirmesini tek tablet çalışma alanında, ortak oturum-seçim akışı ve ortak puanlama kontrolleriyle sunma hedefi için [aşamalı geçiş planı](unified-scoring-workspace-migration.md) hazırlandı. Bu plan mevcut Android Native kapsamının **arayüz/akış evrimidir**; oturum ve not tablolarını birleştirme ya da rubrik kaynaklarını değiştirme kararı değildir. P0–P6 kabul kapıları ve regresyon matrisi ilgili belgede yer alır. Uygulama henüz tamamlanmamıştır.
+
+## 16 Ekim 2026 — Uygulama ve kabul durumu
+
+**main dalında değil:** Geçişin P0–P5 kodları #32–#38 üst üste PR'larda; [P5 CI](https://github.com/knigdelioglu/puanla/actions/runs/38948714951) başarılı. P6 güvenli ortak bileşen çıkarma/refaktörü ayrıca inceleme PR'ında tutuluyor.
+
+- **Otomatik kanıt:** Room, bireysel/grup oturumları, gözlem notları, PDF/CSV, yedek/geri yükleme, 0–null, geri alma ve geniş/dar Compose düzenleri test edildi.
+- **Açık kabul:** Galaxy Tab A11+ üzerinde yatay/dikey, büyütülmüş yazı, TalkBack, IME, erişilebilir dokunma hedefleri, gerçek sınıf puanlama hızı ve dosyaların dışarıda açılması.
+- **Sınır:** Kullanıcı verisi taşınması, yeni Room şeması, rubrik içeriği düzenlemesi ve ana dala birleştirme bu P6 temizliğiyle yapılmaz.
+
+Detaylı kabul adımları: [P5 kabul matrisi](unified-scoring-p5-acceptance.md). Mimari ayrım: [birleşik çalışma alanı](../architecture.md).
