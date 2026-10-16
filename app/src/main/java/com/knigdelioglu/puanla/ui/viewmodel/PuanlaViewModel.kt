@@ -293,6 +293,7 @@ class PuanlaViewModel internal constructor(
     val ocrStep = MutableStateFlow(0) // 0: Select, 1: Scan, 2: Verify, 3: Done
     val ocrCandidates = MutableStateFlow<List<OcrStudentRow>>(emptyList())
     val ocrIsScanning = MutableStateFlow(false)
+    val ocrIsImporting = MutableStateFlow(false)
     val ocrError = MutableStateFlow<String?>(null)
     val ocrSelectedImageUri = MutableStateFlow<Uri?>(null)
     val ocrImportedCount = MutableStateFlow(0)
@@ -1084,8 +1085,13 @@ class PuanlaViewModel internal constructor(
     }
 
     fun confirmOcrImport(onComplete: (Int) -> Unit) {
+        // Ignore repeated confirmations while the database write is in flight.
+        if (ocrStep.value != 2 || ocrIsImporting.value) return
         val classroom = selectedClassroom.value ?: return
+        ocrIsImporting.value = true
+        ocrError.value = null
         launchMutation(onBlocked = {
+            ocrIsImporting.value = false
             ocrError.value = "Yedekleme/geri yükleme sırasında öğrenci aktarılamaz."
             showToast(ocrError.value ?: "Aktarım ertelendi.")
         }) {
@@ -1131,6 +1137,8 @@ class PuanlaViewModel internal constructor(
             } catch (e: Exception) {
                 ocrError.value = "Aktarım reddedildi: ${e.message}"
                 showToast(ocrError.value ?: "Aktarım başarısız.")
+            } finally {
+                ocrIsImporting.value = false
             }
         }
     }
