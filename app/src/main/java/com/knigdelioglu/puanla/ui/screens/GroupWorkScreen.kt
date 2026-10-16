@@ -199,109 +199,66 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                     )
                 }
             } else {
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    if (maxWidth >= 900.dp) {
-                        ArcResizablePanels(
-                            modifier = Modifier.fillMaxSize(),
-                            initialWeights = listOf(0.28f, 0.38f, 0.34f),
-                            minWeights = listOf(0.20f, 0.25f, 0.25f),
-                            firstPane = {
-                                GroupRosterPane(groups, selectedGroup, groupAssessments) {
-                                    viewModel.selectGroup(it)
-                                }
+                // Shared presentation shell: the group session, its member results
+                // and its undo stack remain independent from individual scoring.
+                UnifiedScoringLayout(
+                    mode = ScoringTargetMode.GROUP,
+                    contextKey = "${classroom?.id}/${rubric?.id}/${session?.id}",
+                    modifier = Modifier.weight(1f),
+                    targetPane = { onSelected ->
+                        GroupRosterPane(groups, selectedGroup, groupAssessments) {
+                            viewModel.selectGroup(it)
+                            onSelected()
+                        }
+                    },
+                    criteriaPane = { onSelected ->
+                        CriteriaExplorerPane(
+                            criteria = criteria,
+                            activeCriterion = activeCriterion,
+                            scoreSummary = criteria.associate { criterion ->
+                                criterion.id to (scores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                                    ?: "Puanlanmadı / ${criterion.maxPoints}")
                             },
-                            secondPane = {
-                                CriteriaExplorerPane(
-                                    criteria = criteria, activeCriterion = activeCriterion,
-                                    scoreSummary = criteria.associate { criterion ->
-                                        criterion.id to (scores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                                            ?: "Puanlanmadı / ${criterion.maxPoints}")
-                                    },
-                                    onSelectCriterion = {
-                                        activeCriterionIndex = criteria.indexOfFirst { c -> c.id == it.id }.coerceAtLeast(0)
-                                    }
-                                )
-                            },
-                            thirdPane = {
-                                GroupScoringPane(
-                                    group = selectedGroup, assessment = assessment,
-                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                                    criterion = activeCriterion, criteria = criteria,
-                                    scores = scores, students = students, memberResults = memberResults,
-                                    onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
-                                    canUndo = canUndoGroupAction,
-                                    quickGrading = quickGrading,
-                                    levels = levels.filter { it.criterionId == activeCriterion?.id },
-                                    autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
-                                    onScore = { points ->
-                                        activeCriterion?.let { criterion ->
-                                            viewModel.setGroupScore(criterion.id, points)
-                                            if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                        }
-                                    },
-                                    onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
-                                    onNext = {
-                                        if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                    },
-                                    onSyncMembership = { confirmMembershipSync = true },
-                                    onNextGroup = {
-                                        val i = groups.indexOfFirst { it.id == selectedGroup?.id }
-                                        groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
-                                    }
-                                )
+                            onSelectCriterion = { chosen ->
+                                activeCriterionIndex = criteria.indexOfFirst { it.id == chosen.id }.coerceAtLeast(0)
+                                onSelected()
                             }
                         )
-                    } else {
-                        Column(
+                    },
+                    scoringPane = {
+                        GroupScoringPane(
+                            group = selectedGroup,
+                            assessment = assessment,
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            ArcSelect(
-                                selectedItem = selectedGroup,
-                                items = groups,
-                                onItemSelected = { viewModel.selectGroup(it) },
-                                labelProvider = { it.title },
-                                placeholder = "Grup seç",
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            ArcSelect(
-                                selectedItem = activeCriterion,
-                                items = criteria,
-                                onItemSelected = { item ->
-                                    activeCriterionIndex = criteria.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
-                                },
-                                labelProvider = { it.title },
-                                placeholder = "Ölçüt seç",
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            GroupScoringPane(
-                                group = selectedGroup, assessment = assessment,
-                                criterion = activeCriterion, criteria = criteria,
-                                scores = scores, students = students, memberResults = memberResults,
-                                onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
-                                canUndo = canUndoGroupAction,
-                                quickGrading = quickGrading,
-                                levels = levels.filter { it.criterionId == activeCriterion?.id },
-                                autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
-                                onScore = { points ->
-                                    activeCriterion?.let { criterion ->
-                                        viewModel.setGroupScore(criterion.id, points)
-                                        if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                    }
-                                },
-                                onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
-                                onNext = {
-                                    if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                },
-                                onSyncMembership = { confirmMembershipSync = true },
-                                    onNextGroup = {
-                                    val i = groups.indexOfFirst { it.id == selectedGroup?.id }
-                                    groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                            criterion = activeCriterion,
+                            criteria = criteria,
+                            scores = scores,
+                            students = students,
+                            memberResults = memberResults,
+                            onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
+                            canUndo = canUndoGroupAction,
+                            quickGrading = quickGrading,
+                            levels = levels.filter { it.criterionId == activeCriterion?.id },
+                            autoAdvance = autoAdvance,
+                            onAutoAdvance = { autoAdvance = it },
+                            onScore = { points ->
+                                activeCriterion?.let { criterion ->
+                                    viewModel.setGroupScore(criterion.id, points)
+                                    if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                 }
-                            )
-                        }
+                            },
+                            onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
+                            onNext = {
+                                if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                            },
+                            onSyncMembership = { confirmMembershipSync = true },
+                            onNextGroup = {
+                                val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                            }
+                        )
                     }
-                }
+                )
             }
         }
     }
