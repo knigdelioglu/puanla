@@ -173,140 +173,93 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
         classAssessments.associateBy { it.studentId }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWide = maxWidth >= 900.dp
-
-        if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = if (selectedClassroom == null || selectedRubric == null)
-                        "Sınıf veya Rubrik Seçilmedi" else "Değerlendirme Seçilmedi",
-                    description = if (selectedClassroom == null || selectedRubric == null)
-                        "Başlamak için sınıf ve rubrik seçin."
-                    else "Üstteki Değerlendirmeler düğmesinden yeni bir değerlendirme oluşturun ya da eskisini açın."
-                )
-            }
-            return@BoxWithConstraints
-        }
-
-        if (selectedRun?.status == "ARCHIVED") {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Arşivlenmiş Değerlendirme",
-                    description = "Sonuçlar Raporlar bölümünden incelenebilir. Puanları düzenlemek için Değerlendirmeler menüsünden arşivden çıkarın."
-                )
-            }
-            return@BoxWithConstraints
-        }
-
-        if (isWide) {
-            // Tablet 3-Pane Resizable Layout
-            ArcResizablePanels(
-                modifier = Modifier.fillMaxSize(),
-                initialWeights = listOf(0.28f, 0.38f, 0.34f),
-                minWeights = listOf(0.20f, 0.25f, 0.25f),
-                firstPane = {
-                    StudentRosterPane(
-                        students = filteredStudents,
-                        selectedStudent = selectedStudent,
-                        assessmentMap = assessmentMap,
-                        searchQuery = searchQuery,
-                        onSearchChange = { searchQuery = it },
-                        onSelectStudent = { viewModel.selectStudent(it) }
-                    )
-                },
-                secondPane = {
-                    CriteriaExplorerPane(
-                        criteria = criteria,
-                        activeCriterion = activeCriterion,
-                        scoreSummary = criteria.associate { criterion ->
-                            criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                                ?: "Puanlanmadı / ${criterion.maxPoints}")
-                        },
-                        onSelectCriterion = { crit ->
-                            activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
-                        }
-                    )
-                },
-                thirdPane = {
-                    ScoringControlPane(
-                        student = selectedStudent,
-                        criterion = activeCriterion,
-                        criteria = criteria,
-                        currentAssessment = currentAssessment,
-                        currentScores = currentScores,
-                        noteSaveMessage = noteSaveMessage,
-                        groupGrades = studentGroupGrades,
-                        levels = levels.filter { it.criterionId == activeCriterion?.id },
-                        autoAdvanceQuickScore = autoAdvanceQuickScore,
-                        quickGrading = quickGrading,
-                        onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
-                        onNextCriterion = {
-                            if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
-                        },
-                        onScore = { points, note ->
-                            activeCriterion?.let { crit ->
-                                viewModel.setScore(crit.id, points, note)
-                            }
-                        },
-                        onClearScore = {
-                            activeCriterion?.let { crit ->
-                                viewModel.setScore(crit.id, null, null)
-                            }
-                        },
-                        onNoteChange = { note ->
-                            activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
-                        },
-                        onPrevStudent = { viewModel.previousStudent() },
-                        onNextStudent = { viewModel.nextStudent() },
-                        onUndo = undoSelected
-                    )
-                }
+    if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ArcEmptyState(
+                title = if (selectedClassroom == null || selectedRubric == null)
+                    "Sınıf veya Rubrik Seçilmedi" else "Değerlendirme Seçilmedi",
+                description = if (selectedClassroom == null || selectedRubric == null)
+                    "Başlamak için sınıf ve rubrik seçin."
+                else "Üstteki Değerlendirmeler düğmesinden yeni bir değerlendirme oluşturun ya da eskisini açın."
             )
-        } else {
-            // Adaptive compact layout for portrait/smaller tablets
-            CompactScoringLayout(
+        }
+        return
+    }
+
+    if (selectedRun?.status == "ARCHIVED") {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ArcEmptyState(
+                title = "Arşivlenmiş Değerlendirme",
+                description = "Sonuçlar Raporlar bölümünden incelenebilir. Puanları düzenlemek için Değerlendirmeler menüsünden arşivden çıkarın."
+            )
+        }
+        return
+    }
+
+    // The same responsive three-pane workspace is now used in Group mode.
+    // Individual scoring still owns its session-specific grading and undo actions.
+    UnifiedScoringLayout(
+        mode = ScoringTargetMode.INDIVIDUAL,
+        contextKey = "${selectedClassroom?.id}/${selectedRubric?.id}/${selectedRun?.id}",
+        modifier = Modifier.fillMaxSize(),
+        targetPane = { onSelected ->
+            StudentRosterPane(
                 students = filteredStudents,
                 selectedStudent = selectedStudent,
                 assessmentMap = assessmentMap,
+                searchQuery = searchQuery,
+                onSearchChange = { searchQuery = it },
+                onSelectStudent = {
+                    viewModel.selectStudent(it)
+                    onSelected()
+                }
+            )
+        },
+        criteriaPane = { onSelected ->
+            CriteriaExplorerPane(
                 criteria = criteria,
                 activeCriterion = activeCriterion,
+                scoreSummary = criteria.associate { criterion ->
+                    criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                        ?: "Puanlanmadı / ${criterion.maxPoints}")
+                },
+                onSelectCriterion = { chosen ->
+                    activeCriterionIndex = criteria.indexOfFirst { it.id == chosen.id }.coerceAtLeast(0)
+                    onSelected()
+                }
+            )
+        },
+        scoringPane = {
+            ScoringControlPane(
+                student = selectedStudent,
+                criterion = activeCriterion,
+                criteria = criteria,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
                 noteSaveMessage = noteSaveMessage,
                 groupGrades = studentGroupGrades,
-                levels = levels,
-                searchQuery = searchQuery,
-                onSearchChange = { searchQuery = it },
-                onSelectStudent = { viewModel.selectStudent(it) },
-                onSelectCriterion = { crit ->
-                    activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
-                },
-                onScore = { points, note ->
-                    activeCriterion?.let { crit ->
-                        viewModel.setScore(crit.id, points, note)
-                    }
-                },
-                onClearScore = {
-                    activeCriterion?.let { crit ->
-                        viewModel.setScore(crit.id, null, null)
-                    }
-                },
-                onNoteChange = { note ->
-                    activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
-                },
-                onPrevStudent = { viewModel.previousStudent() },
-                onNextStudent = { viewModel.nextStudent() },
+                levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
                 quickGrading = quickGrading,
                 onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
                 onNextCriterion = {
                     if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
                 },
+                onScore = { points, note ->
+                    activeCriterion?.let { crit -> viewModel.setScore(crit.id, points, note) }
+                },
+                onClearScore = {
+                    activeCriterion?.let { crit -> viewModel.setScore(crit.id, null, null) }
+                },
+                onNoteChange = { note ->
+                    activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
+                },
+                onPrevStudent = { viewModel.previousStudent() },
+                onNextStudent = { viewModel.nextStudent() },
                 onUndo = undoSelected
             )
         }
-    }
+    )
 }
 
 @Composable
@@ -962,91 +915,3 @@ internal fun QuickScoreControls(
     }
 }
 
-@Composable
-private fun CompactScoringLayout(
-    students: List<StudentEntity>,
-    selectedStudent: StudentEntity?,
-    assessmentMap: Map<String, com.knigdelioglu.puanla.data.local.AssessmentEntity>,
-    criteria: List<CriterionEntity>,
-    activeCriterion: CriterionEntity?,
-    currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
-    currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
-    noteSaveMessage: String?,
-    groupGrades: List<StudentGroupGrade>,
-    levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
-    onSelectStudent: (StudentEntity) -> Unit,
-    onSelectCriterion: (CriterionEntity) -> Unit,
-    onScore: (Int?, String?) -> Unit,
-    onClearScore: () -> Unit,
-    onNoteChange: (String) -> Unit,
-    onPrevStudent: () -> Unit,
-    onNextStudent: () -> Unit,
-    autoAdvanceQuickScore: Boolean,
-    quickGrading: QuickGradingPreference,
-    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
-    onNextCriterion: () -> Unit,
-    onUndo: () -> Unit
-) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        ArcExpandingButtonGroup(
-            items = listOf(
-                "Öğrenciler" to { Icon(Icons.Default.FormatListNumbered, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                "Ölçütler" to { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                "Puanlama" to { Icon(Icons.Default.Grading, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            ),
-            selectedIndex = selectedTab,
-            onSelectIndex = { selectedTab = it },
-            modifier = Modifier.padding(12.dp)
-        )
-
-        when (selectedTab) {
-            0 -> StudentRosterPane(
-                students = students,
-                selectedStudent = selectedStudent,
-                assessmentMap = assessmentMap,
-                searchQuery = searchQuery,
-                onSearchChange = onSearchChange,
-                onSelectStudent = {
-                    onSelectStudent(it)
-                    selectedTab = 2 // jump to scoring
-                }
-            )
-            1 -> CriteriaExplorerPane(
-                criteria = criteria,
-                activeCriterion = activeCriterion,
-                scoreSummary = criteria.associate { criterion ->
-                    criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                        ?: "Puanlanmadı / ${criterion.maxPoints}")
-                },
-                onSelectCriterion = {
-                    onSelectCriterion(it)
-                    selectedTab = 2 // jump to scoring
-                }
-            )
-            2 -> ScoringControlPane(
-                student = selectedStudent,
-                criterion = activeCriterion,
-                criteria = criteria,
-                currentAssessment = currentAssessment,
-                currentScores = currentScores,
-                noteSaveMessage = noteSaveMessage,
-                groupGrades = groupGrades,
-                levels = levels.filter { it.criterionId == activeCriterion?.id },
-                autoAdvanceQuickScore = autoAdvanceQuickScore,
-                quickGrading = quickGrading,
-                onAutoAdvanceQuickScoreChange = onAutoAdvanceQuickScoreChange,
-                onNextCriterion = onNextCriterion,
-                onScore = onScore,
-                onClearScore = onClearScore,
-                onNoteChange = onNoteChange,
-                onPrevStudent = onPrevStudent,
-                onNextStudent = onNextStudent,
-                onUndo = onUndo
-            )
-        }
-    }
-}
