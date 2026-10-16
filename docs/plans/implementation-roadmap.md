@@ -20,3 +20,7 @@ Bu plan bağımlılıkların mantıksal önceliğidir; Arc UI sadece sunum katma
 - Arc P0/P1/P2 kayıtlarının 99/99 entegrasyon iddiası geçersiz; statik kullanım dağılımı ve eksikler [Arc doğrulama matrisi](../verification/arc-implementation-matrix.md) içinde.
 
 Detaylı Arc uyarlaması: [arc-compose-adaptation.md](arc-compose-adaptation.md). Testler: [../testing.md](../testing.md).
+
+## 16 Ekim 2026 — Birleşik puanlama deneyimi
+
+Bireysel ve grup değerlendirmesini tek tablet çalışma alanında, ortak oturum-seçim akışı ve ortak puanlama kontrolleriyle sunma hedefi için [aşamalı geçiş planı](unified-scoring-workspace-migration.md) hazırlandı. Bu plan mevcut Android Native kapsamının **arayüz/akış evrimidir**; oturum ve not tablolarını birleştirme ya da rubrik kaynaklarını değiştirme kararı değildir. P0–P6 kabul kapıları ve regresyon matrisi ilgili belgede yer alır. Uygulama henüz tamamlanmamıştır.
