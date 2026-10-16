@@ -241,6 +241,7 @@ class PuanlaViewModelRestoreAndEvidenceTest {
                 "group=${vm.selectedGroup.value?.id}; session=${vm.selectedGroupSession.value?.id}"
             }) {
                 vm.selectedGroup.value?.id == "ggroup" &&
+                    vm.groupCriteria.value.any { it.id == "kgroup" } &&
                     vm.groupSessions.value.any { it.id == first.id } &&
                     vm.groupSessions.value.any { it.id == second.id }
             }
