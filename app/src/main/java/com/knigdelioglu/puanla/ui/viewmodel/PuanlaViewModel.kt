@@ -32,6 +32,7 @@ import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
+import com.knigdelioglu.puanla.domain.scoring.resolveSessionSelection
 import com.knigdelioglu.puanla.domain.report.assessmentActivityByDay
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
@@ -200,6 +201,8 @@ class PuanlaViewModel internal constructor(
     val selectedStudent = MutableStateFlow<StudentEntity?>(null)
 
     val criteria = MutableStateFlow<List<CriterionEntity>>(emptyList())
+    // Group mode always uses the rubric's criteria, not an individual run snapshot.
+    val groupCriteria = MutableStateFlow<List<CriterionEntity>>(emptyList())
     val levels = MutableStateFlow<List<CriterionLevelEntity>>(emptyList())
 
     // Assessment for selected student & rubric
@@ -352,7 +355,9 @@ class PuanlaViewModel internal constructor(
         viewModelScope.launch {
             selectedRubric.collect { rubric ->
                 if (rubric != null) {
-                    criteria.value = repository.getCriteriaForRubric(rubric.id)
+                    val rubricCriteria = repository.getCriteriaForRubric(rubric.id)
+                    groupCriteria.value = rubricCriteria
+                    criteria.value = rubricCriteria
                     levels.value = db.rubricDao().getLevelsForRubric(rubric.id)
                     loadCurrentAssessment()
                     loadStudentGroupGrades()
@@ -360,6 +365,7 @@ class PuanlaViewModel internal constructor(
                     loadClassAssessments()
                 } else {
                     criteria.value = emptyList()
+                    groupCriteria.value = emptyList()
                     levels.value = emptyList()
                     currentAssessment.value = null
                     currentScores.value = emptyMap()
@@ -391,10 +397,13 @@ class PuanlaViewModel internal constructor(
                             assessmentRuns.value = list
                             val current = selectedRun.value
                             val preferred = arcPrefs.getString("last_run_${classroom.id}_${rubric.id}", null)
-                            selectedRun.value = list.firstOrNull { it.id == current?.id }
-                                ?: list.firstOrNull { it.id == preferred }
-                                ?: list.firstOrNull { it.status == "ACTIVE" }
-                                ?: list.firstOrNull()
+                            selectedRun.value = resolveSessionSelection(
+                                items = list,
+                                currentId = current?.id,
+                                preferredId = preferred,
+                                idOf = { it.id },
+                                isActive = { it.status == "ACTIVE" }
+                            )
                         }
                     }
                 }
@@ -1151,12 +1160,14 @@ class PuanlaViewModel internal constructor(
         groupTasks.value = emptyList()
         selectedGroup.value = null
         val classroom = selectedClassroom.value ?: return
+        val preferredGroupId = arcPrefs.getString("last_group_${classroom.id}", null)
         groupFlowJob = viewModelScope.launch {
             repository.getGroupTasksFlow(classroom.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id) {
                     groupTasks.value = list
                     if (list.none { it.id == selectedGroup.value?.id }) {
-                        selectedGroup.value = list.firstOrNull()
+                        selectedGroup.value = list.firstOrNull { it.id == preferredGroupId }
+                            ?: list.firstOrNull()
                     }
                 }
             }
@@ -1164,7 +1175,10 @@ class PuanlaViewModel internal constructor(
     }
 
     fun selectGroup(group: GroupTaskEntity) {
-        if (group.classroomId == selectedClassroom.value?.id) selectedGroup.value = group
+        if (group.classroomId == selectedClassroom.value?.id) {
+            arcPrefs.edit().putString("last_group_${group.classroomId}", group.id).apply()
+            selectedGroup.value = group
+        }
     }
 
     private fun loadGroupSessions() {
@@ -1173,12 +1187,18 @@ class PuanlaViewModel internal constructor(
         selectedGroupSession.value = null
         val classroom = selectedClassroom.value ?: return
         val rubric = selectedRubric.value ?: return
+        val preferredSessionId = arcPrefs.getString("last_group_session_${classroom.id}_${rubric.id}", null)
         groupSessionFlowJob = viewModelScope.launch {
             repository.getGroupSessionsFlow(classroom.id, rubric.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
                     groupSessions.value = list
                     if (list.none { it.id == selectedGroupSession.value?.id }) {
-                        selectedGroupSession.value = list.firstOrNull()
+                        selectedGroupSession.value = resolveSessionSelection(
+                            items = list,
+                            currentId = selectedGroupSession.value?.id,
+                            preferredId = preferredSessionId,
+                            idOf = { it.id }
+                        )
                     }
                 }
             }
@@ -1187,7 +1207,10 @@ class PuanlaViewModel internal constructor(
 
     fun selectGroupSession(session: GroupAssessmentSessionEntity) {
         if (session.classroomId == selectedClassroom.value?.id &&
-            session.rubricId == selectedRubric.value?.id) selectedGroupSession.value = session
+            session.rubricId == selectedRubric.value?.id && session in groupSessions.value) {
+            arcPrefs.edit().putString("last_group_session_${session.classroomId}_${session.rubricId}", session.id).apply()
+            selectedGroupSession.value = session
+        }
     }
 
     fun createGroupSession(title: String) {
@@ -1197,6 +1220,7 @@ class PuanlaViewModel internal constructor(
             try {
                 val created = repository.createGroupSession(classroom.id, rubric.id, title)
                 if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
+                    arcPrefs.edit().putString("last_group_session_${classroom.id}_${rubric.id}", created.id).apply()
                     selectedGroupSession.value = created
                 }
             } catch (cancel: CancellationException) { throw cancel }
@@ -1331,7 +1355,7 @@ class PuanlaViewModel internal constructor(
                         .firstOrNull { score -> score.criterionId == criterionId } }
                     if (oldScore?.points != points) {
                         repository.scoreGroup(session.id, group.id, criterionId, points)
-                        val title = criteria.value.firstOrNull { it.id == criterionId }?.title ?: "Ölçüt"
+                        val title = groupCriteria.value.firstOrNull { it.id == criterionId }?.title ?: "Ölçüt"
                         val undoId = UUID.randomUUID().toString()
                         groupUndoStack.push(undoId, UndoAction("${group.title} · $title", contextId = session.id) {
                             lock.withLock {
