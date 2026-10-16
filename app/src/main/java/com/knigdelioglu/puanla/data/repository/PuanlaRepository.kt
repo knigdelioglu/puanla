@@ -872,6 +872,31 @@ class PuanlaRepository(
         updated
     }
 
+    /**
+     * Persist criterion evidence independently of points and member grades.
+     * An unscored group may hold a note; it must remain incomplete until
+     * every rubric criterion has a non-null score. The first write takes a
+     * validated group membership snapshot through scoreGroup(..., null).
+     */
+    suspend fun saveGroupEvidenceNote(
+        sessionId: String, groupId: String, criterionId: String, note: String
+    ): Unit = db.withTransaction {
+        val dao = db.groupAssessmentDao()
+        val assessment = dao.getAssessment(sessionId, groupId)
+            ?: scoreGroup(sessionId, groupId, criterionId, null)
+        val row = dao.getScores(assessment.id).firstOrNull { it.criterionId == criterionId }
+        if (row == null) {
+            // A new criterion note does not count as a completed score.
+            scoreGroup(sessionId, groupId, criterionId, null)
+        }
+        val current = requireNotNull(
+            dao.getScores(assessment.id).firstOrNull { it.criterionId == criterionId }
+        )
+        if (current.evidenceNote != note) {
+            dao.upsertScore(current.copy(evidenceNote = note, scoredAt = System.currentTimeMillis()))
+        }
+    }
+
     /** Conditional group-only undo; validation and restoration share one Room transaction. */
     suspend fun undoGroupScoreIfCurrent(
         sessionId: String,
@@ -886,7 +911,10 @@ class PuanlaRepository(
         val current = dao.getScores(assessment.id).firstOrNull { it.criterionId == criterionId }
         if (current?.points != expectedCurrentPoints) return@withTransaction false
         val otherScores = dao.getScores(assessment.id).filterNot { it.criterionId == criterionId }
-        if (removeAssessmentIfEmpty && restorePoints == null && otherScores.none { it.points != null }) {
+        if (removeAssessmentIfEmpty && restorePoints == null &&
+            otherScores.none { it.points != null || !it.evidenceNote.isNullOrBlank() } &&
+            current?.evidenceNote.isNullOrBlank()
+        ) {
             dao.deleteScores(assessment.id)
             dao.deleteMemberResults(assessment.id)
             dao.deleteAssessment(assessment.id)
