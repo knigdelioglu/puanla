@@ -91,7 +91,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val students by viewModel.students.collectAsState()
     val groups by viewModel.groupTasks.collectAsState()
     val selectedGroup by viewModel.selectedGroup.collectAsState()
-    val sessions by viewModel.groupSessions.collectAsState()
     val session by viewModel.selectedGroupSession.collectAsState()
     val groupAssessments by viewModel.groupAssessments.collectAsState()
     val assessment by viewModel.currentGroupAssessment.collectAsState()
@@ -115,7 +114,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             } catch (_: Exception) { emptyList() }
         }.toSet()
     }
-    var createSession by remember { mutableStateOf(false) }
     var showPreparation by remember { mutableStateOf(false) }
     var activeCriterionIndex by remember(selectedGroup?.id, session?.id, rubric?.id) { mutableIntStateOf(0) }
     var autoAdvance by rememberSaveable { mutableStateOf(true) }
@@ -181,30 +179,13 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 }
             }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (sessions.isNotEmpty()) {
-                    ArcSelect(
-                        selectedItem = session,
-                        items = sessions,
-                        onItemSelected = { viewModel.selectGroupSession(it) },
-                        labelProvider = { it.title },
-                        placeholder = "Oturum seçin",
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Text(
-                        "Bu rubrikle henüz değerlendirme oturumu yok.",
-                        modifier = Modifier.weight(1f), fontSize = 13.sp,
-                        color = ArcTheme.colors.textSecondary
-                    )
-                }
-                ArcButton(
-                    text = "Yeni Oturum", onClick = { createSession = true },
-                    size = ArcButtonSize.Sm, variant = ArcButtonVariant.Primary
+            // Session selection/creation now lives in the same top-bar
+            // Değerlendirmeler sheet as individual scoring.
+            if (session != null) {
+                Text(
+                    "Değerlendirme: ${session?.title}",
+                    color = ArcTheme.colors.textSecondary,
+                    fontSize = 13.sp
                 )
             }
 
@@ -212,7 +193,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     ArcEmptyState(
                         title = if (groups.isEmpty()) "Grup oluşturun" else "Oturum oluşturun",
-                        description = "Rubrik bağımsız grupları ve bir değerlendirme oturumunu seçerek başlayın."
+                        description = if (groups.isEmpty())
+                            "Yeni Grup veya Rastgele Grup Oluştur ile grupları hazırlayın."
+                        else "Üstteki Değerlendirmeler menüsünden değerlendirme açın veya oluşturun."
                     )
                 }
             } else {
@@ -418,29 +401,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             }
         )
     }
-    if (createSession) {
-        var title by remember { mutableStateOf("") }
-        Dialog(onDismissRequest = { createSession = false }) {
-            Surface(
-                shape = ArcTheme.shapes.panel, color = ArcTheme.colors.surfaceRaised,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).heightIn(max = 700.dp)
-            ) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Yeni grup değerlendirmesi", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    ArcInput(value = title, onValueChange = { title = it },
-                        label = "Oturum adı", placeholder = "Örn. Drama - 12 Ekim")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ArcButton(text = "Vazgeç", onClick = { createSession = false },
-                            variant = ArcButtonVariant.Ghost)
-                        ArcButton(text = "Oluştur", enabled = title.isNotBlank(), onClick = {
-                            viewModel.createGroupSession(title)
-                            createSession = false
-                        })
-                    }
-                }
-            }
-        }
-    }
+
 }
 
 @Composable
