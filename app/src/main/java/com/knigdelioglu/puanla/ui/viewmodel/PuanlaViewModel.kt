@@ -32,6 +32,7 @@ import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
+import com.knigdelioglu.puanla.domain.scoring.resolveSessionSelection
 import com.knigdelioglu.puanla.domain.report.assessmentActivityByDay
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
@@ -91,6 +92,8 @@ data class EvidenceNoteSaveState(val key: String, val status: Status) {
     }
 }
 
+data class ScoreSaveState(val key: String, val status: EvidenceNoteSaveState.Status)
+
 class PuanlaViewModel internal constructor(
     application: Application,
     db: PuanlaDatabase,
@@ -108,6 +111,9 @@ class PuanlaViewModel internal constructor(
 
     // Navigation & Global UI State
     val currentDestination = MutableStateFlow(AppDestination.WORKSPACE)
+    // Reflects the last scoring mode; Reports can also change it independently.
+    // This is presentation state, not a merged individual/group session model.
+    val reportsGroupMode = MutableStateFlow(false)
     val isCommandPaletteOpen = MutableStateFlow(false)
     val isNotificationCenterOpen = MutableStateFlow(false)
     val darkMode = MutableStateFlow<Boolean?>(
@@ -200,6 +206,8 @@ class PuanlaViewModel internal constructor(
     val selectedStudent = MutableStateFlow<StudentEntity?>(null)
 
     val criteria = MutableStateFlow<List<CriterionEntity>>(emptyList())
+    // Group mode always uses the rubric's criteria, not an individual run snapshot.
+    val groupCriteria = MutableStateFlow<List<CriterionEntity>>(emptyList())
     val levels = MutableStateFlow<List<CriterionLevelEntity>>(emptyList())
 
     // Assessment for selected student & rubric
@@ -244,6 +252,21 @@ class PuanlaViewModel internal constructor(
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     val canUndoGroupAction = MutableStateFlow(false)
     val evidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
+    val groupEvidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
+    val scoreSaveState = MutableStateFlow<ScoreSaveState?>(null)
+    private val scoreWriteRevisions = mutableMapOf<String, Long>()
+    private fun nextScoreRevision(key: String): Long =
+        (scoreWriteRevisions[key] ?: 0L).plus(1L).also {
+            scoreWriteRevisions[key] = it
+            scoreSaveState.value = ScoreSaveState(key, EvidenceNoteSaveState.Status.SAVING)
+        }
+    private fun finishScoreWrite(key: String, revision: Long, success: Boolean) {
+        if (scoreWriteRevisions[key] == revision) {
+            scoreSaveState.value = ScoreSaveState(key,
+                if (success) EvidenceNoteSaveState.Status.SAVED else EvidenceNoteSaveState.Status.ERROR)
+            scoreWriteRevisions.remove(key)
+        }
+    }
     private val undoStack = UndoHistory<UndoAction>()
     private val groupUndoStack = UndoHistory<UndoAction>()
     private data class PendingEvidenceNote(
@@ -261,6 +284,19 @@ class PuanlaViewModel internal constructor(
         var job: Job? = null
     )
     private val pendingNoteWrites = mutableMapOf<String, PendingEvidenceNote>()
+    private data class PendingGroupEvidenceNote(
+        val key: String,
+        val sessionId: String,
+        val groupId: String,
+        val criterionId: String,
+        var note: String,
+        var revision: Long = 0,
+        var flushRequested: Boolean = false,
+        val edits: Channel<Unit> = Channel(Channel.CONFLATED),
+        val flush: Channel<Unit> = Channel(Channel.CONFLATED),
+        var job: Job? = null
+    )
+    private val pendingGroupNoteWrites = mutableMapOf<String, PendingGroupEvidenceNote>()
     // A fixed set of locks avoids retaining a mutex for every pupil/criterion ever graded.
     // Hash collisions only serialize unrelated writes; same-key writes remain ordered.
     private val scoreLocks = Array(128) { Mutex() }
@@ -352,7 +388,9 @@ class PuanlaViewModel internal constructor(
         viewModelScope.launch {
             selectedRubric.collect { rubric ->
                 if (rubric != null) {
-                    criteria.value = repository.getCriteriaForRubric(rubric.id)
+                    val rubricCriteria = repository.getCriteriaForRubric(rubric.id)
+                    groupCriteria.value = rubricCriteria
+                    criteria.value = rubricCriteria
                     levels.value = db.rubricDao().getLevelsForRubric(rubric.id)
                     loadCurrentAssessment()
                     loadStudentGroupGrades()
@@ -360,6 +398,7 @@ class PuanlaViewModel internal constructor(
                     loadClassAssessments()
                 } else {
                     criteria.value = emptyList()
+                    groupCriteria.value = emptyList()
                     levels.value = emptyList()
                     currentAssessment.value = null
                     currentScores.value = emptyMap()
@@ -391,10 +430,13 @@ class PuanlaViewModel internal constructor(
                             assessmentRuns.value = list
                             val current = selectedRun.value
                             val preferred = arcPrefs.getString("last_run_${classroom.id}_${rubric.id}", null)
-                            selectedRun.value = list.firstOrNull { it.id == current?.id }
-                                ?: list.firstOrNull { it.id == preferred }
-                                ?: list.firstOrNull { it.status == "ACTIVE" }
-                                ?: list.firstOrNull()
+                            selectedRun.value = resolveSessionSelection(
+                                items = list,
+                                currentId = current?.id,
+                                preferredId = preferred,
+                                idOf = { it.id },
+                                isActive = { it.status == "ACTIVE" }
+                            )
                         }
                     }
                 }
@@ -645,11 +687,13 @@ class PuanlaViewModel internal constructor(
             showToast("Arşivlenmiş değerlendirmede puan değiştirilemez.")
             return
         }
+        val scoreKey = "individual/${classroom.id}/${run.id}/${student.id}/$criterionId"
+        val scoreRevision = nextScoreRevision(scoreKey)
         val criterionTitle = criteria.value.find { it.id == criterionId }?.title ?: "Ölçüt"
         // Take the lock before launch so rapid taps for one criterion are applied
         // sequentially, even across asynchronous Room transactions.
         val lock = scoreMutex(student.id, run.id, criterionId)
-        launchMutation {
+        val submitted = launchMutation {
             try {
                 lock.withLock {
                     // Preserve the persisted observation note when changing/clearing a
@@ -659,7 +703,10 @@ class PuanlaViewModel internal constructor(
                         repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
                     }
                     val oldPoints = stored?.points
-                    if (oldPoints == points && stored != null) return@withLock
+                    if (oldPoints == points && stored != null) {
+                        finishScoreWrite(scoreKey, scoreRevision, success = true)
+                        return@withLock
+                    }
                     val original = repository.saveCriterionScore(
                         classroomId = classroom.id, studentId = student.id, rubricId = rubric.id,
                         criterionId = criterionId, scorePoints = points,
@@ -667,7 +714,10 @@ class PuanlaViewModel internal constructor(
                     )
                     refreshSelectionIfMatches(classroom.id, student.id, rubric.id, run.id)
                     val undoId = UUID.randomUUID().toString()
-                    undoStack.push(undoId, UndoAction("${student.fullName} - $criterionTitle") {
+                    undoStack.push(undoId, UndoAction(
+                        title = "${student.fullName} - $criterionTitle",
+                        contextId = "${classroom.id}/${run.id}"
+                    ) {
                         lock.withLock {
                             // Undo only the intended edit, never a later score or note.
                             val latestAssessment = repository.getRunAssessmentForStudent(student.id, run.id)
@@ -688,15 +738,17 @@ class PuanlaViewModel internal constructor(
                             }
                         }
                     })
-                    // Successful score writes are quiet. Undo remains available
-                    // from the persistent scoring toolbar via undoStack.
+                    finishScoreWrite(scoreKey, scoreRevision, success = true)
+                    // Undo remains available from the scoring toolbar.
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (e: Exception) {
+                finishScoreWrite(scoreKey, scoreRevision, success = false)
                 showToast("Puan kaydedilemedi: ${e.message}")
             }
         }
+        if (submitted == null) finishScoreWrite(scoreKey, scoreRevision, success = false)
     }
 
     /**
@@ -798,6 +850,7 @@ class PuanlaViewModel internal constructor(
             it.flush.trySend(Unit)
             startEvidenceNoteWorker(it)
         }
+        flushPendingGroupEvidenceNotes()
         pending.mapNotNull { it.job }.joinAll()
     }
 
@@ -820,6 +873,13 @@ class PuanlaViewModel internal constructor(
     }
 
     suspend fun undoLastAction() {
+        val action = undoStack.latest() ?: return
+        val classroomId = selectedClassroom.value?.id ?: return
+        val runId = selectedRun.value?.id ?: return
+        if (action.contextId != "$classroomId/$runId") {
+            showToast("Geri almak için son puanlanan sınıf ve değerlendirmeyi seçin.")
+            return
+        }
         val latestId = undoStack.latestId() ?: return
         undoAction(latestId)
     }
@@ -1151,12 +1211,14 @@ class PuanlaViewModel internal constructor(
         groupTasks.value = emptyList()
         selectedGroup.value = null
         val classroom = selectedClassroom.value ?: return
+        val preferredGroupId = arcPrefs.getString("last_group_${classroom.id}", null)
         groupFlowJob = viewModelScope.launch {
             repository.getGroupTasksFlow(classroom.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id) {
                     groupTasks.value = list
                     if (list.none { it.id == selectedGroup.value?.id }) {
-                        selectedGroup.value = list.firstOrNull()
+                        selectedGroup.value = list.firstOrNull { it.id == preferredGroupId }
+                            ?: list.firstOrNull()
                     }
                 }
             }
@@ -1164,7 +1226,10 @@ class PuanlaViewModel internal constructor(
     }
 
     fun selectGroup(group: GroupTaskEntity) {
-        if (group.classroomId == selectedClassroom.value?.id) selectedGroup.value = group
+        if (group.classroomId == selectedClassroom.value?.id) {
+            arcPrefs.edit().putString("last_group_${group.classroomId}", group.id).apply()
+            selectedGroup.value = group
+        }
     }
 
     private fun loadGroupSessions() {
@@ -1173,12 +1238,18 @@ class PuanlaViewModel internal constructor(
         selectedGroupSession.value = null
         val classroom = selectedClassroom.value ?: return
         val rubric = selectedRubric.value ?: return
+        val preferredSessionId = arcPrefs.getString("last_group_session_${classroom.id}_${rubric.id}", null)
         groupSessionFlowJob = viewModelScope.launch {
             repository.getGroupSessionsFlow(classroom.id, rubric.id).collect { list ->
                 if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
                     groupSessions.value = list
                     if (list.none { it.id == selectedGroupSession.value?.id }) {
-                        selectedGroupSession.value = list.firstOrNull()
+                        selectedGroupSession.value = resolveSessionSelection(
+                            items = list,
+                            currentId = selectedGroupSession.value?.id,
+                            preferredId = preferredSessionId,
+                            idOf = { it.id }
+                        )
                     }
                 }
             }
@@ -1187,7 +1258,10 @@ class PuanlaViewModel internal constructor(
 
     fun selectGroupSession(session: GroupAssessmentSessionEntity) {
         if (session.classroomId == selectedClassroom.value?.id &&
-            session.rubricId == selectedRubric.value?.id) selectedGroupSession.value = session
+            session.rubricId == selectedRubric.value?.id && session in groupSessions.value) {
+            arcPrefs.edit().putString("last_group_session_${session.classroomId}_${session.rubricId}", session.id).apply()
+            selectedGroupSession.value = session
+        }
     }
 
     fun createGroupSession(title: String) {
@@ -1197,6 +1271,7 @@ class PuanlaViewModel internal constructor(
             try {
                 val created = repository.createGroupSession(classroom.id, rubric.id, title)
                 if (selectedClassroom.value?.id == classroom.id && selectedRubric.value?.id == rubric.id) {
+                    arcPrefs.edit().putString("last_group_session_${classroom.id}_${rubric.id}", created.id).apply()
                     selectedGroupSession.value = created
                 }
             } catch (cancel: CancellationException) { throw cancel }
@@ -1316,14 +1391,118 @@ class PuanlaViewModel internal constructor(
         }
     }
 
+    /**
+     * Group evidence is bound to the original session, group and criterion,
+     * even if the teacher switches modes while the debounce is pending.
+     */
+    fun setGroupEvidenceNote(criterionId: String, note: String) {
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemez.")
+            return
+        }
+        val group = selectedGroup.value ?: return
+        val session = selectedGroupSession.value ?: return
+        val rubric = selectedRubric.value ?: return
+        if (session.rubricId != rubric.id || group.classroomId != session.classroomId ||
+            selectedClassroom.value?.id != session.classroomId ||
+            groupCriteria.value.none { it.id == criterionId }) return
+        val key = "group/${session.id}/${group.id}/$criterionId"
+        val pending = pendingGroupNoteWrites[key] ?: PendingGroupEvidenceNote(
+            key, session.id, group.id, criterionId, note
+        ).also { pendingGroupNoteWrites[key] = it }
+        pending.note = note
+        pending.revision++
+        pending.flushRequested = false
+        pending.edits.trySend(Unit)
+        groupEvidenceNoteSaveState.value =
+            EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVING)
+        startGroupEvidenceNoteWorker(pending)
+    }
+
+    private fun startGroupEvidenceNoteWorker(pending: PendingGroupEvidenceNote) {
+        if (pending.job?.isActive == true) return
+        val job = launchMutation(onBlocked = {
+            if (pendingGroupNoteWrites[pending.key] === pending) {
+                groupEvidenceNoteSaveState.value =
+                    EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+            }
+        }) {
+            while (pendingGroupNoteWrites[pending.key] === pending) {
+                if (!pending.flushRequested) {
+                    val interrupted = withTimeoutOrNull(500) {
+                        select<Unit> {
+                            pending.edits.onReceive { }
+                            pending.flush.onReceive { }
+                        }
+                        true
+                    } ?: false
+                    if (interrupted && !pending.flushRequested) continue
+                }
+                pending.flushRequested = false
+                val revision = pending.revision
+                val note = pending.note
+                try {
+                    scoreMutex(pending.groupId, pending.sessionId, pending.criterionId).withLock {
+                        if (pendingGroupNoteWrites[pending.key] === pending &&
+                            pending.revision == revision) {
+                            repository.saveGroupEvidenceNote(
+                                pending.sessionId, pending.groupId, pending.criterionId, note
+                            )
+                            if (pending.revision == revision && pendingGroupNoteWrites[pending.key] === pending) {
+                                if (selectedGroup.value?.id == pending.groupId &&
+                                    selectedGroupSession.value?.id == pending.sessionId) {
+                                    loadCurrentGroupAssessment()
+                                }
+                                groupEvidenceNoteSaveState.value =
+                                    EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.SAVED)
+                                pendingGroupNoteWrites.remove(pending.key)
+                                pending.edits.close()
+                                pending.flush.close()
+                                return@launchMutation
+                            }
+                        }
+                    }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (e: Exception) {
+                    if (pendingGroupNoteWrites[pending.key] === pending) {
+                        groupEvidenceNoteSaveState.value =
+                            EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+                        showToast("Grup gözlem notu kaydedilemedi: ${e.message}")
+                    }
+                    return@launchMutation
+                }
+            }
+        }
+        if (job == null) return
+        pending.job = job
+        job.invokeOnCompletion { if (pending.job === job) pending.job = null }
+    }
+
+    suspend fun flushPendingGroupEvidenceNotes() {
+        val pending = pendingGroupNoteWrites.values.toList()
+        pending.forEach {
+            it.flushRequested = true
+            it.flush.trySend(Unit)
+            startGroupEvidenceNoteWorker(it)
+        }
+        pending.mapNotNull { it.job }.joinAll()
+    }
+
     fun setGroupScore(criterionId: String, points: Int?) {
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında puan kaydedilemez.")
+            return
+        }
         val group = selectedGroup.value ?: return
         val session = selectedGroupSession.value ?: return
         val rubric = selectedRubric.value ?: return
         if (session.rubricId != rubric.id) return
         if (session.classroomId != selectedClassroom.value?.id || group.classroomId != session.classroomId) return
+        val scoreKey = "group/${session.id}/${group.id}/$criterionId"
+        val scoreRevision = nextScoreRevision(scoreKey)
         val lock = scoreMutex(group.id, session.id, criterionId)
-        launchMutation {
+        val submitted = launchMutation {
             try {
                 lock.withLock {
                     val before = repository.getGroupAssessment(session.id, group.id)
@@ -1331,7 +1510,7 @@ class PuanlaViewModel internal constructor(
                         .firstOrNull { score -> score.criterionId == criterionId } }
                     if (oldScore?.points != points) {
                         repository.scoreGroup(session.id, group.id, criterionId, points)
-                        val title = criteria.value.firstOrNull { it.id == criterionId }?.title ?: "Ölçüt"
+                        val title = groupCriteria.value.firstOrNull { it.id == criterionId }?.title ?: "Ölçüt"
                         val undoId = UUID.randomUUID().toString()
                         groupUndoStack.push(undoId, UndoAction("${group.title} · $title", contextId = session.id) {
                             lock.withLock {
@@ -1355,10 +1534,15 @@ class PuanlaViewModel internal constructor(
                     if (selectedGroup.value?.id == group.id && selectedGroupSession.value?.id == session.id) {
                         loadCurrentGroupAssessment()
                     }
+                    finishScoreWrite(scoreKey, scoreRevision, success = true)
                 }
             } catch (cancel: CancellationException) { throw cancel }
-            catch (e: Exception) { showToast("Grup puanı kaydedilemedi: " + e.message) }
+            catch (e: Exception) {
+                finishScoreWrite(scoreKey, scoreRevision, success = false)
+                showToast("Grup puanı kaydedilemedi: " + e.message)
+            }
         }
+        if (submitted == null) finishScoreWrite(scoreKey, scoreRevision, success = false)
     }
 
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
@@ -1370,6 +1554,35 @@ class PuanlaViewModel internal constructor(
     }
 
     // Export CSV
+    /**
+     * P5 export entry points capture target session identifiers at the user action,
+     * then wait for tracked mutations before reading one consistent report.
+     * They never consult the current UI selection after a suspension point.
+     */
+    suspend fun generateCsvForRun(
+        classroomId: String, rubricId: String, runId: String
+    ): String = mutations.snapshot {
+        repository.generateCsvExport(classroomId, rubricId, runId)
+    }
+
+    suspend fun generateGroupCsvForSession(sessionId: String): String =
+        mutations.snapshot { repository.generateGroupCsvExport(sessionId) }
+
+    suspend fun generateGroupPdfForSession(
+        sessionId: String
+    ): com.knigdelioglu.puanla.domain.export.PdfReportSnapshot =
+        mutations.snapshot { repository.generateGroupPdfReportSnapshot(sessionId) }
+
+    suspend fun generatePdfSnapshotsForRun(
+        classroomId: String, rubricId: String, runId: String, allClassrooms: Boolean
+    ): List<com.knigdelioglu.puanla.domain.export.PdfReportSnapshot> =
+        mutations.snapshot {
+            val linkedClassrooms = repository.getRunClassrooms(runId).map { it.classroomId }
+            require(classroomId in linkedClassrooms) { "Değerlendirme seçili sınıfa bağlı değil." }
+            val ids = if (allClassrooms) linkedClassrooms else listOf(classroomId)
+            ids.map { repository.generatePdfReportSnapshot(it, rubricId, runId) }
+        }
+
     suspend fun generateCsv(): String {
         val c = selectedClassroom.value ?: return ""
         val r = selectedRubric.value ?: return ""
@@ -1403,7 +1616,9 @@ class PuanlaViewModel internal constructor(
     // not just criterion scores. Snapshots wait for pending work; restore
     // waits for it before performing the one-transaction replacement.
     suspend fun createBackup(): String = mutations.snapshot {
-        check(withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isEmpty() }) {
+        check(withContext(Dispatchers.Main.immediate) {
+            pendingNoteWrites.isEmpty() && pendingGroupNoteWrites.isEmpty()
+        }) {
             "Bekleyen gözlem notu kaydedilemedi; yedekleme durduruldu."
         }
         repository.generateFullBackupJson()
@@ -1413,7 +1628,9 @@ class PuanlaViewModel internal constructor(
         val validation = repository.validateBackupJson(json)
         if (validation.isFailure) return Result.failure(requireNotNull(validation.exceptionOrNull()))
         return mutations.restore {
-            val hasUnsavedNote = withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isNotEmpty() }
+            val hasUnsavedNote = withContext(Dispatchers.Main.immediate) {
+                pendingNoteWrites.isNotEmpty() || pendingGroupNoteWrites.isNotEmpty()
+            }
             if (hasUnsavedNote) {
                 return@restore Result.failure(IllegalStateException(
                     "Bekleyen gözlem notu kaydedilemedi; geri yükleme durduruldu."
@@ -1437,7 +1654,12 @@ class PuanlaViewModel internal constructor(
                 withContext(Dispatchers.Main.immediate) {
                     pendingNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
                     pendingNoteWrites.clear()
+                    pendingGroupNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
+                    pendingGroupNoteWrites.clear()
                     evidenceNoteSaveState.value = null
+                    groupEvidenceNoteSaveState.value = null
+                    scoreSaveState.value = null
+                    scoreWriteRevisions.clear()
                     lastStudentSelectionContext = null
                     studentFlowJob?.cancel(); studentFlowJob = null
                     assessmentFlowJob?.cancel(); assessmentFlowJob = null

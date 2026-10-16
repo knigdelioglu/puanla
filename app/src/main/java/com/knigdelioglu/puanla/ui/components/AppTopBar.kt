@@ -51,6 +51,8 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     var showRubricCards by remember { mutableStateOf(false) }
     var showEvaluationRuns by remember { mutableStateOf(false) }
     val selectedRun by viewModel.selectedRun.collectAsState()
+    val selectedGroupSession by viewModel.selectedGroupSession.collectAsState()
+    val reportsGroupMode by viewModel.reportsGroupMode.collectAsState()
     val matchingRubrics = rubrics.filter { it.grade == selectedClassroom?.grade }
 
     ArcPageHeader(
@@ -94,10 +96,17 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
                 }
 
                 if (currentDestination == AppDestination.WORKSPACE ||
+                    currentDestination == AppDestination.GROUP_WORK ||
                     currentDestination == AppDestination.REPORTS
                 ) {
+                    val activeTitle = if (currentDestination == AppDestination.GROUP_WORK ||
+                        (currentDestination == AppDestination.REPORTS && reportsGroupMode)) {
+                        selectedGroupSession?.title
+                    } else {
+                        selectedRun?.title
+                    }
                     ArcButton(
-                        text = selectedRun?.title?.let { if (it.length > 23) it.take(20) + "…" else it }
+                        text = activeTitle?.let { if (it.length > 23) it.take(20) + "…" else it }
                             ?: "Değerlendirmeler",
                         onClick = { showEvaluationRuns = true },
                         variant = ArcButtonVariant.Outline,
@@ -150,6 +159,8 @@ fun AppTopBar(viewModel: PuanlaViewModel, onBackFromSettings: () -> Unit) {
     EvaluationRunSheet(
         viewModel = viewModel,
         isOpen = showEvaluationRuns,
+        groupMode = currentDestination == AppDestination.GROUP_WORK ||
+            (currentDestination == AppDestination.REPORTS && reportsGroupMode),
         onDismiss = { showEvaluationRuns = false }
     )
     ArcBottomSheet(

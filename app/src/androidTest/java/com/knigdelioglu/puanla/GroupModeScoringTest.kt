@@ -190,4 +190,156 @@ class GroupModeScoringTest {
             db.close()
         }
     }
+    @Test
+    fun groupZeroScoreAndIndividualRunRemainIndependent() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            db.studentDao().insertStudent(StudentEntity("student", "c", "101", "Ayşe", "Yılmaz"))
+            db.rubricDao().insertRubric(RubricEntity("rubric", "Sunum", "", 11, "Sunum", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("content", "rubric", "İçerik", "", 20, 0),
+                CriterionEntity("speech", "rubric", "Anlatım", "", 80, 1)
+            ))
+
+            val repo = PuanlaRepository(db) { "{}" }
+            val individual = repo.createAssessmentRun("rubric", "Bireysel Ekim", listOf("c"))
+            repo.saveCriterionScore("c", "student", "rubric", "content", 15, runId = individual.id)
+            repo.saveCriterionScore("c", "student", "rubric", "speech", 70, runId = individual.id)
+
+            val group = GroupTaskEntity(
+                id = "group", classroomId = "c", rubricId = "",
+                title = "Grup 1", memberStudentIdsJson = "[\"student\"]", checklistJson = "[]"
+            )
+            repo.saveGroupTask(group)
+            val groupSession = repo.createGroupSession("c", "rubric", "Grup Ekim")
+            val partial = repo.scoreGroup(groupSession.id, group.id, "content", 0)
+
+            assertFalse(partial.isCompleted)
+            assertEquals(1, partial.scoredCount)
+            assertNull(partial.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(partial.id).all {
+                !it.isCompleted && it.definitiveTotal == null
+            })
+
+            val complete = repo.scoreGroup(groupSession.id, group.id, "speech", 60)
+            assertTrue(complete.isCompleted)
+            assertEquals(60, complete.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(complete.id).all {
+                it.isCompleted && it.definitiveTotal == 60
+            })
+            val individualScores = repo.getRunCriterionScoresForStudent("student", individual.id)
+            assertEquals(15, individualScores["content"])
+            assertEquals(70, individualScores["speech"])
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun groupEvidenceNoteStaysWithSessionAndSurvivesScoreChangesUndoAndBackup() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            db.studentDao().insertStudent(StudentEntity("s", "c", "1", "Ece", "Kaya"))
+            db.rubricDao().insertRubric(RubricEntity("r", "Drama", "", 11, "Drama", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("c1", "r", "İçerik", "", 20, 0),
+                CriterionEntity("c2", "r", "Anlatım", "", 80, 1)
+            ))
+            val repo = PuanlaRepository(db) { "{}" }
+            val group = GroupTaskEntity("g", "c", "", "Grup", "[\"s\"]", "[]")
+            repo.saveGroupTask(group)
+            val first = repo.createGroupSession("c", "r", "İlk oturum")
+            val second = repo.createGroupSession("c", "r", "İkinci oturum")
+
+            // Evidence may precede scoring. It must not be counted as zero.
+            repo.saveGroupEvidenceNote(first.id, group.id, "c1", "Hazırlıklıydı")
+            val start = requireNotNull(repo.getGroupAssessment(first.id, group.id))
+            assertEquals(0, start.scoredCount)
+            assertNull(start.definitiveTotal)
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(start.id).single().evidenceNote)
+            assertNull(repo.getGroupScores(start.id).single().points)
+            assertTrue(repo.getGroupMemberResults(start.id).all { it.definitiveTotal == null })
+
+            repo.scoreGroup(first.id, group.id, "c1", 0)
+            val partial = requireNotNull(repo.getGroupAssessment(first.id, group.id))
+            assertEquals(1, partial.scoredCount)
+            assertNull(partial.definitiveTotal)
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
+
+            repo.scoreGroup(first.id, group.id, "c2", 70)
+            assertEquals(70, repo.getGroupAssessment(first.id, group.id)?.definitiveTotal)
+            repo.scoreGroup(first.id, group.id, "c1", 15)
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
+            assertTrue(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 15, 0))
+            assertEquals(70, repo.getGroupAssessment(first.id, group.id)?.definitiveTotal)
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
+
+            repo.saveGroupEvidenceNote(second.id, group.id, "c1", "İkinci oturum notu")
+            val other = requireNotNull(repo.getGroupAssessment(second.id, group.id))
+            assertNull(other.definitiveTotal)
+            assertEquals("İkinci oturum notu", repo.getGroupScores(other.id).single().evidenceNote)
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
+
+            // A conditional undo must not delete a note-only assessment.
+            assertTrue(repo.undoGroupScoreIfCurrent(first.id, group.id, "c1", 0, null, removeAssessmentIfEmpty = true))
+            assertEquals("Hazırlıklıydı", repo.getGroupScores(partial.id).first { it.criterionId == "c1" }.evidenceNote)
+
+            // Reverting a group's only non-null score must not delete existing evidence.
+            val noteOnly = repo.createGroupSession("c", "r", "Yalnızca not")
+            repo.saveGroupEvidenceNote(noteOnly.id, group.id, "c1", "Kalıcı gözlem")
+            repo.scoreGroup(noteOnly.id, group.id, "c1", 8)
+            assertTrue(repo.undoGroupScoreIfCurrent(
+                noteOnly.id, group.id, "c1", 8, null, removeAssessmentIfEmpty = true
+            ))
+            val retained = requireNotNull(repo.getGroupAssessment(noteOnly.id, group.id))
+            assertEquals(0, retained.scoredCount)
+            assertEquals("Kalıcı gözlem", repo.getGroupScores(retained.id).single().evidenceNote)
+            assertNull(repo.getGroupScores(retained.id).single().points)
+
+            val backup = repo.generateFullBackupJson()
+            assertTrue(backup.contains("Kalıcı gözlem"))
+            assertTrue(backup.contains("Hazırlıklıydı"))
+            assertTrue(backup.contains("İkinci oturum notu"))
+        } finally { db.close() }
+    }
+
+    @Test
+    fun groupExportDoesNotRequireIndividualRunAndKeepsIncompleteRows() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            db.studentDao().insertStudents(listOf(
+                StudentEntity("s1", "c", "1", "Ayşe", "Yılmaz"),
+                StudentEntity("s2", "c", "2", "Mert", "Demir")
+            ))
+            db.rubricDao().insertRubric(RubricEntity("r", "Drama", "", 11, "Drama", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("c1", "r", "İçerik", "", 20, 0),
+                CriterionEntity("c2", "r", "Sunum", "", 80, 1)
+            ))
+            val repo = PuanlaRepository(db) { "{}" }
+            repo.saveGroupTask(GroupTaskEntity("g", "c", "", "Grup A", "[\"s1\",\"s2\"]", "[]"))
+            val session = repo.createGroupSession("c", "r", "Grup Raporu")
+            val partial = repo.scoreGroup(session.id, "g", "c1", 0)
+
+            assertFalse(partial.isCompleted)
+            assertNull(partial.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(partial.id).all { !it.isCompleted })
+            // Group reports must be available without an individual assessment run.
+            assertTrue(repo.getRunCriterionScoresForStudent("s1", "missing-run").isEmpty())
+            val pdf = repo.generateGroupPdfReportSnapshot(session.id)
+            assertEquals(2, pdf.students.size)
+            assertTrue(pdf.students.all { !it.isCompleted && it.definitiveTotal == null })
+            val csv = repo.generateGroupCsvExport(session.id)
+            assertTrue(csv.contains("Grup A"))
+            assertTrue(csv.contains("Eksik"))
+            assertNull(repo.getAssessmentForStudent("s1", "r"))
+        } finally { db.close() }
+    }
+
 }

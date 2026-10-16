@@ -16,11 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,25 +35,17 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcCheckbox
-import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcInput
 import com.knigdelioglu.arc.compose.controls.ArcMultiSelect
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
-import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
-import com.knigdelioglu.arc.compose.controls.ArcNumberField
-import kotlin.math.roundToInt
+import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import androidx.compose.runtime.saveable.rememberSaveable
-import com.knigdelioglu.arc.compose.controls.ArcSelect
-import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.GroupAssessmentEntity
-import com.knigdelioglu.puanla.data.local.GroupAssessmentSessionEntity
 import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
 import com.knigdelioglu.puanla.data.local.GroupCriterionScoreEntity
 import com.knigdelioglu.puanla.data.local.CriterionEntity
@@ -91,16 +79,17 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val students by viewModel.students.collectAsState()
     val groups by viewModel.groupTasks.collectAsState()
     val selectedGroup by viewModel.selectedGroup.collectAsState()
-    val sessions by viewModel.groupSessions.collectAsState()
     val session by viewModel.selectedGroupSession.collectAsState()
     val groupAssessments by viewModel.groupAssessments.collectAsState()
     val assessment by viewModel.currentGroupAssessment.collectAsState()
     val scores by viewModel.currentGroupScores.collectAsState()
     val memberResults by viewModel.currentGroupMembers.collectAsState()
-    val criteria by viewModel.criteria.collectAsState()
+    val criteria by viewModel.groupCriteria.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val canUndoGroupAction by viewModel.canUndoGroupAction.collectAsState()
+    val groupNoteSaveState by viewModel.groupEvidenceNoteSaveState.collectAsState()
+    val scoreSaveState by viewModel.scoreSaveState.collectAsState()
 
     var createGroup by remember { mutableStateOf(false) }
     var editingGroup by remember { mutableStateOf<GroupTaskEntity?>(null) }
@@ -115,7 +104,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             } catch (_: Exception) { emptyList() }
         }.toSet()
     }
-    var createSession by remember { mutableStateOf(false) }
     var showPreparation by remember { mutableStateOf(false) }
     var activeCriterionIndex by remember(selectedGroup?.id, session?.id, rubric?.id) { mutableIntStateOf(0) }
     var autoAdvance by rememberSaveable { mutableStateOf(true) }
@@ -136,19 +124,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 color = ArcTheme.colors.foreground, modifier = Modifier.weight(1f)
             )
             ArcButton(
-                text = if (showPreparation) "Puanlamaya dön" else "Hazırlık",
+                text = if (showPreparation) "Puanlamaya dön" else "Grupları Yönet",
                 onClick = { showPreparation = !showPreparation },
                 size = ArcButtonSize.Sm, variant = ArcButtonVariant.Outline
-            )
-            ArcButton(
-                text = "Rastgele Grup Oluştur", onClick = { createRandomGroups = true },
-                size = ArcButtonSize.Sm,
-                enabled = classroom != null && students.any { it.id !in assignedStudentIds },
-                variant = ArcButtonVariant.Outline
-            )
-            ArcButton(
-                text = "Yeni Grup", onClick = { createGroup = true },
-                size = ArcButtonSize.Sm, enabled = classroom != null
             )
         }
 
@@ -160,9 +138,42 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 )
             }
         } else if (showPreparation || rubric == null) {
+            // Preparation is a separate surface. Scoring remains focused on selecting
+            // group / criterion / score, with no group creation actions in its toolbar.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Grupları Yönet", modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                ArcButton(
+                    text = "Rastgele Grup Oluştur",
+                    onClick = { createRandomGroups = true },
+                    size = ArcButtonSize.Sm,
+                    enabled = students.any { it.id !in assignedStudentIds },
+                    variant = ArcButtonVariant.Outline
+                )
+                ArcButton(
+                    text = "Yeni Grup", onClick = { createGroup = true },
+                    size = ArcButtonSize.Sm
+                )
+            }
             if (rubric == null) {
-                Text("Grup oluşturabilirsiniz. Puanlama için üst çubuktan rubrik seçin.",
+                Text("Gruplar rubrikten bağımsızdır. Puanlamak için üst çubuktan rubrik seçin.",
                     color = ArcTheme.colors.textSecondary, fontSize = 13.sp)
+            }
+            if (session != null && groupAssessments.isNotEmpty()) {
+                ArcButton(
+                    text = "Seçili Oturumun Üyeliklerini Eşitle",
+                    onClick = { confirmMembershipSync = true },
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Sm
+                )
+                Text(
+                    "Geçmiş üye görüntüsü ancak açık onayla değişir; başka oturumlar etkilenmez.",
+                    color = ArcTheme.colors.textSecondary, fontSize = 12.sp
+                )
             }
             if (groups.isEmpty()) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -181,30 +192,13 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 }
             }
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (sessions.isNotEmpty()) {
-                    ArcSelect(
-                        selectedItem = session,
-                        items = sessions,
-                        onItemSelected = { viewModel.selectGroupSession(it) },
-                        labelProvider = { it.title },
-                        placeholder = "Oturum seçin",
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Text(
-                        "Bu rubrikle henüz değerlendirme oturumu yok.",
-                        modifier = Modifier.weight(1f), fontSize = 13.sp,
-                        color = ArcTheme.colors.textSecondary
-                    )
-                }
-                ArcButton(
-                    text = "Yeni Oturum", onClick = { createSession = true },
-                    size = ArcButtonSize.Sm, variant = ArcButtonVariant.Primary
+            // Session selection/creation now lives in the same top-bar
+            // Değerlendirmeler sheet as individual scoring.
+            if (session != null) {
+                Text(
+                    "Değerlendirme: ${session?.title}",
+                    color = ArcTheme.colors.textSecondary,
+                    fontSize = 13.sp
                 )
             }
 
@@ -212,113 +206,86 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     ArcEmptyState(
                         title = if (groups.isEmpty()) "Grup oluşturun" else "Oturum oluşturun",
-                        description = "Rubrik bağımsız grupları ve bir değerlendirme oturumunu seçerek başlayın."
+                        description = if (groups.isEmpty())
+                            "Grupları Yönet üzerinden grupları hazırlayın."
+                        else "Üstteki Değerlendirmeler menüsünden değerlendirme açın veya oluşturun."
                     )
                 }
             } else {
-                BoxWithConstraints(Modifier.weight(1f)) {
-                    if (maxWidth >= 900.dp) {
-                        ArcResizablePanels(
-                            modifier = Modifier.fillMaxSize(),
-                            initialWeights = listOf(0.28f, 0.38f, 0.34f),
-                            minWeights = listOf(0.20f, 0.25f, 0.25f),
-                            firstPane = {
-                                GroupRosterPane(groups, selectedGroup, groupAssessments) {
-                                    viewModel.selectGroup(it)
-                                }
+                // Shared presentation shell: the group session, its member results
+                // and its undo stack remain independent from individual scoring.
+                UnifiedScoringLayout(
+                    mode = ScoringTargetMode.GROUP,
+                    contextKey = "${classroom?.id}/${rubric?.id}/${session?.id}",
+                    modifier = Modifier.weight(1f),
+                    targetPane = { onSelected ->
+                        GroupRosterPane(groups, selectedGroup, groupAssessments) {
+                            viewModel.selectGroup(it)
+                            onSelected()
+                        }
+                    },
+                    criteriaPane = { onSelected ->
+                        CriteriaExplorerPane(
+                            criteria = criteria,
+                            activeCriterion = activeCriterion,
+                            scoreSummary = criteria.associate { criterion ->
+                                criterion.id to (scores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                                    ?: "Puanlanmadı / ${criterion.maxPoints}")
                             },
-                            secondPane = {
-                                CriteriaExplorerPane(
-                                    criteria = criteria, activeCriterion = activeCriterion,
-                                    scoreSummary = criteria.associate { criterion ->
-                                        criterion.id to (scores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                                            ?: "Puanlanmadı / ${criterion.maxPoints}")
-                                    },
-                                    onSelectCriterion = {
-                                        activeCriterionIndex = criteria.indexOfFirst { c -> c.id == it.id }.coerceAtLeast(0)
-                                    }
-                                )
-                            },
-                            thirdPane = {
-                                GroupScoringPane(
-                                    group = selectedGroup, assessment = assessment,
-                                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                                    criterion = activeCriterion, criteria = criteria,
-                                    scores = scores, students = students, memberResults = memberResults,
-                                    onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
-                                    canUndo = canUndoGroupAction,
-                                    quickGrading = quickGrading,
-                                    levels = levels.filter { it.criterionId == activeCriterion?.id },
-                                    autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
-                                    onScore = { points ->
-                                        activeCriterion?.let { criterion ->
-                                            viewModel.setGroupScore(criterion.id, points)
-                                            if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                        }
-                                    },
-                                    onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
-                                    onNext = {
-                                        if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                    },
-                                    onSyncMembership = { confirmMembershipSync = true },
-                                    onNextGroup = {
-                                        val i = groups.indexOfFirst { it.id == selectedGroup?.id }
-                                        groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
-                                    }
-                                )
+                            onSelectCriterion = { chosen ->
+                                activeCriterionIndex = criteria.indexOfFirst { it.id == chosen.id }.coerceAtLeast(0)
+                                onSelected()
                             }
                         )
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            ArcSelect(
-                                selectedItem = selectedGroup,
-                                items = groups,
-                                onItemSelected = { viewModel.selectGroup(it) },
-                                labelProvider = { it.title },
-                                placeholder = "Grup seç",
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            ArcSelect(
-                                selectedItem = activeCriterion,
-                                items = criteria,
-                                onItemSelected = { item ->
-                                    activeCriterionIndex = criteria.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
-                                },
-                                labelProvider = { it.title },
-                                placeholder = "Ölçüt seç",
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            GroupScoringPane(
-                                group = selectedGroup, assessment = assessment,
-                                criterion = activeCriterion, criteria = criteria,
-                                scores = scores, students = students, memberResults = memberResults,
-                                onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
-                                canUndo = canUndoGroupAction,
-                                quickGrading = quickGrading,
-                                levels = levels.filter { it.criterionId == activeCriterion?.id },
-                                autoAdvance = autoAdvance, onAutoAdvance = { autoAdvance = it },
-                                onScore = { points ->
-                                    activeCriterion?.let { criterion ->
-                                        viewModel.setGroupScore(criterion.id, points)
-                                        if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                    }
-                                },
-                                onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
-                                onNext = {
-                                    if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
-                                },
-                                onSyncMembership = { confirmMembershipSync = true },
-                                    onNextGroup = {
-                                    val i = groups.indexOfFirst { it.id == selectedGroup?.id }
-                                    groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                    },
+                    scoringPane = {
+                        GroupScoringPane(
+                            sessionId = session?.id.orEmpty(),
+                            group = selectedGroup,
+                            assessment = assessment,
+                            modifier = Modifier.fillMaxSize(),
+                            criterion = activeCriterion,
+                            criteria = criteria,
+                            scores = scores,
+                            students = students,
+                            memberResults = memberResults,
+                            onUndo = { scope.launch { viewModel.undoLastGroupAction() } },
+                            canUndo = canUndoGroupAction,
+                            quickGrading = quickGrading,
+                            levels = levels.filter { it.criterionId == activeCriterion?.id },
+                            autoAdvance = autoAdvance,
+                            onAutoAdvance = { autoAdvance = it },
+                            onScore = { points ->
+                                activeCriterion?.let { criterion ->
+                                    viewModel.setGroupScore(criterion.id, points)
                                 }
-                            )
-                        }
+                            },
+                            onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
+                            onNoteChange = { note ->
+                                activeCriterion?.let { viewModel.setGroupEvidenceNote(it.id, note) }
+                            },
+                            noteSaveMessage = groupNoteSaveState?.takeIf {
+                                it.key == "group/${session?.id}/${selectedGroup?.id}/${activeCriterion?.id}"
+                            }?.status?.label,
+                            scoreSaveMessage = scoreSaveState?.takeIf {
+                                it.key == "group/${session?.id}/${selectedGroup?.id}/${activeCriterion?.id}"
+                            }?.status?.label,
+                            onNext = {
+                                if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
+                            },
+                            onPreviousGroup = {
+                                val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                groups.getOrNull(i - 1)?.let { viewModel.selectGroup(it) }
+                            },
+                            canPreviousGroup = groups.indexOfFirst { it.id == selectedGroup?.id } > 0,
+                            canNextGroup = groups.indexOfFirst { it.id == selectedGroup?.id } in 0 until groups.lastIndex,
+                            onNextGroup = {
+                                val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
+                            }
+                        )
                     }
-                }
+                )
             }
         }
     }
@@ -418,29 +385,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
             }
         )
     }
-    if (createSession) {
-        var title by remember { mutableStateOf("") }
-        Dialog(onDismissRequest = { createSession = false }) {
-            Surface(
-                shape = ArcTheme.shapes.panel, color = ArcTheme.colors.surfaceRaised,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 440.dp).heightIn(max = 700.dp)
-            ) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Yeni grup değerlendirmesi", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    ArcInput(value = title, onValueChange = { title = it },
-                        label = "Oturum adı", placeholder = "Örn. Drama - 12 Ekim")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ArcButton(text = "Vazgeç", onClick = { createSession = false },
-                            variant = ArcButtonVariant.Ghost)
-                        ArcButton(text = "Oluştur", enabled = title.isNotBlank(), onClick = {
-                            viewModel.createGroupSession(title)
-                            createSession = false
-                        })
-                    }
-                }
-            }
-        }
-    }
+
 }
 
 @Composable
@@ -483,6 +428,7 @@ private fun GroupRosterPane(
 
 @Composable
 private fun GroupScoringPane(
+    sessionId: String,
     group: GroupTaskEntity?,
     assessment: GroupAssessmentEntity?,
     modifier: Modifier = Modifier,
@@ -499,8 +445,13 @@ private fun GroupScoringPane(
     onAutoAdvance: (Boolean) -> Unit,
     onScore: (Int) -> Unit,
     onClear: () -> Unit,
+    onNoteChange: (String) -> Unit,
+    noteSaveMessage: String?,
+    scoreSaveMessage: String?,
     onNext: () -> Unit,
-    onSyncMembership: () -> Unit,
+    onPreviousGroup: () -> Unit,
+    canPreviousGroup: Boolean,
+    canNextGroup: Boolean,
     onNextGroup: () -> Unit
 ) {
     if (group == null) {
@@ -516,30 +467,16 @@ private fun GroupScoringPane(
     }
     val names = remember(students) { students.associateBy { it.id } }
     val total = assessment?.definitiveTotal
-    Column(
-        modifier = modifier.fillMaxWidth().padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = modifier.fillMaxWidth().padding(12.dp)) {
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         Text(group.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
         Text(
             if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
             else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
             color = ArcTheme.colors.textSecondary
-        )
-        ArcButton(
-            text = "Üyelikleri Eşitle",
-            onClick = onSyncMembership,
-            variant = ArcButtonVariant.Outline,
-            size = ArcButtonSize.Sm,
-            modifier = Modifier.fillMaxWidth()
-        )
-        ArcButton(
-            text = "Son grup puanını geri al",
-            onClick = onUndo,
-            enabled = canUndo,
-            variant = ArcButtonVariant.Ghost,
-            size = ArcButtonSize.Sm,
-            modifier = Modifier.fillMaxWidth()
         )
         if (criterion != null) {
             ArcCard(modifier = Modifier.fillMaxWidth()) {
@@ -550,55 +487,75 @@ private fun GroupScoringPane(
                             " / " + criterion.maxPoints,
                         variant = ArcBadgeVariant.Accent
                     )
-                    QuickScoreControls(
-                        maxPoints = criterion.maxPoints,
+                    var showNoteEditor by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
+                    CriterionGradingEditor(
+                        contextKey = "group/$sessionId/${group.id}/${criterion.id}",
+                        criterion = criterion,
                         points = scores[criterion.id]?.points,
                         levels = levels,
+                        quickGrading = quickGrading,
                         autoAdvance = autoAdvance,
                         onAutoAdvanceChange = onAutoAdvance,
                         hasNextCriterion = criteria.indexOfFirst { it.id == criterion.id } < criteria.lastIndex,
                         onNextCriterion = onNext,
-                        onChooseScore = onScore,
-                        quickGrading = quickGrading
+                        noteEditorOpen = showNoteEditor,
+                        onScore = onScore,
+                        onClearScore = onClear
                     )
-                    var precisionVisible by remember(group.id, criterion.id) { mutableStateOf(false) }
-                    ArcButton(
-                        text = if (precisionVisible) "Hassas puanı gizle" else "Hassas puan",
-                        onClick = { precisionVisible = !precisionVisible },
-                        modifier = Modifier.fillMaxWidth(),
-                        variant = ArcButtonVariant.Outline, size = ArcButtonSize.Sm
-                    )
-                    if (precisionVisible) {
-                        val points = scores[criterion.id]?.points
-                        var preview by remember(group.id, criterion.id) {
-                            mutableFloatStateOf((points ?: 0).toFloat())
-                        }
-                        LaunchedEffect(group.id, criterion.id, points) {
-                            preview = (points ?: 0).toFloat()
-                        }
-                        if (criterion.maxPoints > 0) {
-                            ArcElasticSlider(
-                                value = preview,
-                                onValueChange = { preview = it },
-                                onValueCommit = { onScore(it.roundToInt()) },
-                                step = 1f,
-                                valueRange = 0f..criterion.maxPoints.toFloat(),
-                                label = "Hassas puan",
-                                formatValue = { "${it.roundToInt()} / ${criterion.maxPoints}" }
-                            )
-                        }
-                        ArcNumberField(
-                            value = points,
-                            onValueChange = { value -> if (value == null) onClear() else onScore(value) },
-                            min = 0, max = criterion.maxPoints,
-                            label = "Tam sayı"
+                    if (scoreSaveMessage != null) {
+                        Text(
+                            "Puan: $scoreSaveMessage",
+                            fontSize = 12.sp,
+                            color = if (scoreSaveMessage == "Kaydedilemedi")
+                                ArcTheme.colors.danger else ArcTheme.colors.textSecondary
                         )
                     }
+                    var noteText by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(scores[criterion.id]?.evidenceNote ?: "")
+                    }
+                    var noteTouched by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
+                    LaunchedEffect(sessionId, group.id, criterion.id, scores[criterion.id]?.evidenceNote) {
+                        if (!noteTouched) noteText = scores[criterion.id]?.evidenceNote ?: ""
+                    }
                     ArcButton(
-                        text = "Puanı kaldır", onClick = onClear,
-                        enabled = scores[criterion.id]?.points != null,
-                        variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm
+                        text = if (showNoteEditor) "Gözlem notunu gizle"
+                            else if (noteText.isBlank()) "Gözlem ve kanıt notu ekle"
+                            else "Gözlem notunu düzenle (mevcut not)",
+                        onClick = { showNoteEditor = !showNoteEditor },
+                        variant = ArcButtonVariant.Outline,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = ArcButtonSize.Sm
                     )
+                    if (showNoteEditor) {
+                        ArcRichTextEditor(
+                            value = noteText,
+                            onValueChange = {
+                                noteText = it
+                                noteTouched = true
+                                onNoteChange(it)
+                            },
+                            placeholder = "Grup ölçütüne özel gözlem veya kanıt...",
+                            characterCountLabel = { "$it karakter" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (noteSaveMessage != null) {
+                            Text(
+                                noteSaveMessage,
+                                fontSize = 12.sp,
+                                color = if (noteSaveMessage == "Kaydedilemedi")
+                                    ArcTheme.colors.danger else ArcTheme.colors.textSecondary
+                            )
+                        }
+                    } else if (noteText.isNotBlank()) {
+                        Text(
+                            noteText.take(140) + if (noteText.length > 140) "…" else "",
+                            fontSize = 12.sp, color = ArcTheme.colors.textSecondary
+                        )
+                    }
                 }
             }
         }
@@ -616,9 +573,15 @@ private fun GroupScoringPane(
                 )
             }
         }
-        ArcButton(
-            text = "Sonraki Grup", onClick = onNextGroup,
-            variant = ArcButtonVariant.Outline, modifier = Modifier.fillMaxWidth()
+        }
+        ScoringTargetToolbar(
+            mode = ScoringTargetMode.GROUP,
+            onPrevious = onPreviousGroup,
+            onUndo = onUndo,
+            onNext = onNextGroup,
+            canPrevious = canPreviousGroup,
+            canUndo = canUndo,
+            canNext = canNextGroup
         )
     }
 }

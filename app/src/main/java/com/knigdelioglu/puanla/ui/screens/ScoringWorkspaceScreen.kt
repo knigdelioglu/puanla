@@ -1,19 +1,15 @@
 package com.knigdelioglu.puanla.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,17 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.filled.Grading
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,30 +35,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.controls.ArcButton
-import com.knigdelioglu.arc.compose.controls.ArcExpandingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
-import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
 import com.knigdelioglu.arc.compose.controls.ArcCombobox
-import com.knigdelioglu.arc.compose.display.ArcPopover
-import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
-import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
-import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
-import com.knigdelioglu.arc.compose.controls.ArcRadioCards
-import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAvatar
@@ -83,20 +55,14 @@ import com.knigdelioglu.arc.compose.display.ArcAccordion
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
-import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
-import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
-import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.StudentGroupGrade
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
-import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
 import com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference
-import com.knigdelioglu.puanla.ui.preferences.qualitativeQuickOptions
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
-import kotlin.math.roundToInt
 
 /**
  * The criterion selection belongs to a student/rubric pair, not the screen.
@@ -119,6 +85,7 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val currentAssessment by viewModel.currentAssessment.collectAsState()
     val currentScores by viewModel.currentScores.collectAsState()
     val noteSaveState by viewModel.evidenceNoteSaveState.collectAsState()
+    val scoreSaveState by viewModel.scoreSaveState.collectAsState()
     val studentGroupGrades by viewModel.currentStudentGroupGrades.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
     val scope = rememberCoroutineScope()
@@ -167,146 +134,104 @@ fun ScoringWorkspaceScreen(viewModel: PuanlaViewModel) {
     val activeCriterion = criteria.getOrNull(activeCriterionIndex) ?: criteria.firstOrNull()
     val noteKey = listOfNotNull(selectedStudent?.id, selectedRun?.id, activeCriterion?.id).joinToString("/")
     val noteSaveMessage = noteSaveState?.takeIf { it.key == noteKey }?.status?.label
+    val scoreSaveMessage = scoreSaveState?.takeIf {
+        it.key == "individual/${selectedClassroom?.id}/${selectedRun?.id}/${selectedStudent?.id}/${activeCriterion?.id}"
+    }?.status?.label
 
     // Map student ID to assessment completion status
     val assessmentMap = remember(classAssessments) {
         classAssessments.associateBy { it.studentId }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val isWide = maxWidth >= 900.dp
-
-        if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = if (selectedClassroom == null || selectedRubric == null)
-                        "Sınıf veya Rubrik Seçilmedi" else "Değerlendirme Seçilmedi",
-                    description = if (selectedClassroom == null || selectedRubric == null)
-                        "Başlamak için sınıf ve rubrik seçin."
-                    else "Üstteki Değerlendirmeler düğmesinden yeni bir değerlendirme oluşturun ya da eskisini açın."
-                )
-            }
-            return@BoxWithConstraints
-        }
-
-        if (selectedRun?.status == "ARCHIVED") {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ArcEmptyState(
-                    title = "Arşivlenmiş Değerlendirme",
-                    description = "Sonuçlar Raporlar bölümünden incelenebilir. Puanları düzenlemek için Değerlendirmeler menüsünden arşivden çıkarın."
-                )
-            }
-            return@BoxWithConstraints
-        }
-
-        if (isWide) {
-            // Tablet 3-Pane Resizable Layout
-            ArcResizablePanels(
-                modifier = Modifier.fillMaxSize(),
-                initialWeights = listOf(0.28f, 0.38f, 0.34f),
-                minWeights = listOf(0.20f, 0.25f, 0.25f),
-                firstPane = {
-                    StudentRosterPane(
-                        students = filteredStudents,
-                        selectedStudent = selectedStudent,
-                        assessmentMap = assessmentMap,
-                        searchQuery = searchQuery,
-                        onSearchChange = { searchQuery = it },
-                        onSelectStudent = { viewModel.selectStudent(it) }
-                    )
-                },
-                secondPane = {
-                    CriteriaExplorerPane(
-                        criteria = criteria,
-                        activeCriterion = activeCriterion,
-                        scoreSummary = criteria.associate { criterion ->
-                            criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                                ?: "Puanlanmadı / ${criterion.maxPoints}")
-                        },
-                        onSelectCriterion = { crit ->
-                            activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
-                        }
-                    )
-                },
-                thirdPane = {
-                    ScoringControlPane(
-                        student = selectedStudent,
-                        criterion = activeCriterion,
-                        criteria = criteria,
-                        currentAssessment = currentAssessment,
-                        currentScores = currentScores,
-                        noteSaveMessage = noteSaveMessage,
-                        groupGrades = studentGroupGrades,
-                        levels = levels.filter { it.criterionId == activeCriterion?.id },
-                        autoAdvanceQuickScore = autoAdvanceQuickScore,
-                        quickGrading = quickGrading,
-                        onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
-                        onNextCriterion = {
-                            if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
-                        },
-                        onScore = { points, note ->
-                            activeCriterion?.let { crit ->
-                                viewModel.setScore(crit.id, points, note)
-                            }
-                        },
-                        onClearScore = {
-                            activeCriterion?.let { crit ->
-                                viewModel.setScore(crit.id, null, null)
-                            }
-                        },
-                        onNoteChange = { note ->
-                            activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
-                        },
-                        onPrevStudent = { viewModel.previousStudent() },
-                        onNextStudent = { viewModel.nextStudent() },
-                        onUndo = undoSelected
-                    )
-                }
+    if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ArcEmptyState(
+                title = if (selectedClassroom == null || selectedRubric == null)
+                    "Sınıf veya Rubrik Seçilmedi" else "Değerlendirme Seçilmedi",
+                description = if (selectedClassroom == null || selectedRubric == null)
+                    "Başlamak için sınıf ve rubrik seçin."
+                else "Üstteki Değerlendirmeler düğmesinden yeni bir değerlendirme oluşturun ya da eskisini açın."
             )
-        } else {
-            // Adaptive compact layout for portrait/smaller tablets
-            CompactScoringLayout(
+        }
+        return
+    }
+
+    if (selectedRun?.status == "ARCHIVED") {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ArcEmptyState(
+                title = "Arşivlenmiş Değerlendirme",
+                description = "Sonuçlar Raporlar bölümünden incelenebilir. Puanları düzenlemek için Değerlendirmeler menüsünden arşivden çıkarın."
+            )
+        }
+        return
+    }
+
+    // The same responsive three-pane workspace is now used in Group mode.
+    // Individual scoring still owns its session-specific grading and undo actions.
+    UnifiedScoringLayout(
+        mode = ScoringTargetMode.INDIVIDUAL,
+        contextKey = "${selectedClassroom?.id}/${selectedRubric?.id}/${selectedRun?.id}",
+        modifier = Modifier.fillMaxSize(),
+        targetPane = { onSelected ->
+            StudentRosterPane(
                 students = filteredStudents,
                 selectedStudent = selectedStudent,
                 assessmentMap = assessmentMap,
+                searchQuery = searchQuery,
+                onSearchChange = { searchQuery = it },
+                onSelectStudent = {
+                    viewModel.selectStudent(it)
+                    onSelected()
+                }
+            )
+        },
+        criteriaPane = { onSelected ->
+            CriteriaExplorerPane(
                 criteria = criteria,
                 activeCriterion = activeCriterion,
+                scoreSummary = criteria.associate { criterion ->
+                    criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
+                        ?: "Puanlanmadı / ${criterion.maxPoints}")
+                },
+                onSelectCriterion = { chosen ->
+                    activeCriterionIndex = criteria.indexOfFirst { it.id == chosen.id }.coerceAtLeast(0)
+                    onSelected()
+                }
+            )
+        },
+        scoringPane = {
+            ScoringControlPane(
+                runId = selectedRun?.id.orEmpty(),
+                student = selectedStudent,
+                criterion = activeCriterion,
+                criteria = criteria,
                 currentAssessment = currentAssessment,
                 currentScores = currentScores,
                 noteSaveMessage = noteSaveMessage,
+                scoreSaveMessage = scoreSaveMessage,
                 groupGrades = studentGroupGrades,
-                levels = levels,
-                searchQuery = searchQuery,
-                onSearchChange = { searchQuery = it },
-                onSelectStudent = { viewModel.selectStudent(it) },
-                onSelectCriterion = { crit ->
-                    activeCriterionIndex = criteria.indexOfFirst { it.id == crit.id }.coerceAtLeast(0)
-                },
-                onScore = { points, note ->
-                    activeCriterion?.let { crit ->
-                        viewModel.setScore(crit.id, points, note)
-                    }
-                },
-                onClearScore = {
-                    activeCriterion?.let { crit ->
-                        viewModel.setScore(crit.id, null, null)
-                    }
-                },
-                onNoteChange = { note ->
-                    activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
-                },
-                onPrevStudent = { viewModel.previousStudent() },
-                onNextStudent = { viewModel.nextStudent() },
+                levels = levels.filter { it.criterionId == activeCriterion?.id },
                 autoAdvanceQuickScore = autoAdvanceQuickScore,
                 quickGrading = quickGrading,
                 onAutoAdvanceQuickScoreChange = { autoAdvanceQuickScore = it },
                 onNextCriterion = {
                     if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex += 1
                 },
+                onScore = { points, note ->
+                    activeCriterion?.let { crit -> viewModel.setScore(crit.id, points, note) }
+                },
+                onClearScore = {
+                    activeCriterion?.let { crit -> viewModel.setScore(crit.id, null, null) }
+                },
+                onNoteChange = { note ->
+                    activeCriterion?.let { crit -> viewModel.setEvidenceNote(crit.id, note) }
+                },
+                onPrevStudent = { viewModel.previousStudent() },
+                onNextStudent = { viewModel.nextStudent() },
                 onUndo = undoSelected
             )
         }
-    }
+    )
 }
 
 @Composable
@@ -426,142 +351,15 @@ private fun StudentRosterPane(
 }
 
 @Composable
-internal fun CriteriaExplorerPane(
-    criteria: List<CriterionEntity>,
-    activeCriterion: CriterionEntity?,
-    scoreSummary: Map<String, String> = emptyMap(),
-    onSelectCriterion: (CriterionEntity) -> Unit
-) {
-    val colors = ArcTheme.colors
-
-    Surface(modifier = Modifier.fillMaxSize(), color = colors.surface) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Değerlendirme Ölçütleri",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.foreground
-                )
-                ArcBadge(text = "${criteria.size} Ölçüt", variant = ArcBadgeVariant.Accent)
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            if (criteria.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ArcEmptyState(
-                        title = "Ölçüt Bulunamadı",
-                        description = "Seçili rubrikte değerlendirilecek ölçüt bulunmuyor."
-                    )
-                }
-            } else {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    val spacing = 6.dp
-                    val minimumItemHeight = 56.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                    // Show every criterion at once on tablets when the available height permits.
-                    // Large system fonts and smaller windows fall back to scrolling.
-                    val fitsAtOnce = maxHeight >= minimumItemHeight * criteria.size +
-                        spacing * (criteria.size - 1)
-
-                    if (fitsAtOnce) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
-                            verticalArrangement = Arrangement.spacedBy(spacing)
-                        ) {
-                            criteria.forEach { criterion ->
-                                CriterionSelectionRow(
-                                    criterion = criterion,
-                                    isActive = criterion.id == activeCriterion?.id,
-                                    scoreSummary = scoreSummary[criterion.id],
-                                    onClick = { onSelectCriterion(criterion) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
-                            verticalArrangement = Arrangement.spacedBy(spacing)
-                        ) {
-                            items(criteria, key = { it.id }) { criterion ->
-                                CriterionSelectionRow(
-                                    criterion = criterion,
-                                    isActive = criterion.id == activeCriterion?.id,
-                                    scoreSummary = scoreSummary[criterion.id],
-                                    onClick = { onSelectCriterion(criterion) },
-                                    modifier = Modifier.heightIn(min = minimumItemHeight)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CriterionSelectionRow(
-    criterion: CriterionEntity,
-    isActive: Boolean,
-    scoreSummary: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = ArcTheme.colors
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("rubricCriterion-${criterion.id}")
-            .semantics { selected = isActive }
-            .clickable(role = Role.Button, onClickLabel = "Ölçütü seç", onClick = onClick),
-        shape = ArcTheme.shapes.control,
-        color = if (isActive) colors.surfaceRaised else colors.surface,
-        border = BorderStroke(
-            if (isActive) 2.dp else 1.dp,
-            if (isActive) colors.accent else colors.borderSubtle
-        )
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${criterion.orderIndex + 1}. ${criterion.title}",
-                fontSize = 15.sp,
-                lineHeight = 19.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                color = colors.foreground,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (scoreSummary != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(scoreSummary, fontSize = 12.sp, color = colors.textSecondary,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
 private fun ScoringControlPane(
+    runId: String,
     student: StudentEntity?,
     criterion: CriterionEntity?,
     criteria: List<CriterionEntity>,
     currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
     currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
     noteSaveMessage: String?,
+    scoreSaveMessage: String?,
     groupGrades: List<StudentGroupGrade>,
     levels: List<CriterionLevelEntity>,
     autoAdvanceQuickScore: Boolean,
@@ -708,7 +506,9 @@ private fun ScoringControlPane(
 
                     val hasNextCriterion =
                         criteria.indexOfFirst { it.id == criterion.id } in 0 until criteria.lastIndex
-                    var showPrecision by remember(student.id, criterion.id) { mutableStateOf(false) }
+                    var showNoteEditor by remember(runId, student.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
 
                     ArcCard(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(14.dp)) {
@@ -731,74 +531,29 @@ private fun ScoringControlPane(
                             }
 
                             Spacer(Modifier.height(14.dp))
-                            QuickScoreControls(
-                                maxPoints = maxPoints,
+                            CriterionGradingEditor(
+                                contextKey = "individual/$runId/${student.id}/${criterion.id}",
+                                criterion = criterion,
                                 points = points,
                                 levels = levels,
                                 quickGrading = quickGrading,
                                 autoAdvance = autoAdvanceQuickScore,
                                 onAutoAdvanceChange = onAutoAdvanceQuickScoreChange,
                                 hasNextCriterion = hasNextCriterion,
+                                noteEditorOpen = showNoteEditor,
                                 onNextCriterion = onNextCriterion,
-                                onChooseScore = { chosen ->
-                                    // setScore owns the original student/rubric/criterion IDs.
-                                    // Navigation only changes the selected criterion after dispatch.
+                                onScore = { chosen ->
                                     onScore(chosen, currentScore?.evidenceNote)
-                                    if (autoAdvanceQuickScore && hasNextCriterion) onNextCriterion()
-                                }
+                                },
+                                onClearScore = onClearScore
                             )
-
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                ArcButton(
-                                    text = if (showPrecision) "Hassas ayarı gizle" else "Hassas puan",
-                                    onClick = { showPrecision = !showPrecision },
-                                    size = ArcButtonSize.Sm,
-                                    variant = ArcButtonVariant.Outline,
-                                    modifier = Modifier.weight(1f)
+                            if (scoreSaveMessage != null) {
+                                Text(
+                                    "Puan: $scoreSaveMessage",
+                                    fontSize = 12.sp,
+                                    color = if (scoreSaveMessage == "Kaydedilemedi")
+                                        ArcTheme.colors.danger else ArcTheme.colors.textSecondary
                                 )
-                                ArcButton(
-                                    text = "Puanı kaldır",
-                                    onClick = onClearScore,
-                                    enabled = points != null,
-                                    size = ArcButtonSize.Sm,
-                                    variant = ArcButtonVariant.Ghost
-                                )
-                            }
-
-                            if (showPrecision) {
-                                Spacer(Modifier.height(12.dp))
-                                // Preview is local. Room is updated only on slider release.
-                                var sliderPreview by remember(student.id, criterion.id) {
-                                    mutableFloatStateOf((points ?: 0).toFloat())
-                                }
-                                LaunchedEffect(student.id, criterion.id, points) {
-                                    sliderPreview = (points ?: 0).toFloat()
-                                }
-                                if (maxPoints > 0) {
-                                    ArcElasticSlider(
-                                        value = sliderPreview,
-                                        onValueChange = { sliderPreview = it },
-                                        onValueCommit = { onScore(it.roundToInt(), currentScore?.evidenceNote) },
-                                        step = 1f,
-                                        valueRange = 0f..maxPoints.toFloat(),
-                                        label = "Hassas puan",
-                                        formatValue = { "${it.roundToInt()} / $maxPoints" }
-                                    )
-                                }
-                                key(student.id, criterion.id) {
-                                    ArcNumberField(
-                                        value = points,
-                                        onValueChange = { onScore(it, currentScore?.evidenceNote) },
-                                        min = 0,
-                                        max = maxPoints,
-                                        label = "Tam sayı"
-                                    )
-                                }
                             }
                         }
                     }
@@ -818,15 +573,12 @@ private fun ScoringControlPane(
                     }
 
                     // Evidence / Observation Note
-                    var noteText by remember(student.id, criterion.id) {
+                    var noteText by remember(runId, student.id, criterion.id) {
                         mutableStateOf(currentScore?.evidenceNote ?: "")
                     }
-                    var noteTouched by remember(student.id, criterion.id) { mutableStateOf(false) }
-                    LaunchedEffect(student.id, criterion.id, currentScore?.evidenceNote) {
+                    var noteTouched by remember(runId, student.id, criterion.id) { mutableStateOf(false) }
+                    LaunchedEffect(runId, student.id, criterion.id, currentScore?.evidenceNote) {
                         if (!noteTouched) noteText = currentScore?.evidenceNote ?: ""
-                    }
-                    var showNoteEditor by remember(student.id, criterion.id) {
-                        mutableStateOf(false)
                     }
                     ArcButton(
                         text = if (showNoteEditor) "Gözlem notunu gizle"
@@ -865,187 +617,12 @@ private fun ScoringControlPane(
 
             Spacer(Modifier.height(12.dp))
 
-            // P0 Arc tablet toolbar: visible navigation + actual undo action.
-            // Kept outside the scrolling criterion content.
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                ArcFloatingButtonGroup {
-                    ArcButton(
-                        text = "Önceki",
-                        onClick = onPrevStudent,
-                        variant = ArcButtonVariant.Outline,
-                        size = ArcButtonSize.Sm
-                    )
-                    ArcButton(
-                        text = "Geri Al",
-                        onClick = onUndo,
-                        variant = ArcButtonVariant.Secondary,
-                        size = ArcButtonSize.Sm
-                    )
-                    ArcButton(
-                        text = "Sonraki",
-                        onClick = onNextStudent,
-                        variant = ArcButtonVariant.Primary,
-                        size = ArcButtonSize.Sm
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun QuickScoreControls(
-    maxPoints: Int,
-    points: Int?,
-    levels: List<CriterionLevelEntity>,
-    autoAdvance: Boolean,
-    onAutoAdvanceChange: (Boolean) -> Unit,
-    hasNextCriterion: Boolean,
-    onNextCriterion: () -> Unit,
-    onChooseScore: (Int) -> Unit,
-    quickGrading: QuickGradingPreference = QuickGradingPreference()
-) {
-    val colors = ArcTheme.colors
-    val options = remember(maxPoints, levels) {
-        quickScorePresets(maxPoints, levels.map { it.points })
-    }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            if (quickGrading.qualitativeEnabled) "Niteliksel hızlı puanlama"
-            else if (levels.isNotEmpty()) "Hızlı düzey seçimi"
-            else "Hızlı puan • tek dokunuş",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.textSecondary
-        )
-        Spacer(Modifier.height(7.dp))
-        if (quickGrading.qualitativeEnabled) {
-            val choices = remember(maxPoints, quickGrading.levelCount, quickGrading.appearance) {
-                qualitativeQuickOptions(
-                    maxPoints = maxPoints,
-                    levelCount = quickGrading.levelCount,
-                    appearance = quickGrading.appearance
-                )
-            }
-            ArcRadioCards(
-                options = choices,
-                selectedOption = choices.firstOrNull { points != null && it.points == points },
-                onOptionSelected = { onChooseScore(it.points) },
-                modifier = Modifier.fillMaxWidth().testTag("qualitativeQuickScoreOptions"),
-                titleProvider = { it.title(quickGrading.appearance) },
-                badgeProvider = { "${it.points} / $maxPoints" }
-            )
-        } else {
-            ArcSegmentedControl(
-                items = options.map { "$it P" },
-                selectedIndex = options.indexOf(points),
-                onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
-                modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
-            )
-        }
-        Spacer(Modifier.height(7.dp))
-        ArcSwitch(
-            checked = autoAdvance,
-            onCheckedChange = onAutoAdvanceChange,
-            label = "Otomatik sonraki ölçüt"
-        )
-        if (hasNextCriterion && !autoAdvance) {
-            ArcButton(
-                text = "Sonraki ölçüt",
-                onClick = onNextCriterion,
-                modifier = Modifier.fillMaxWidth(),
-                variant = ArcButtonVariant.Ghost,
-                size = ArcButtonSize.Sm
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactScoringLayout(
-    students: List<StudentEntity>,
-    selectedStudent: StudentEntity?,
-    assessmentMap: Map<String, com.knigdelioglu.puanla.data.local.AssessmentEntity>,
-    criteria: List<CriterionEntity>,
-    activeCriterion: CriterionEntity?,
-    currentAssessment: com.knigdelioglu.puanla.data.local.AssessmentEntity?,
-    currentScores: Map<String, com.knigdelioglu.puanla.data.local.CriterionScoreEntity>,
-    noteSaveMessage: String?,
-    groupGrades: List<StudentGroupGrade>,
-    levels: List<com.knigdelioglu.puanla.data.local.CriterionLevelEntity>,
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
-    onSelectStudent: (StudentEntity) -> Unit,
-    onSelectCriterion: (CriterionEntity) -> Unit,
-    onScore: (Int?, String?) -> Unit,
-    onClearScore: () -> Unit,
-    onNoteChange: (String) -> Unit,
-    onPrevStudent: () -> Unit,
-    onNextStudent: () -> Unit,
-    autoAdvanceQuickScore: Boolean,
-    quickGrading: QuickGradingPreference,
-    onAutoAdvanceQuickScoreChange: (Boolean) -> Unit,
-    onNextCriterion: () -> Unit,
-    onUndo: () -> Unit
-) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: Öğrenciler, 1: Ölçütler, 2: Puanlama
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        ArcExpandingButtonGroup(
-            items = listOf(
-                "Öğrenciler" to { Icon(Icons.Default.FormatListNumbered, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                "Ölçütler" to { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                "Puanlama" to { Icon(Icons.Default.Grading, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            ),
-            selectedIndex = selectedTab,
-            onSelectIndex = { selectedTab = it },
-            modifier = Modifier.padding(12.dp)
-        )
-
-        when (selectedTab) {
-            0 -> StudentRosterPane(
-                students = students,
-                selectedStudent = selectedStudent,
-                assessmentMap = assessmentMap,
-                searchQuery = searchQuery,
-                onSearchChange = onSearchChange,
-                onSelectStudent = {
-                    onSelectStudent(it)
-                    selectedTab = 2 // jump to scoring
-                }
-            )
-            1 -> CriteriaExplorerPane(
-                criteria = criteria,
-                activeCriterion = activeCriterion,
-                scoreSummary = criteria.associate { criterion ->
-                    criterion.id to (currentScores[criterion.id]?.points?.let { "$it / ${criterion.maxPoints}" }
-                        ?: "Puanlanmadı / ${criterion.maxPoints}")
-                },
-                onSelectCriterion = {
-                    onSelectCriterion(it)
-                    selectedTab = 2 // jump to scoring
-                }
-            )
-            2 -> ScoringControlPane(
-                student = selectedStudent,
-                criterion = activeCriterion,
-                criteria = criteria,
-                currentAssessment = currentAssessment,
-                currentScores = currentScores,
-                noteSaveMessage = noteSaveMessage,
-                groupGrades = groupGrades,
-                levels = levels.filter { it.criterionId == activeCriterion?.id },
-                autoAdvanceQuickScore = autoAdvanceQuickScore,
-                quickGrading = quickGrading,
-                onAutoAdvanceQuickScoreChange = onAutoAdvanceQuickScoreChange,
-                onNextCriterion = onNextCriterion,
-                onScore = onScore,
-                onClearScore = onClearScore,
-                onNoteChange = onNoteChange,
-                onPrevStudent = onPrevStudent,
-                onNextStudent = onNextStudent,
-                onUndo = onUndo
+            // Footer stays visible while the criterion body scrolls.
+            ScoringTargetToolbar(
+                mode = ScoringTargetMode.INDIVIDUAL,
+                onPrevious = onPrevStudent,
+                onUndo = onUndo,
+                onNext = onNextStudent
             )
         }
     }

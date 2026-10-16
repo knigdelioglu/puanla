@@ -43,8 +43,15 @@ import java.util.Locale
 fun EvaluationRunSheet(
     viewModel: PuanlaViewModel,
     isOpen: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    groupMode: Boolean = false
 ) {
+    // Both modes use the same entry point and visible "Değerlendirmeler" workflow.
+    // Their session entities, write paths and undo histories deliberately remain separate.
+    if (groupMode) {
+        GroupEvaluationRunsContent(viewModel, isOpen, onDismiss)
+        return
+    }
     val classroom by viewModel.selectedClassroom.collectAsState()
     val rubric by viewModel.selectedRubric.collectAsState()
     val classrooms by viewModel.classrooms.collectAsState()
@@ -251,4 +258,144 @@ private fun runDescription(run: AssessmentRunEntity): String {
     val date = Instant.ofEpochMilli(run.createdAt).atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("tr-TR")))
     return "$date · ${if (run.status == "ARCHIVED") "Arşivlendi" else "Aktif"}"
+}
+
+/**
+ * Mirrors the individual evaluation chooser without mixing group sessions into
+ * AssessmentRunEntity. Group sessions are scoped to one classroom and rubric.
+ */
+@Composable
+private fun GroupEvaluationRunsContent(
+    viewModel: PuanlaViewModel,
+    isOpen: Boolean,
+    onDismiss: () -> Unit
+) {
+    val classroom by viewModel.selectedClassroom.collectAsState()
+    val rubric by viewModel.selectedRubric.collectAsState()
+    val sessions by viewModel.groupSessions.collectAsState()
+    val selectedSession by viewModel.selectedGroupSession.collectAsState()
+    val groups by viewModel.groupTasks.collectAsState()
+    val assessments by viewModel.groupAssessments.collectAsState()
+    var newRunForm by remember { mutableStateOf(false) }
+    var newTitle by remember(classroom?.id, rubric?.id) { mutableStateOf("") }
+
+    ArcBottomSheet(isOpen = isOpen, onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 650.dp)
+                .verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Değerlendirmelerim", color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
+            Text(
+                "${classroom?.name ?: "Sınıf seçilmedi"} · ${rubric?.title ?: "Rubrik seçilmedi"} · Grup",
+                color = ArcTheme.colors.textSecondary
+            )
+            if (classroom == null || rubric == null) {
+                Text("Önce bir sınıf ve rubrik seçin.", color = ArcTheme.colors.textSecondary)
+            } else {
+                if (!newRunForm) {
+                    ArcButton(
+                        text = "+ Yeni değerlendirme",
+                        onClick = {
+                            newTitle = "${rubric?.title.orEmpty()} · " +
+                                LocalDate.now().format(
+                                    DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("tr-TR"))
+                                )
+                            newRunForm = true
+                        },
+                        variant = ArcButtonVariant.Primary
+                    )
+                } else {
+                    ArcCard {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("Yeni değerlendirme", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                            ArcInput(value = newTitle, onValueChange = { newTitle = it }, label = "Değerlendirme adı")
+                            Text(
+                                "Bu grup değerlendirmesi yalnızca seçili sınıf ve rubrik için oluşturulur.",
+                                color = ArcTheme.colors.textSecondary
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                ArcButton(
+                                    text = "Vazgeç", onClick = { newRunForm = false },
+                                    variant = ArcButtonVariant.Ghost
+                                )
+                                ArcButton(
+                                    text = "Oluştur",
+                                    enabled = newTitle.isNotBlank(),
+                                    onClick = {
+                                        viewModel.createGroupSession(newTitle.trim())
+                                        newRunForm = false
+                                        onDismiss()
+                                    },
+                                    variant = ArcButtonVariant.Primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (sessions.isEmpty()) {
+                    Text(
+                        "Bu sınıfta henüz grup değerlendirmesi yok. Yeni değerlendirme oluşturup başlayın.",
+                        color = ArcTheme.colors.textSecondary
+                    )
+                } else {
+                    Text("Bu sınıftaki değerlendirmeler", color = ArcTheme.colors.foreground, fontWeight = FontWeight.SemiBold)
+                    sessions.forEach { item ->
+                        ArcCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(item.title, color = ArcTheme.colors.foreground, fontWeight = FontWeight.SemiBold)
+                                    val date = Instant.ofEpochMilli(item.createdAt)
+                                        .atZone(ZoneId.systemDefault())
+                                        .format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("tr-TR")))
+                                    Text(date, color = ArcTheme.colors.textSecondary)
+                                }
+                                ArcButton(
+                                    text = if (selectedSession?.id == item.id) "Seçili" else "Aç",
+                                    enabled = selectedSession?.id != item.id,
+                                    onClick = {
+                                        viewModel.selectGroupSession(item)
+                                        onDismiss()
+                                    },
+                                    variant = if (selectedSession?.id == item.id)
+                                        ArcButtonVariant.Outline else ArcButtonVariant.Primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (selectedSession != null) {
+                    HorizontalDivider()
+                    Text(
+                        "Seçili değerlendirme · ${selectedSession?.title}",
+                        color = ArcTheme.colors.foreground,
+                        fontWeight = FontWeight.Bold
+                    )
+                    val completed = assessments.count { it.isCompleted }
+                    val partial = assessments.count { !it.isCompleted && it.scoredCount > 0 }
+                    Text(
+                        "$completed / ${groups.size} grup tamamlandı" +
+                            if (partial > 0) " · $partial kısmi" else "",
+                        color = ArcTheme.colors.textSecondary
+                    )
+                    if (groups.isEmpty()) {
+                        Text(
+                            "Puanlamaya başlamak için Grup modundaki Yeni Grup veya Rastgele Grup Oluştur seçeneğini kullanın.",
+                            color = ArcTheme.colors.textSecondary
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
 }

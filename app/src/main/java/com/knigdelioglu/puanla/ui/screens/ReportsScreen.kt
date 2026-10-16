@@ -19,11 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,12 +46,14 @@ import com.knigdelioglu.arc.compose.controls.ArcDateRangePicker
 import com.knigdelioglu.arc.compose.controls.ArcCalendar
 import com.knigdelioglu.arc.compose.controls.ArcSelect
 import com.knigdelioglu.arc.compose.controls.ArcSplitButton
+import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcDropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
+import com.knigdelioglu.puanla.domain.report.canExportSelectedReport
 import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
 import com.knigdelioglu.puanla.domain.export.PdfReportWriter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
@@ -70,7 +67,6 @@ import com.knigdelioglu.arc.compose.datavis.ArcStatsBand
 import com.knigdelioglu.arc.compose.datavis.ArcUsageMeter
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
-import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCopyButton
 import com.knigdelioglu.arc.compose.display.ArcComparisonTable
@@ -94,6 +90,8 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val selectedRun by viewModel.selectedRun.collectAsState()
     val groupSessions by viewModel.groupSessions.collectAsState()
     val selectedGroupSession by viewModel.selectedGroupSession.collectAsState()
+    val groupAssessments by viewModel.groupAssessments.collectAsState()
+    val reportsGroupMode by viewModel.reportsGroupMode.collectAsState()
     val students by viewModel.students.collectAsState()
     val classAssessments by viewModel.classAssessments.collectAsState()
 
@@ -107,6 +105,12 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
     var showPdfDialog by remember { mutableStateOf(false) }
     var groupReportMode by remember { mutableStateOf(false) }
+    var pdfRequestedGroupSessionId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedGroupSessionTitle by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedClassroomId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRubricId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRunId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRunTitle by remember { mutableStateOf<String?>(null) }
     var pdfGenerating by remember { mutableStateOf(false) }
     var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
     var pdfAllClasses by remember { mutableStateOf(false) }
@@ -264,148 +268,195 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Top Header
+        // Reports follow the most recently used scoring mode. Session data is
+        // still separate; switching modes never copies or combines grades.
+        ArcSegmentedControl(
+            items = listOf("Bireysel", "Grup"),
+            selectedIndex = if (reportsGroupMode) 1 else 0,
+            onSelectIndex = { viewModel.reportsGroupMode.value = it == 1 },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Değerlendirme Raporları & Analiz",
+                    text = "Değerlendirme Raporları",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.foreground
                 )
                 Text(
-                    text = "${selectedClassroom?.name ?: "Sınıf"} • ${selectedRun?.title ?: "Değerlendirme seçilmedi"}",
+                    text = "${selectedClassroom?.name ?: "Sınıf"} • " +
+                        if (reportsGroupMode)
+                            (selectedGroupSession?.title ?: "Grup değerlendirmesi seçilmedi")
+                        else (selectedRun?.title ?: "Bireysel değerlendirme seçilmedi"),
                     fontSize = 14.sp,
                     color = colors.textSecondary
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val hasReportSession = canExportSelectedReport(
+                    groupMode = reportsGroupMode,
+                    classroomId = selectedClassroom?.id,
+                    rubricId = selectedRubric?.id,
+                    individualRunId = selectedRun?.id,
+                    groupSessionId = selectedGroupSession?.id
+                )
                 ArcButton(
                     text = "PDF Raporu",
                     onClick = {
-                        groupReportMode = false
+                        groupReportMode = reportsGroupMode
+                        pdfRequestedGroupSessionId = if (reportsGroupMode) selectedGroupSession?.id else null
+                        pdfRequestedGroupSessionTitle = if (reportsGroupMode) selectedGroupSession?.title else null
+                        pdfRequestedClassroomId = selectedClassroom?.id
+                        pdfRequestedRubricId = selectedRubric?.id
+                        pdfRequestedRunId = if (!reportsGroupMode) selectedRun?.id else null
+                        pdfRequestedRunTitle = if (!reportsGroupMode) selectedRun?.title else null
+                        if (reportsGroupMode) pdfAllClasses = false
                         showPdfDialog = true
                     },
-                    enabled = selectedClassroom != null && selectedRun != null && !pdfGenerating,
+                    enabled = hasReportSession && !pdfGenerating,
                     variant = ArcButtonVariant.Outline,
                     size = ArcButtonSize.Md
                 )
                 Box {
-                ArcSplitButton(
-                    onPrimaryClick = {
-                    if (!csvGenerating) scope.launch {
-                        csvGenerating = true
-                        try {
-                            val csv = viewModel.generateCsv()
-                            if (csv.isBlank()) error("Dışa aktarılacak veri yok.")
-                            generatedCsvContent = csv
-                            isCsvPreviewDialogOpen = true
-                        } catch (e: Exception) {
-                            viewModel.showToast("CSV oluşturulamadı: ${e.message}")
-                        } finally {
-                            csvGenerating = false
-                        }
-                    }
-                },
-                    onMenuClick = { csvActionsOpen = true },
-                    enabled = selectedClassroom != null && selectedRun != null && !csvGenerating,
-                    variant = ArcButtonVariant.Primary,
-                    size = ArcButtonSize.Md,
-                    primaryContent = { Text("CSV Dışa Aktar") }
-                )
-                ArcDropdownMenu(
-                    expanded = csvActionsOpen,
-                    onDismissRequest = { csvActionsOpen = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("CSV'yi panoya kopyala") },
-                        onClick = {
-                            csvActionsOpen = false
-                            if (!csvGenerating) scope.launch {
+                    ArcSplitButton(
+                        onPrimaryClick = {
+                            val requestedGroupMode = reportsGroupMode
+                            val requestedGroupSessionId = selectedGroupSession?.id
+                            val requestedGroupTitle = selectedGroupSession?.title.orEmpty()
+                            val requestedClassName = selectedClassroom?.name.orEmpty()
+                            val requestedClassroomId = selectedClassroom?.id
+                            val requestedRubricId = selectedRubric?.id
+                            val requestedRunId = selectedRun?.id
+                            if (!csvGenerating && hasReportSession) scope.launch {
                                 csvGenerating = true
                                 try {
-                                    val csv = viewModel.generateCsv()
+                                    val csv = if (requestedGroupMode) {
+                                        val sessionId = requireNotNull(requestedGroupSessionId) {
+                                            "Grup oturumu seçilmedi."
+                                        }
+                                        viewModel.generateGroupCsvForSession(sessionId)
+                                    } else {
+                                        viewModel.generateCsvForRun(
+                                            requireNotNull(requestedClassroomId),
+                                            requireNotNull(requestedRubricId),
+                                            requireNotNull(requestedRunId)
+                                        )
+                                    }
                                     require(csv.isNotBlank()) { "Dışa aktarılacak veri yok." }
-                                    clipboard.setText(AnnotatedString(csv))
-                                    viewModel.showToast("Güncel sınıf CSV verisi panoya kopyalandı.")
+                                    generatedCsvContent = csv
+                                    val stamp = LocalDateTime.now().format(
+                                        DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS")
+                                    )
+                                    csvSuggestedFilename = if (requestedGroupMode) {
+                                        "puanla-grup-${filenamePart(requestedClassName)}-" +
+                                            "${filenamePart(requestedGroupTitle)}-$stamp.csv"
+                                    } else {
+                                        "puanla-degerlendirme-${LocalDate.now()}.csv"
+                                    }
+                                    isCsvPreviewDialogOpen = true
                                 } catch (e: Exception) {
-                                    viewModel.showToast("CSV kopyalanamadı: ${e.message}")
+                                    viewModel.showToast("CSV oluşturulamadı: ${e.message}")
                                 } finally {
                                     csvGenerating = false
                                 }
                             }
-                        }
+                        },
+                        onMenuClick = { csvActionsOpen = true },
+                        enabled = hasReportSession && !csvGenerating,
+                        variant = ArcButtonVariant.Primary,
+                        size = ArcButtonSize.Md,
+                        primaryContent = { Text("CSV Dışa Aktar") }
                     )
-                }
+                    ArcDropdownMenu(
+                        expanded = csvActionsOpen,
+                        onDismissRequest = { csvActionsOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("CSV'yi panoya kopyala") },
+                            onClick = {
+                                csvActionsOpen = false
+                                val requestedGroupMode = reportsGroupMode
+                                val requestedGroupSessionId = selectedGroupSession?.id
+                                val requestedClassroomId = selectedClassroom?.id
+                                val requestedRubricId = selectedRubric?.id
+                                val requestedRunId = selectedRun?.id
+                                if (!csvGenerating && hasReportSession) scope.launch {
+                                    csvGenerating = true
+                                    try {
+                                        val csv = if (requestedGroupMode) {
+                                            val sessionId = requireNotNull(requestedGroupSessionId) {
+                                                "Grup oturumu seçilmedi."
+                                            }
+                                            viewModel.generateGroupCsvForSession(sessionId)
+                                        } else viewModel.generateCsvForRun(
+                                            requireNotNull(requestedClassroomId),
+                                            requireNotNull(requestedRubricId),
+                                            requireNotNull(requestedRunId)
+                                        )
+                                        require(csv.isNotBlank()) { "Dışa aktarılacak veri yok." }
+                                        clipboard.setText(AnnotatedString(csv))
+                                        viewModel.showToast("Seçili değerlendirme CSV verisi panoya kopyalandı.")
+                                    } catch (e: Exception) {
+                                        viewModel.showToast("CSV kopyalanamadı: ${e.message}")
+                                    } finally {
+                                        csvGenerating = false
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
 
-        if (selectedClassroom != null && selectedRubric != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Grup değerlendirmesi raporu",
-                    color = colors.foreground, fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
+        if (reportsGroupMode) {
+            // Individual statistics must never be shown as if they described
+            // the currently selected group session.
+            if (selectedClassroom == null || selectedRubric == null) {
+                ArcEmptyState(
+                    title = "Sınıf veya rubrik seçilmedi",
+                    description = "Grup raporu için önce bir sınıf ve rubrik seçin."
                 )
+            } else {
                 if (groupSessions.isEmpty()) {
-                    Text("Bu sınıf ve rubrik için grup oturumu bulunmuyor.",
-                        color = colors.textSecondary, fontSize = 12.sp)
+                    ArcEmptyState(
+                        title = "Grup değerlendirmesi bulunamadı",
+                        description = "Puanlama > Grup alanından değerlendirme oluşturun."
+                    )
                 } else {
                     ArcSelect(
                         selectedItem = selectedGroupSession,
                         items = groupSessions,
                         onItemSelected = { viewModel.selectGroupSession(it) },
                         labelProvider = { it.title },
-                        placeholder = "Grup oturumu seç",
+                        placeholder = "Grup değerlendirmesi seç",
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ArcButton(
-                            text = "Grup PDF",
-                            enabled = selectedGroupSession != null && !pdfGenerating,
-                            onClick = {
-                                groupReportMode = true
-                                pdfAllClasses = false
-                                showPdfDialog = true
-                            },
-                            variant = ArcButtonVariant.Outline,
-                            size = ArcButtonSize.Md
-                        )
-                        ArcButton(
-                            text = "Grup CSV",
-                            enabled = selectedGroupSession != null && !csvGenerating,
-                            onClick = {
-                                val sessionId = selectedGroupSession?.id
-                                if (sessionId != null) scope.launch {
-                                    csvGenerating = true
-                                    try {
-                                        generatedCsvContent = withContext(Dispatchers.IO) {
-                                            viewModel.repository.generateGroupCsvExport(sessionId)
-                                        }
-                                        val sessionTitle = selectedGroupSession?.title.orEmpty()
-                                        val className = selectedClassroom?.name.orEmpty()
-                                        val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"))
-                                        csvSuggestedFilename = "puanla-grup-${filenamePart(className)}-${filenamePart(sessionTitle)}-$stamp.csv"
-                                        isCsvPreviewDialogOpen = true
-                                    } catch (e: Exception) {
-                                        viewModel.showToast("Grup CSV hazırlanamadı: ${e.message}")
-                                    } finally { csvGenerating = false }
-                                }
-                            },
-                            variant = ArcButtonVariant.Primary,
-                            size = ArcButtonSize.Md
-                        )
+                    val completedGroups = groupAssessments.count { it.isCompleted }
+                    val partialGroups = groupAssessments.count {
+                        !it.isCompleted && it.scoredCount > 0
                     }
-                    Text("Grup puanı her üyeye ölçütleriyle aktarılır; bireysel sınav kayıtları değişmez.",
-                        fontSize = 12.sp, color = colors.textSecondary)
+                    Text(
+                        "${groupAssessments.size} değerlendirilen grup • " +
+                            "$completedGroups tamamlanan • $partialGroups kısmi",
+                        fontSize = 14.sp,
+                        color = colors.textSecondary
+                    )
+                    Text(
+                        "Grup raporu seçili oturumun güncel sonuçlarını içerir; " +
+                            "bireysel notlar değişmez. Eksik ölçütler kesin not değildir.",
+                        fontSize = 12.sp, color = colors.textSecondary
+                    )
                 }
             }
+            return@Column
         }
 
         if (selectedClassroom == null || selectedRubric == null || selectedRun == null) {
@@ -715,16 +766,31 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         ArcButton(
                             text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Kaydet",
                             onClick = {
+                                val requestedGroupMode = groupReportMode
+                                val requestedGroupSessionId = pdfRequestedGroupSessionId
+                                val requestedGroupTitle = pdfRequestedGroupSessionTitle
+                                val requestedClassroomId = pdfRequestedClassroomId
+                                val requestedRubricId = pdfRequestedRubricId
+                                val requestedRunId = pdfRequestedRunId
+                                val requestedRunTitle = pdfRequestedRunTitle
+                                val requestedAllClasses = pdfAllClasses
                                 if (!pdfGenerating) scope.launch {
                                     pdfGenerating = true
                                     try {
                                         val snapshots = withContext(Dispatchers.IO) {
-                                            if (groupReportMode) {
-                                                val sessionId = requireNotNull(selectedGroupSession?.id) {
+                                            if (requestedGroupMode) {
+                                                val sessionId = requireNotNull(requestedGroupSessionId) {
                                                     "Grup oturumu seçilmedi."
                                                 }
-                                                listOf(viewModel.repository.generateGroupPdfReportSnapshot(sessionId))
-                                            } else viewModel.generatePdfSnapshots(pdfAllClasses)
+                                                listOf(viewModel.generateGroupPdfForSession(sessionId))
+                                            } else {
+                                                viewModel.generatePdfSnapshotsForRun(
+                                                    classroomId = requireNotNull(requestedClassroomId),
+                                                    rubricId = requireNotNull(requestedRubricId),
+                                                    runId = requireNotNull(requestedRunId),
+                                                    allClassrooms = requestedAllClasses
+                                                )
+                                            }
                                         }
                                         require(snapshots.isNotEmpty() && snapshots.all { it.criteria.isNotEmpty() }) {
                                             "Rubrikte ölçüt bulunamadı."
@@ -738,7 +804,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${if (groupReportMode) "grup" else if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (groupReportMode) selectedGroupSession?.title else selectedRun?.title)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${if (requestedGroupMode) "grup" else if (requestedAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (requestedGroupMode) requestedGroupTitle else requestedRunTitle)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
