@@ -42,6 +42,9 @@ internal fun UnifiedScoringLayout(
     criteriaPane: @Composable (onSelected: () -> Unit) -> Unit,
     scoringPane: @Composable () -> Unit
 ) {
+    // Keep compact navigation across temporary wide layouts (rotation,
+    // split-screen resizing and DeX), but reset for a different session/mode.
+    var selectedTab by rememberSaveable(mode, contextKey) { mutableIntStateOf(0) }
     BoxWithConstraints(modifier = modifier) {
         if (maxWidth >= 900.dp) {
             ArcResizablePanels(
@@ -55,7 +58,6 @@ internal fun UnifiedScoringLayout(
         } else {
             // The tab is scoped to mode + classroom/rubric/session, not a target:
             // "Next student/group" must not throw the teacher out of scoring.
-            var selectedTab by rememberSaveable(mode, contextKey) { mutableIntStateOf(0) }
             Column(modifier = Modifier.fillMaxSize().testTag("unifiedScoringLayoutCompact")) {
                 ArcExpandingButtonGroup(
                     items = listOf(
