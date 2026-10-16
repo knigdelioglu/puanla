@@ -210,7 +210,7 @@ class GroupModeScoringTest {
 
             val group = GroupTaskEntity(
                 id = "group", classroomId = "c", rubricId = "",
-                title = "Grup 1", memberStudentIdsJson = "[\\"student\\"]", checklistJson = "[]"
+                title = "Grup 1", memberStudentIdsJson = "[\"student\"]", checklistJson = "[]"
             )
             repo.saveGroupTask(group)
             val groupSession = repo.createGroupSession("c", "rubric", "Grup Ekim")
