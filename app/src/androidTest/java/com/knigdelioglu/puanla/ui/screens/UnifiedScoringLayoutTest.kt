@@ -2,6 +2,9 @@ package com.knigdelioglu.puanla.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
@@ -61,4 +64,32 @@ class UnifiedScoringLayoutTest {
         rule.runOnIdle { context.value = "class/rubric/run-2" }
         rule.onNodeWithText("Birimi seç").assertIsDisplayed()
     }
+    @Test
+    fun wideTabletLayoutKeepsAllThreePanesForBothModes() {
+        val mode = mutableStateOf(ScoringTargetMode.INDIVIDUAL)
+        rule.setContent {
+            ArcTheme(reducedMotion = true) {
+                // Force the wide-layout branch even on a phone-sized CI emulator;
+                // a physical 11-inch tablet is checked separately.
+                UnifiedScoringLayout(
+                    mode = mode.value,
+                    contextKey = "class/rubric/run-wide",
+                    modifier = Modifier.requiredWidth(1000.dp).height(600.dp),
+                    targetPane = { _ -> Text("Hedefler sütunu") },
+                    criteriaPane = { _ -> Text("Ölçütler sütunu") },
+                    scoringPane = { Text("Puanlama sütunu") }
+                )
+            }
+        }
+        rule.onNodeWithTag("unifiedScoringLayoutWide").assertExists()
+        rule.onNodeWithText("Hedefler sütunu").assertExists()
+        rule.onNodeWithText("Ölçütler sütunu").assertExists()
+        rule.onNodeWithText("Puanlama sütunu").assertExists()
+        rule.runOnIdle { mode.value = ScoringTargetMode.GROUP }
+        rule.onNodeWithTag("unifiedScoringLayoutWide").assertExists()
+        rule.onNodeWithText("Hedefler sütunu").assertExists()
+        rule.onNodeWithText("Ölçütler sütunu").assertExists()
+        rule.onNodeWithText("Puanlama sütunu").assertExists()
+    }
+
 }
