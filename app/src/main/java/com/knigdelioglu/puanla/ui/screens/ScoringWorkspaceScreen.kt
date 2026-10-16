@@ -1,19 +1,15 @@
 package com.knigdelioglu.puanla.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,17 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.filled.Grading
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,30 +35,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.knigdelioglu.arc.compose.controls.ArcButton
-import com.knigdelioglu.arc.compose.controls.ArcExpandingButtonGroup
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
-import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
 import com.knigdelioglu.arc.compose.controls.ArcCombobox
-import com.knigdelioglu.arc.compose.display.ArcPopover
-import com.knigdelioglu.arc.compose.controls.ArcFloatingButtonGroup
-import com.knigdelioglu.arc.compose.controls.ArcNumberField
 import com.knigdelioglu.arc.compose.controls.ArcSearchField
-import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
-import com.knigdelioglu.arc.compose.controls.ArcRadioCards
-import com.knigdelioglu.arc.compose.controls.ArcSwitch
 import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
 import com.knigdelioglu.arc.compose.display.ArcAvatar
@@ -83,20 +55,14 @@ import com.knigdelioglu.arc.compose.display.ArcAccordion
 import com.knigdelioglu.arc.compose.display.ArcCard
 import com.knigdelioglu.arc.compose.display.ArcEmptyState
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
-import com.knigdelioglu.arc.compose.navigation.ArcBreadcrumb
-import com.knigdelioglu.arc.compose.navigation.ArcPageHeader
-import com.knigdelioglu.arc.compose.navigation.ArcResizablePanels
 import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.StudentGroupGrade
 import com.knigdelioglu.puanla.data.local.StudentEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
-import com.knigdelioglu.puanla.domain.scoring.quickScorePresets
 import com.knigdelioglu.puanla.ui.preferences.QuickGradingPreference
-import com.knigdelioglu.puanla.ui.preferences.qualitativeQuickOptions
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.local.initials
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
-import kotlin.math.roundToInt
 
 /**
  * The criterion selection belongs to a student/rubric pair, not the screen.
@@ -385,135 +351,6 @@ private fun StudentRosterPane(
 }
 
 @Composable
-internal fun CriteriaExplorerPane(
-    criteria: List<CriterionEntity>,
-    activeCriterion: CriterionEntity?,
-    scoreSummary: Map<String, String> = emptyMap(),
-    onSelectCriterion: (CriterionEntity) -> Unit
-) {
-    val colors = ArcTheme.colors
-
-    Surface(modifier = Modifier.fillMaxSize(), color = colors.surface) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Değerlendirme Ölçütleri",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.foreground
-                )
-                ArcBadge(text = "${criteria.size} Ölçüt", variant = ArcBadgeVariant.Accent)
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            if (criteria.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ArcEmptyState(
-                        title = "Ölçüt Bulunamadı",
-                        description = "Seçili rubrikte değerlendirilecek ölçüt bulunmuyor."
-                    )
-                }
-            } else {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    val spacing = 6.dp
-                    val minimumItemHeight = 56.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                    // Show every criterion at once on tablets when the available height permits.
-                    // Large system fonts and smaller windows fall back to scrolling.
-                    val fitsAtOnce = maxHeight >= minimumItemHeight * criteria.size +
-                        spacing * (criteria.size - 1)
-
-                    if (fitsAtOnce) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
-                            verticalArrangement = Arrangement.spacedBy(spacing)
-                        ) {
-                            criteria.forEach { criterion ->
-                                CriterionSelectionRow(
-                                    criterion = criterion,
-                                    isActive = criterion.id == activeCriterion?.id,
-                                    scoreSummary = scoreSummary[criterion.id],
-                                    onClick = { onSelectCriterion(criterion) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize().testTag("rubricCriterionList"),
-                            verticalArrangement = Arrangement.spacedBy(spacing)
-                        ) {
-                            items(criteria, key = { it.id }) { criterion ->
-                                CriterionSelectionRow(
-                                    criterion = criterion,
-                                    isActive = criterion.id == activeCriterion?.id,
-                                    scoreSummary = scoreSummary[criterion.id],
-                                    onClick = { onSelectCriterion(criterion) },
-                                    modifier = Modifier.heightIn(min = minimumItemHeight)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CriterionSelectionRow(
-    criterion: CriterionEntity,
-    isActive: Boolean,
-    scoreSummary: String?,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val colors = ArcTheme.colors
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("rubricCriterion-${criterion.id}")
-            .semantics { selected = isActive }
-            .clickable(role = Role.Button, onClickLabel = "Ölçütü seç", onClick = onClick),
-        shape = ArcTheme.shapes.control,
-        color = if (isActive) colors.surfaceRaised else colors.surface,
-        border = BorderStroke(
-            if (isActive) 2.dp else 1.dp,
-            if (isActive) colors.accent else colors.borderSubtle
-        )
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${criterion.orderIndex + 1}. ${criterion.title}",
-                fontSize = 15.sp,
-                lineHeight = 19.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                color = colors.foreground,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (scoreSummary != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(scoreSummary, fontSize = 12.sp, color = colors.textSecondary,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
 private fun ScoringControlPane(
     runId: String,
     student: StudentEntity?,
@@ -790,74 +627,3 @@ private fun ScoringControlPane(
         }
     }
 }
-
-@Composable
-internal fun QuickScoreControls(
-    maxPoints: Int,
-    points: Int?,
-    levels: List<CriterionLevelEntity>,
-    autoAdvance: Boolean,
-    onAutoAdvanceChange: (Boolean) -> Unit,
-    hasNextCriterion: Boolean,
-    onNextCriterion: () -> Unit,
-    advancePaused: Boolean = false,
-    onChooseScore: (Int) -> Unit,
-    quickGrading: QuickGradingPreference = QuickGradingPreference()
-) {
-    val colors = ArcTheme.colors
-    val options = remember(maxPoints, levels) {
-        quickScorePresets(maxPoints, levels.map { it.points })
-    }
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            if (quickGrading.qualitativeEnabled) "Niteliksel hızlı puanlama"
-            else if (levels.isNotEmpty()) "Hızlı düzey seçimi"
-            else "Hızlı puan • tek dokunuş",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.textSecondary
-        )
-        Spacer(Modifier.height(7.dp))
-        if (quickGrading.qualitativeEnabled) {
-            val choices = remember(maxPoints, quickGrading.levelCount, quickGrading.appearance) {
-                qualitativeQuickOptions(
-                    maxPoints = maxPoints,
-                    levelCount = quickGrading.levelCount,
-                    appearance = quickGrading.appearance
-                )
-            }
-            ArcRadioCards(
-                options = choices,
-                selectedOption = choices.firstOrNull { points != null && it.points == points },
-                onOptionSelected = { onChooseScore(it.points) },
-                modifier = Modifier.fillMaxWidth().testTag("qualitativeQuickScoreOptions"),
-                titleProvider = { it.title(quickGrading.appearance) },
-                badgeProvider = { "${it.points} / $maxPoints" }
-            )
-        } else {
-            ArcSegmentedControl(
-                items = options.map { "$it P" },
-                selectedIndex = options.indexOf(points),
-                onSelectIndex = { index -> options.getOrNull(index)?.let(onChooseScore) },
-                modifier = Modifier.fillMaxWidth().testTag("quickScoreOptions")
-            )
-        }
-        Spacer(Modifier.height(7.dp))
-        ArcSwitch(
-            checked = autoAdvance,
-            onCheckedChange = onAutoAdvanceChange,
-            label = "Otomatik sonraki ölçüt"
-        )
-        if (hasNextCriterion && (!autoAdvance || advancePaused)) {
-            ArcButton(
-                text = "Sonraki ölçüt",
-                onClick = onNextCriterion,
-                modifier = Modifier.fillMaxWidth(),
-                variant = ArcButtonVariant.Ghost,
-                size = ArcButtonSize.Sm
-            )
-        }
-    }
-}
-
