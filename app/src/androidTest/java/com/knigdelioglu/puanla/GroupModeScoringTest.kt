@@ -307,4 +307,39 @@ class GroupModeScoringTest {
         } finally { db.close() }
     }
 
+    @Test
+    fun groupExportDoesNotRequireIndividualRunAndKeepsIncompleteRows() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            db.studentDao().insertStudents(listOf(
+                StudentEntity("s1", "c", "1", "Ayşe", "Yılmaz"),
+                StudentEntity("s2", "c", "2", "Mert", "Demir")
+            ))
+            db.rubricDao().insertRubric(RubricEntity("r", "Drama", "", 11, "Drama", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("c1", "r", "İçerik", "", 20, 0),
+                CriterionEntity("c2", "r", "Sunum", "", 80, 1)
+            ))
+            val repo = PuanlaRepository(db) { "{}" }
+            repo.saveGroupTask(GroupTaskEntity("g", "c", "", "Grup A", "[\"s1\",\"s2\"]", "[]"))
+            val session = repo.createGroupSession("c", "r", "Grup Raporu")
+            val partial = repo.scoreGroup(session.id, "g", "c1", 0)
+
+            assertFalse(partial.isCompleted)
+            assertNull(partial.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(partial.id).all { !it.isCompleted })
+            // Group reports must be available without an individual assessment run.
+            assertTrue(repo.getRunCriterionScoresForStudent("s1", "missing-run").isEmpty())
+            val pdf = repo.generateGroupPdfReportSnapshot(session.id)
+            assertEquals(2, pdf.students.size)
+            assertTrue(pdf.students.all { !it.isCompleted && it.definitiveTotal == null })
+            val csv = repo.generateGroupCsvExport(session.id)
+            assertTrue(csv.contains("Grup A"))
+            assertTrue(csv.contains("Eksik"))
+            assertNull(repo.getAssessmentForStudent("s1", "r"))
+        } finally { db.close() }
+    }
+
 }
