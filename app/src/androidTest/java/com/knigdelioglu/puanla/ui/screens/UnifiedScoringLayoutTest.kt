@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -90,6 +92,53 @@ class UnifiedScoringLayoutTest {
         rule.onNodeWithText("Hedefler sütunu").assertExists()
         rule.onNodeWithText("Ölçütler sütunu").assertExists()
         rule.onNodeWithText("Puanlama sütunu").assertExists()
+    }
+
+    @Test
+    fun resizingFromCompactToWideAndBackPreservesSelectedScoringPaneButNewSessionResetsIt() {
+        val paneWidth = mutableStateOf(820.dp)
+        val session = mutableStateOf("class/rubric/run-one")
+        val mode = mutableStateOf(ScoringTargetMode.INDIVIDUAL)
+        rule.setContent {
+            ArcTheme(reducedMotion = true) {
+                UnifiedScoringLayout(
+                    mode = mode.value,
+                    contextKey = session.value,
+                    modifier = Modifier.requiredWidth(paneWidth.value).height(600.dp),
+                    targetPane = { onSelected ->
+                        Button(onClick = onSelected) { Text("Hedef seç") }
+                    },
+                    criteriaPane = { onSelected ->
+                        Button(onClick = onSelected) { Text("Ölçüt seç") }
+                    },
+                    scoringPane = { Text("Puanlama ekranı") }
+                )
+            }
+        }
+
+        rule.onNodeWithTag("unifiedScoringLayoutCompact").assertExists()
+        rule.onNodeWithText("Hedef seç").performClick()
+        rule.onNodeWithText("Puanlama ekranı").assertIsDisplayed()
+
+        rule.runOnIdle { paneWidth.value = 1000.dp }
+        rule.onNodeWithTag("unifiedScoringLayoutWide").assertExists()
+        rule.onNodeWithText("Hedef seç").assertExists()
+        rule.onNodeWithText("Ölçüt seç").assertExists()
+        rule.onNodeWithText("Puanlama ekranı").assertExists()
+
+        rule.runOnIdle { paneWidth.value = 820.dp }
+        rule.onNodeWithTag("unifiedScoringLayoutCompact").assertExists()
+        rule.onNodeWithText("Puanlama ekranı").assertIsDisplayed()
+        rule.onNodeWithText("Hedef seç").assertDoesNotExist()
+
+        rule.runOnIdle { session.value = "class/rubric/run-two" }
+        rule.onNodeWithText("Hedef seç").assertIsDisplayed()
+        rule.onNodeWithText("Puanlama ekranı").assertDoesNotExist()
+
+        rule.onNodeWithText("Hedef seç").performClick()
+        rule.runOnIdle { mode.value = ScoringTargetMode.GROUP }
+        rule.onNodeWithText("Gruplar").assertExists()
+        rule.onNodeWithText("Hedef seç").assertIsDisplayed()
     }
 
 }
