@@ -227,6 +227,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                     },
                     scoringPane = {
                         GroupScoringPane(
+                            sessionId = session?.id.orEmpty(),
                             group = selectedGroup,
                             assessment = assessment,
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -244,7 +245,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                             onScore = { points ->
                                 activeCriterion?.let { criterion ->
                                     viewModel.setGroupScore(criterion.id, points)
-                                    if (autoAdvance && activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                                 }
                             },
                             onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
@@ -401,6 +401,7 @@ private fun GroupRosterPane(
 
 @Composable
 private fun GroupScoringPane(
+    sessionId: String,
     group: GroupTaskEntity?,
     assessment: GroupAssessmentEntity?,
     modifier: Modifier = Modifier,
@@ -468,54 +469,18 @@ private fun GroupScoringPane(
                             " / " + criterion.maxPoints,
                         variant = ArcBadgeVariant.Accent
                     )
-                    QuickScoreControls(
-                        maxPoints = criterion.maxPoints,
+                    CriterionGradingEditor(
+                        contextKey = "group/$sessionId/${group.id}/${criterion.id}",
+                        criterion = criterion,
                         points = scores[criterion.id]?.points,
                         levels = levels,
+                        quickGrading = quickGrading,
                         autoAdvance = autoAdvance,
                         onAutoAdvanceChange = onAutoAdvance,
                         hasNextCriterion = criteria.indexOfFirst { it.id == criterion.id } < criteria.lastIndex,
                         onNextCriterion = onNext,
-                        onChooseScore = onScore,
-                        quickGrading = quickGrading
-                    )
-                    var precisionVisible by remember(group.id, criterion.id) { mutableStateOf(false) }
-                    ArcButton(
-                        text = if (precisionVisible) "Hassas puanı gizle" else "Hassas puan",
-                        onClick = { precisionVisible = !precisionVisible },
-                        modifier = Modifier.fillMaxWidth(),
-                        variant = ArcButtonVariant.Outline, size = ArcButtonSize.Sm
-                    )
-                    if (precisionVisible) {
-                        val points = scores[criterion.id]?.points
-                        var preview by remember(group.id, criterion.id) {
-                            mutableFloatStateOf((points ?: 0).toFloat())
-                        }
-                        LaunchedEffect(group.id, criterion.id, points) {
-                            preview = (points ?: 0).toFloat()
-                        }
-                        if (criterion.maxPoints > 0) {
-                            ArcElasticSlider(
-                                value = preview,
-                                onValueChange = { preview = it },
-                                onValueCommit = { onScore(it.roundToInt()) },
-                                step = 1f,
-                                valueRange = 0f..criterion.maxPoints.toFloat(),
-                                label = "Hassas puan",
-                                formatValue = { "${it.roundToInt()} / ${criterion.maxPoints}" }
-                            )
-                        }
-                        ArcNumberField(
-                            value = points,
-                            onValueChange = { value -> if (value == null) onClear() else onScore(value) },
-                            min = 0, max = criterion.maxPoints,
-                            label = "Tam sayı"
-                        )
-                    }
-                    ArcButton(
-                        text = "Puanı kaldır", onClick = onClear,
-                        enabled = scores[criterion.id]?.points != null,
-                        variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm
+                        onScore = onScore,
+                        onClearScore = onClear
                     )
                 }
             }
