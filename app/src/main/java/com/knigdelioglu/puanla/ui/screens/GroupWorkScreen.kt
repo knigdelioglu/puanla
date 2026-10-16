@@ -137,19 +137,9 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 color = ArcTheme.colors.foreground, modifier = Modifier.weight(1f)
             )
             ArcButton(
-                text = if (showPreparation) "Puanlamaya dön" else "Hazırlık",
+                text = if (showPreparation) "Puanlamaya dön" else "Grupları Yönet",
                 onClick = { showPreparation = !showPreparation },
                 size = ArcButtonSize.Sm, variant = ArcButtonVariant.Outline
-            )
-            ArcButton(
-                text = "Rastgele Grup Oluştur", onClick = { createRandomGroups = true },
-                size = ArcButtonSize.Sm,
-                enabled = classroom != null && students.any { it.id !in assignedStudentIds },
-                variant = ArcButtonVariant.Outline
-            )
-            ArcButton(
-                text = "Yeni Grup", onClick = { createGroup = true },
-                size = ArcButtonSize.Sm, enabled = classroom != null
             )
         }
 
@@ -161,9 +151,42 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                 )
             }
         } else if (showPreparation || rubric == null) {
+            // Preparation is a separate surface. Scoring remains focused on selecting
+            // group / criterion / score, with no group creation actions in its toolbar.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Grupları Yönet", modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold, color = ArcTheme.colors.foreground)
+                ArcButton(
+                    text = "Rastgele Grup Oluştur",
+                    onClick = { createRandomGroups = true },
+                    size = ArcButtonSize.Sm,
+                    enabled = students.any { it.id !in assignedStudentIds },
+                    variant = ArcButtonVariant.Outline
+                )
+                ArcButton(
+                    text = "Yeni Grup", onClick = { createGroup = true },
+                    size = ArcButtonSize.Sm
+                )
+            }
             if (rubric == null) {
-                Text("Grup oluşturabilirsiniz. Puanlama için üst çubuktan rubrik seçin.",
+                Text("Gruplar rubrikten bağımsızdır. Puanlamak için üst çubuktan rubrik seçin.",
                     color = ArcTheme.colors.textSecondary, fontSize = 13.sp)
+            }
+            if (session != null && groupAssessments.isNotEmpty()) {
+                ArcButton(
+                    text = "Seçili Oturumun Üyeliklerini Eşitle",
+                    onClick = { confirmMembershipSync = true },
+                    variant = ArcButtonVariant.Outline,
+                    size = ArcButtonSize.Sm
+                )
+                Text(
+                    "Geçmiş üye görüntüsü ancak açık onayla değişir; başka oturumlar etkilenmez.",
+                    color = ArcTheme.colors.textSecondary, fontSize = 12.sp
+                )
             }
             if (groups.isEmpty()) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -197,7 +220,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                     ArcEmptyState(
                         title = if (groups.isEmpty()) "Grup oluşturun" else "Oturum oluşturun",
                         description = if (groups.isEmpty())
-                            "Yeni Grup veya Rastgele Grup Oluştur ile grupları hazırlayın."
+                            "Grupları Yönet üzerinden grupları hazırlayın."
                         else "Üstteki Değerlendirmeler menüsünden değerlendirme açın veya oluşturun."
                     )
                 }
@@ -263,7 +286,6 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                             onNext = {
                                 if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                             },
-                            onSyncMembership = { confirmMembershipSync = true },
                             onPreviousGroup = {
                                 val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                 groups.getOrNull(i - 1)?.let { viewModel.selectGroup(it) }
@@ -440,7 +462,6 @@ private fun GroupScoringPane(
     noteSaveMessage: String?,
     scoreSaveMessage: String?,
     onNext: () -> Unit,
-    onSyncMembership: () -> Unit,
     onPreviousGroup: () -> Unit,
     canPreviousGroup: Boolean,
     canNextGroup: Boolean,
@@ -469,13 +490,6 @@ private fun GroupScoringPane(
             if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
             else "Kısmi: " + (assessment?.scoredCount ?: 0) + " / " + criteria.size + " ölçüt",
             color = ArcTheme.colors.textSecondary
-        )
-        ArcButton(
-            text = "Üyelikleri Eşitle",
-            onClick = onSyncMembership,
-            variant = ArcButtonVariant.Outline,
-            size = ArcButtonSize.Sm,
-            modifier = Modifier.fillMaxWidth()
         )
         if (criterion != null) {
             ArcCard(modifier = Modifier.fillMaxWidth()) {
