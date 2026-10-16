@@ -684,6 +684,8 @@ class PuanlaViewModel internal constructor(
             showToast("Arşivlenmiş değerlendirmede puan değiştirilemez.")
             return
         }
+        val scoreKey = "individual/${classroom.id}/${run.id}/${student.id}/$criterionId"
+        val scoreRevision = nextScoreRevision(scoreKey)
         val criterionTitle = criteria.value.find { it.id == criterionId }?.title ?: "Ölçüt"
         // Take the lock before launch so rapid taps for one criterion are applied
         // sequentially, even across asynchronous Room transactions.
@@ -698,7 +700,10 @@ class PuanlaViewModel internal constructor(
                         repository.getScoresForAssessment(a.id).firstOrNull { it.criterionId == criterionId }
                     }
                     val oldPoints = stored?.points
-                    if (oldPoints == points && stored != null) return@withLock
+                    if (oldPoints == points && stored != null) {
+                        finishScoreWrite(scoreKey, scoreRevision, success = true)
+                        return@withLock
+                    }
                     val original = repository.saveCriterionScore(
                         classroomId = classroom.id, studentId = student.id, rubricId = rubric.id,
                         criterionId = criterionId, scorePoints = points,
@@ -730,12 +735,13 @@ class PuanlaViewModel internal constructor(
                             }
                         }
                     })
-                    // Successful score writes are quiet. Undo remains available
-                    // from the persistent scoring toolbar via undoStack.
+                    finishScoreWrite(scoreKey, scoreRevision, success = true)
+                    // Undo remains available from the scoring toolbar.
                 }
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (e: Exception) {
+                finishScoreWrite(scoreKey, scoreRevision, success = false)
                 showToast("Puan kaydedilemedi: ${e.message}")
             }
         }
@@ -840,6 +846,7 @@ class PuanlaViewModel internal constructor(
             it.flush.trySend(Unit)
             startEvidenceNoteWorker(it)
         }
+        flushPendingGroupEvidenceNotes()
         pending.mapNotNull { it.job }.joinAll()
     }
 
@@ -1484,6 +1491,8 @@ class PuanlaViewModel internal constructor(
         val rubric = selectedRubric.value ?: return
         if (session.rubricId != rubric.id) return
         if (session.classroomId != selectedClassroom.value?.id || group.classroomId != session.classroomId) return
+        val scoreKey = "group/${session.id}/${group.id}/$criterionId"
+        val scoreRevision = nextScoreRevision(scoreKey)
         val lock = scoreMutex(group.id, session.id, criterionId)
         launchMutation {
             try {
@@ -1517,9 +1526,13 @@ class PuanlaViewModel internal constructor(
                     if (selectedGroup.value?.id == group.id && selectedGroupSession.value?.id == session.id) {
                         loadCurrentGroupAssessment()
                     }
+                    finishScoreWrite(scoreKey, scoreRevision, success = true)
                 }
             } catch (cancel: CancellationException) { throw cancel }
-            catch (e: Exception) { showToast("Grup puanı kaydedilemedi: " + e.message) }
+            catch (e: Exception) {
+                finishScoreWrite(scoreKey, scoreRevision, success = false)
+                showToast("Grup puanı kaydedilemedi: " + e.message)
+            }
         }
     }
 
@@ -1565,7 +1578,9 @@ class PuanlaViewModel internal constructor(
     // not just criterion scores. Snapshots wait for pending work; restore
     // waits for it before performing the one-transaction replacement.
     suspend fun createBackup(): String = mutations.snapshot {
-        check(withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isEmpty() }) {
+        check(withContext(Dispatchers.Main.immediate) {
+            pendingNoteWrites.isEmpty() && pendingGroupNoteWrites.isEmpty()
+        }) {
             "Bekleyen gözlem notu kaydedilemedi; yedekleme durduruldu."
         }
         repository.generateFullBackupJson()
@@ -1575,7 +1590,9 @@ class PuanlaViewModel internal constructor(
         val validation = repository.validateBackupJson(json)
         if (validation.isFailure) return Result.failure(requireNotNull(validation.exceptionOrNull()))
         return mutations.restore {
-            val hasUnsavedNote = withContext(Dispatchers.Main.immediate) { pendingNoteWrites.isNotEmpty() }
+            val hasUnsavedNote = withContext(Dispatchers.Main.immediate) {
+                pendingNoteWrites.isNotEmpty() || pendingGroupNoteWrites.isNotEmpty()
+            }
             if (hasUnsavedNote) {
                 return@restore Result.failure(IllegalStateException(
                     "Bekleyen gözlem notu kaydedilemedi; geri yükleme durduruldu."
@@ -1599,7 +1616,12 @@ class PuanlaViewModel internal constructor(
                 withContext(Dispatchers.Main.immediate) {
                     pendingNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
                     pendingNoteWrites.clear()
+                    pendingGroupNoteWrites.values.forEach { it.edits.close(); it.flush.close() }
+                    pendingGroupNoteWrites.clear()
                     evidenceNoteSaveState.value = null
+                    groupEvidenceNoteSaveState.value = null
+                    scoreSaveState.value = null
+                    scoreWriteRevisions.clear()
                     lastStudentSelectionContext = null
                     studentFlowJob?.cancel(); studentFlowJob = null
                     assessmentFlowJob?.cancel(); assessmentFlowJob = null
