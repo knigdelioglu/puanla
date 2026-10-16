@@ -855,6 +855,7 @@ internal fun QuickScoreControls(
     onAutoAdvanceChange: (Boolean) -> Unit,
     hasNextCriterion: Boolean,
     onNextCriterion: () -> Unit,
+    advancePaused: Boolean = false,
     onChooseScore: (Int) -> Unit,
     quickGrading: QuickGradingPreference = QuickGradingPreference()
 ) {
@@ -903,7 +904,7 @@ internal fun QuickScoreControls(
             onCheckedChange = onAutoAdvanceChange,
             label = "Otomatik sonraki ölçüt"
         )
-        if (hasNextCriterion && !autoAdvance) {
+        if (hasNextCriterion && (!autoAdvance || advancePaused)) {
             ArcButton(
                 text = "Sonraki ölçüt",
                 onClick = onNextCriterion,
