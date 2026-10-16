@@ -52,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import com.knigdelioglu.arc.compose.controls.ArcElasticSlider
 import com.knigdelioglu.arc.compose.controls.ArcNumberField
+import com.knigdelioglu.arc.compose.editor.ArcRichTextEditor
 import kotlin.math.roundToInt
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.knigdelioglu.arc.compose.controls.ArcSelect
@@ -100,6 +101,8 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val levels by viewModel.levels.collectAsState()
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val canUndoGroupAction by viewModel.canUndoGroupAction.collectAsState()
+    val groupNoteSaveState by viewModel.groupEvidenceNoteSaveState.collectAsState()
+    val scoreSaveState by viewModel.scoreSaveState.collectAsState()
 
     var createGroup by remember { mutableStateOf(false) }
     var editingGroup by remember { mutableStateOf<GroupTaskEntity?>(null) }
@@ -248,6 +251,15 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 }
                             },
                             onClear = { activeCriterion?.let { viewModel.setGroupScore(it.id, null) } },
+                            onNoteChange = { note ->
+                                activeCriterion?.let { viewModel.setGroupEvidenceNote(it.id, note) }
+                            },
+                            noteSaveMessage = groupNoteSaveState?.takeIf {
+                                it.key == "group/${session?.id}/${selectedGroup?.id}/${activeCriterion?.id}"
+                            }?.status?.label,
+                            scoreSaveMessage = scoreSaveState?.takeIf {
+                                it.key == "group/${session?.id}/${selectedGroup?.id}/${activeCriterion?.id}"
+                            }?.status?.label,
                             onNext = {
                                 if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                             },
@@ -424,6 +436,9 @@ private fun GroupScoringPane(
     onAutoAdvance: (Boolean) -> Unit,
     onScore: (Int) -> Unit,
     onClear: () -> Unit,
+    onNoteChange: (String) -> Unit,
+    noteSaveMessage: String?,
+    scoreSaveMessage: String?,
     onNext: () -> Unit,
     onSyncMembership: () -> Unit,
     onPreviousGroup: () -> Unit,
@@ -471,6 +486,9 @@ private fun GroupScoringPane(
                             " / " + criterion.maxPoints,
                         variant = ArcBadgeVariant.Accent
                     )
+                    var showNoteEditor by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
                     CriterionGradingEditor(
                         contextKey = "group/$sessionId/${group.id}/${criterion.id}",
                         criterion = criterion,
@@ -481,9 +499,62 @@ private fun GroupScoringPane(
                         onAutoAdvanceChange = onAutoAdvance,
                         hasNextCriterion = criteria.indexOfFirst { it.id == criterion.id } < criteria.lastIndex,
                         onNextCriterion = onNext,
+                        noteEditorOpen = showNoteEditor,
                         onScore = onScore,
                         onClearScore = onClear
                     )
+                    if (scoreSaveMessage != null) {
+                        Text(
+                            "Puan: $scoreSaveMessage",
+                            fontSize = 12.sp,
+                            color = if (scoreSaveMessage == "Kaydedilemedi")
+                                ArcTheme.colors.danger else ArcTheme.colors.textSecondary
+                        )
+                    }
+                    var noteText by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(scores[criterion.id]?.evidenceNote ?: "")
+                    }
+                    var noteTouched by remember(sessionId, group.id, criterion.id) {
+                        mutableStateOf(false)
+                    }
+                    LaunchedEffect(sessionId, group.id, criterion.id, scores[criterion.id]?.evidenceNote) {
+                        if (!noteTouched) noteText = scores[criterion.id]?.evidenceNote ?: ""
+                    }
+                    ArcButton(
+                        text = if (showNoteEditor) "Gözlem notunu gizle"
+                            else if (noteText.isBlank()) "Gözlem ve kanıt notu ekle"
+                            else "Gözlem notunu düzenle (mevcut not)",
+                        onClick = { showNoteEditor = !showNoteEditor },
+                        variant = ArcButtonVariant.Outline,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = ArcButtonSize.Sm
+                    )
+                    if (showNoteEditor) {
+                        ArcRichTextEditor(
+                            value = noteText,
+                            onValueChange = {
+                                noteText = it
+                                noteTouched = true
+                                onNoteChange(it)
+                            },
+                            placeholder = "Grup ölçütüne özel gözlem veya kanıt...",
+                            characterCountLabel = { "$it karakter" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (noteSaveMessage != null) {
+                            Text(
+                                noteSaveMessage,
+                                fontSize = 12.sp,
+                                color = if (noteSaveMessage == "Kaydedilemedi")
+                                    ArcTheme.colors.danger else ArcTheme.colors.textSecondary
+                            )
+                        }
+                    } else if (noteText.isNotBlank()) {
+                        Text(
+                            noteText.take(140) + if (noteText.length > 140) "…" else "",
+                            fontSize = 12.sp, color = ArcTheme.colors.textSecondary
+                        )
+                    }
                 }
             }
         }
