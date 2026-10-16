@@ -2,6 +2,8 @@ package com.knigdelioglu.puanla.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -95,6 +98,10 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     var showStatusFilters by remember { mutableStateOf(false) }
 
     val gradeChips = listOf("Tümü", "9. Sınıf", "10. Sınıf", "11. Sınıf", "12. Sınıf")
+    val showGradeFilter = classrooms.map { it.grade }.distinct().size > 1
+    // Give the roster a useful viewport even on shorter landscape tablet screens.
+    // The screen itself also scrolls, so the table can be brought fully into view.
+    val rosterHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.78f).coerceAtLeast(480.dp)
     val filteredClassrooms = remember(classrooms, selectedGradeFilter) {
         if (selectedGradeFilter == 0) classrooms
         else {
@@ -125,149 +132,114 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .testTag("classroomManagementScroll")
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Top Toolbar: Class cards and actions
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = "Sınıf ve Öğrenci Yönetimi",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = ArcTheme.colors.foreground
+        // The top app bar already says "Sınıflar"; avoid repeating that heading.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ArcButton(
+                text = "Yeni Sınıf Ekle",
+                onClick = { isAddClassDialogOpen = true },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ArcButton(
-                    text = "Yeni Sınıf Ekle",
-                    onClick = { isAddClassDialogOpen = true },
-                    variant = ArcButtonVariant.Outline,
-                    size = ArcButtonSize.Md
-                )
-                ArcButton(
-                    text = "Öğrenci Ekle",
-                    onClick = { isAddStudentDialogOpen = true },
-                    variant = ArcButtonVariant.Primary,
-                    size = ArcButtonSize.Md,
-                    enabled = selectedClassroom != null
-                )
-                ArcButton(
-                    text = "Fotoğraftan Aktar",
-                    onClick = { viewModel.currentDestination.value = AppDestination.OCR_IMPORT },
-                    variant = ArcButtonVariant.Outline,
-                    size = ArcButtonSize.Md,
-                    enabled = selectedClassroom != null
-                )
-            }
+            ArcButton(
+                text = "Öğrenci Ekle",
+                onClick = { isAddStudentDialogOpen = true },
+                variant = ArcButtonVariant.Primary,
+                size = ArcButtonSize.Sm,
+                enabled = selectedClassroom != null
+            )
+            ArcButton(
+                text = "Fotoğraftan Aktar",
+                onClick = { viewModel.currentDestination.value = AppDestination.OCR_IMPORT },
+                variant = ArcButtonVariant.Outline,
+                size = ArcButtonSize.Sm,
+                enabled = selectedClassroom != null
+            )
         }
 
-        // Arc P0: shared search/filter toolbar (actual roster status + school grade).
-        ArcFilterToolbar(
-            searchSlot = {
-                if (selectedClassroom != null) {
-                    ArcExpandingSearch(
-                        query = searchQuery,
-                        onQueryChange = { searchQuery = it },
-                        placeholder = "Öğrenci adı veya numarası"
-                    )
-                }
-            },
-            filterChipsSlot = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ArcChipGroup(
-                        items = gradeChips,
-                        selectedItem = gradeChips.getOrNull(selectedGradeFilter) ?: gradeChips.first(),
-                        onItemSelected = { selectedGradeFilter = gradeChips.indexOf(it).coerceAtLeast(0) }
-                    )
-                    if (selectedClassroom != null) {
-                        Box {
+        // Grade chips are redundant when every classroom has the same grade.
+        if (showGradeFilter) {
+            ArcChipGroup(
+                items = gradeChips,
+                selectedItem = gradeChips.getOrNull(selectedGradeFilter) ?: gradeChips.first(),
+                onItemSelected = { selectedGradeFilter = gradeChips.indexOf(it).coerceAtLeast(0) }
+            )
+        }
+
+        if (classrooms.size == 1) {
+            // The only classroom is already selected from the app bar: show
+            // management actions in a single row instead of a tall card.
+            val cls = classrooms.first()
+            Row(
+                modifier = Modifier.fillMaxWidth().testTag("singleClassroomControls"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "${cls.name} · ${cls.academicYear}",
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold,
+                    color = ArcTheme.colors.textSecondary
+                )
+                ArcButton(
+                    text = "Düzenle",
+                    onClick = { classroomBeingEdited = cls },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm
+                )
+                ArcButton(
+                    text = "Sil",
+                    onClick = { classroomPendingDeletion = cls },
+                    variant = ArcButtonVariant.Ghost,
+                    size = ArcButtonSize.Sm
+                )
+            }
+        } else if (filteredClassrooms.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().testTag("classroomSelector"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredClassrooms, key = { it.id }) { cls ->
+                    val isSelected = cls.id == selectedClassroom?.id
+                    ArcCard(
+                        modifier = Modifier.clickable { viewModel.selectClassroom(cls) },
+                        color = if (isSelected) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surface,
+                        border = BorderStroke(
+                            if (isSelected) 2.dp else 1.dp,
+                            if (isSelected) ArcTheme.colors.accent else ArcTheme.colors.borderSubtle
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column {
+                                Text(cls.name, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+                                Text(cls.academicYear, fontSize = 11.sp, color = ArcTheme.colors.textSecondary)
+                            }
+                            if (isSelected) ArcBadge(text = "Aktif", variant = ArcBadgeVariant.Success)
                             ArcButton(
-                                text = "Durum: $assessmentStatus",
-                                onClick = { showStatusFilters = !showStatusFilters },
-                                variant = ArcButtonVariant.Outline,
+                                text = "Düzenle",
+                                onClick = { classroomBeingEdited = cls },
+                                variant = ArcButtonVariant.Ghost,
                                 size = ArcButtonSize.Sm
                             )
-                            ArcPopover(
-                                isOpen = showStatusFilters,
-                                onDismiss = { showStatusFilters = false }
-                            ) {
-                                ArcRadioGroup(
-                                    options = listOf("Tümü", "Tamamlanan", "Kısmi", "Puanlanmadı"),
-                                    selectedOption = assessmentStatus,
-                                    onOptionSelected = {
-                                        assessmentStatus = it
-                                        showStatusFilters = false
-                                    },
-                                    modifier = Modifier.width(185.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        )
-
-
-        // Classrooms Carousel / Row
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(filteredClassrooms) { cls ->
-                val isSelected = cls.id == selectedClassroom?.id
-                ArcCard(
-                    modifier = Modifier
-                        .clickable { viewModel.selectClassroom(cls) },
-                    color = if (isSelected) ArcTheme.colors.surfaceRaised else ArcTheme.colors.surface,
-                    border = BorderStroke(
-                        if (isSelected) 2.dp else 1.dp,
-                        if (isSelected) ArcTheme.colors.accent else ArcTheme.colors.borderSubtle
-                    )
-                ) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = ArcTheme.shapes.pill,
-                            color = if (isSelected) ArcTheme.colors.accent else ArcTheme.colors.surfaceMuted,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "${cls.grade}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = if (isSelected) ArcTheme.colors.accentForeground else ArcTheme.colors.foreground
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = cls.name,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = ArcTheme.colors.foreground
-                            )
-                            Text(
-                                text = cls.academicYear,
-                                fontSize = 12.sp,
-                                color = ArcTheme.colors.textSecondary
+                            ArcButton(
+                                text = "Sil",
+                                onClick = { classroomPendingDeletion = cls },
+                                variant = ArcButtonVariant.Ghost,
+                                size = ArcButtonSize.Sm
                             )
                         }
-                        if (isSelected) {
-                            Spacer(Modifier.width(10.dp))
-                            ArcBadge(text = "Aktif", variant = ArcBadgeVariant.Success)
-                        }
-                      }
-                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                          ArcButton(text = "Düzenle", onClick = { classroomBeingEdited = cls },
-                              variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
-                          ArcButton(text = "Sil", onClick = { classroomPendingDeletion = cls },
-                              variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
-                      }
                     }
                 }
             }
@@ -299,30 +271,60 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                 }
             }
         } else {
-            Column(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("studentRosterControls"),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "${selectedClassroom?.name} Öğrenci Kadrosu (${filteredStudents.size} Öğrenci)",
+                        text = "${selectedClassroom?.name} Öğrenci Kadrosu (${filteredStudents.size})",
+                        modifier = Modifier.weight(1f),
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = ArcTheme.colors.foreground
                     )
-                    ArcButton(
-                        text = "Filtreyi Temizle",
-                        onClick = { searchQuery = ""; assessmentStatus = "Tümü" },
-                        variant = ArcButtonVariant.Ghost,
-                        size = ArcButtonSize.Sm
+                    ArcExpandingSearch(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        placeholder = "Öğrenci adı veya numarası"
                     )
+                    Box {
+                        ArcButton(
+                            text = "Durum: $assessmentStatus",
+                            onClick = { showStatusFilters = !showStatusFilters },
+                            variant = ArcButtonVariant.Outline,
+                            size = ArcButtonSize.Sm
+                        )
+                        ArcPopover(
+                            isOpen = showStatusFilters,
+                            onDismiss = { showStatusFilters = false }
+                        ) {
+                            ArcRadioGroup(
+                                options = listOf("Tümü", "Tamamlanan", "Kısmi", "Puanlanmadı"),
+                                selectedOption = assessmentStatus,
+                                onOptionSelected = {
+                                    assessmentStatus = it
+                                    showStatusFilters = false
+                                },
+                                modifier = Modifier.width(185.dp)
+                            )
+                        }
+                    }
+                    if (searchQuery.isNotBlank() || assessmentStatus != "Tümü") {
+                        ArcButton(
+                            text = "Temizle",
+                            onClick = { searchQuery = ""; assessmentStatus = "Tümü" },
+                            variant = ArcButtonVariant.Ghost,
+                            size = ArcButtonSize.Sm
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 if (filteredStudents.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp), contentAlignment = Alignment.Center) {
                         ArcEmptyState(
                             title = "Öğrenci Bulunmuyor",
                             description = "Öğrenci eklemek için üstteki düğmelerden birini kullanın."
@@ -425,7 +427,7 @@ fun ClassroomsScreen(viewModel: PuanlaViewModel) {
                     ArcSortableDataTable(
                         items = filteredStudents,
                         columns = columns,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier.fillMaxWidth().height(rosterHeight).testTag("studentRosterTable"),
                         pageSize = 25,
                         rowKey = { it.id }
                     )
