@@ -190,4 +190,51 @@ class GroupModeScoringTest {
             db.close()
         }
     }
+    @Test
+    fun groupZeroScoreAndIndividualRunRemainIndependent() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java).build()
+        try {
+            db.classroomDao().insertClassroom(ClassroomEntity("c", 11, "A", "11-A", "2026-2027"))
+            db.studentDao().insertStudent(StudentEntity("student", "c", "101", "Ayşe", "Yılmaz"))
+            db.rubricDao().insertRubric(RubricEntity("rubric", "Sunum", "", 11, "Sunum", false))
+            db.rubricDao().insertCriteria(listOf(
+                CriterionEntity("content", "rubric", "İçerik", "", 20, 0),
+                CriterionEntity("speech", "rubric", "Anlatım", "", 80, 1)
+            ))
+
+            val repo = PuanlaRepository(db) { "{}" }
+            val individual = repo.createAssessmentRun("rubric", "Bireysel Ekim", listOf("c"))
+            repo.saveCriterionScore("c", "student", "rubric", "content", 15, runId = individual.id)
+            repo.saveCriterionScore("c", "student", "rubric", "speech", 70, runId = individual.id)
+
+            val group = GroupTaskEntity(
+                id = "group", classroomId = "c", rubricId = "",
+                title = "Grup 1", memberStudentIdsJson = "[\\"student\\"]", checklistJson = "[]"
+            )
+            repo.saveGroupTask(group)
+            val groupSession = repo.createGroupSession("c", "rubric", "Grup Ekim")
+            val partial = repo.scoreGroup(groupSession.id, group.id, "content", 0)
+
+            assertFalse(partial.isCompleted)
+            assertEquals(1, partial.scoredCount)
+            assertNull(partial.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(partial.id).all {
+                !it.isCompleted && it.definitiveTotal == null
+            })
+
+            val complete = repo.scoreGroup(groupSession.id, group.id, "speech", 60)
+            assertTrue(complete.isCompleted)
+            assertEquals(60, complete.definitiveTotal)
+            assertTrue(repo.getGroupMemberResults(complete.id).all {
+                it.isCompleted && it.definitiveTotal == 60
+            })
+            val individualScores = repo.getRunCriterionScoresForStudent("student", individual.id)
+            assertEquals(15, individualScores["content"])
+            assertEquals(70, individualScores["speech"])
+        } finally {
+            db.close()
+        }
+    }
+
 }
