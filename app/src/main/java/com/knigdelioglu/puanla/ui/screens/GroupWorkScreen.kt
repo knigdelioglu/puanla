@@ -96,7 +96,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
     val assessment by viewModel.currentGroupAssessment.collectAsState()
     val scores by viewModel.currentGroupScores.collectAsState()
     val memberResults by viewModel.currentGroupMembers.collectAsState()
-    val criteria by viewModel.criteria.collectAsState()
+    val criteria by viewModel.groupCriteria.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val quickGrading by viewModel.quickGradingPreference.collectAsState()
     val canUndoGroupAction by viewModel.canUndoGroupAction.collectAsState()
