@@ -19,11 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,7 +67,6 @@ import com.knigdelioglu.arc.compose.datavis.ArcStatsBand
 import com.knigdelioglu.arc.compose.datavis.ArcUsageMeter
 import com.knigdelioglu.arc.compose.display.ArcAlert
 import com.knigdelioglu.arc.compose.display.ArcAlertType
-import com.knigdelioglu.arc.compose.display.ArcBadge
 import com.knigdelioglu.arc.compose.display.ArcBadgeVariant
 import com.knigdelioglu.arc.compose.display.ArcCopyButton
 import com.knigdelioglu.arc.compose.display.ArcComparisonTable
