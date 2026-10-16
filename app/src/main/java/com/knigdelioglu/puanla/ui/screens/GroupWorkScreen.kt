@@ -230,7 +230,7 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                             sessionId = session?.id.orEmpty(),
                             group = selectedGroup,
                             assessment = assessment,
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxSize(),
                             criterion = activeCriterion,
                             criteria = criteria,
                             scores = scores,
@@ -252,6 +252,12 @@ fun GroupWorkScreen(viewModel: PuanlaViewModel) {
                                 if (activeCriterionIndex < criteria.lastIndex) activeCriterionIndex++
                             },
                             onSyncMembership = { confirmMembershipSync = true },
+                            onPreviousGroup = {
+                                val i = groups.indexOfFirst { it.id == selectedGroup?.id }
+                                groups.getOrNull(i - 1)?.let { viewModel.selectGroup(it) }
+                            },
+                            canPreviousGroup = groups.indexOfFirst { it.id == selectedGroup?.id } > 0,
+                            canNextGroup = groups.indexOfFirst { it.id == selectedGroup?.id } in 0 until groups.lastIndex,
                             onNextGroup = {
                                 val i = groups.indexOfFirst { it.id == selectedGroup?.id }
                                 groups.getOrNull(i + 1)?.let { viewModel.selectGroup(it) }
@@ -420,6 +426,9 @@ private fun GroupScoringPane(
     onClear: () -> Unit,
     onNext: () -> Unit,
     onSyncMembership: () -> Unit,
+    onPreviousGroup: () -> Unit,
+    canPreviousGroup: Boolean,
+    canNextGroup: Boolean,
     onNextGroup: () -> Unit
 ) {
     if (group == null) {
@@ -435,10 +444,11 @@ private fun GroupScoringPane(
     }
     val names = remember(students) { students.associateBy { it.id } }
     val total = assessment?.definitiveTotal
-    Column(
-        modifier = modifier.fillMaxWidth().padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Column(modifier = modifier.fillMaxWidth().padding(12.dp)) {
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         Text(group.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
         Text(
             if (assessment?.isCompleted == true) "Grup puanı: " + total + " / " + criteria.sumOf { it.maxPoints }
@@ -449,14 +459,6 @@ private fun GroupScoringPane(
             text = "Üyelikleri Eşitle",
             onClick = onSyncMembership,
             variant = ArcButtonVariant.Outline,
-            size = ArcButtonSize.Sm,
-            modifier = Modifier.fillMaxWidth()
-        )
-        ArcButton(
-            text = "Son grup puanını geri al",
-            onClick = onUndo,
-            enabled = canUndo,
-            variant = ArcButtonVariant.Ghost,
             size = ArcButtonSize.Sm,
             modifier = Modifier.fillMaxWidth()
         )
@@ -499,9 +501,15 @@ private fun GroupScoringPane(
                 )
             }
         }
-        ArcButton(
-            text = "Sonraki Grup", onClick = onNextGroup,
-            variant = ArcButtonVariant.Outline, modifier = Modifier.fillMaxWidth()
+        }
+        ScoringTargetToolbar(
+            mode = ScoringTargetMode.GROUP,
+            onPrevious = onPreviousGroup,
+            onUndo = onUndo,
+            onNext = onNextGroup,
+            canPrevious = canPreviousGroup,
+            canUndo = canUndo,
+            canNext = canNextGroup
         )
     }
 }
