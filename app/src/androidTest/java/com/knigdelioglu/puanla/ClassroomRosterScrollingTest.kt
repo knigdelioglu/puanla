@@ -49,7 +49,8 @@ class ClassroomRosterScrollingTest {
     }
 
     @Test
-    fun realClassroomScreenShowsCompactControlsAndScrollableRoster() = runBlocking {
+    fun realClassroomScreenShowsCompactControlsAndScrollableRoster() {
+        runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, PuanlaDatabase::class.java)
             .allowMainThreadQueries().build().also { databases.add(it) }
@@ -92,6 +93,7 @@ class ClassroomRosterScrollingTest {
             composeRule.onNodeWithText("Ad29", substring = true).assertIsDisplayed()
         } finally {
             store.clear()
+        }
         }
     }
 
