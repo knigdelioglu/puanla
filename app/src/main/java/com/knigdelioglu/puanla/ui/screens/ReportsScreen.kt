@@ -113,6 +113,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var groupReportMode by remember { mutableStateOf(false) }
     var pdfRequestedGroupSessionId by remember { mutableStateOf<String?>(null) }
     var pdfRequestedGroupSessionTitle by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedClassroomId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRubricId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRunId by remember { mutableStateOf<String?>(null) }
+    var pdfRequestedRunTitle by remember { mutableStateOf<String?>(null) }
     var pdfGenerating by remember { mutableStateOf(false) }
     var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
     var pdfAllClasses by remember { mutableStateOf(false) }
@@ -315,6 +319,10 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         groupReportMode = reportsGroupMode
                         pdfRequestedGroupSessionId = if (reportsGroupMode) selectedGroupSession?.id else null
                         pdfRequestedGroupSessionTitle = if (reportsGroupMode) selectedGroupSession?.title else null
+                        pdfRequestedClassroomId = selectedClassroom?.id
+                        pdfRequestedRubricId = selectedRubric?.id
+                        pdfRequestedRunId = if (!reportsGroupMode) selectedRun?.id else null
+                        pdfRequestedRunTitle = if (!reportsGroupMode) selectedRun?.title else null
                         if (reportsGroupMode) pdfAllClasses = false
                         showPdfDialog = true
                     },
@@ -329,6 +337,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                             val requestedGroupSessionId = selectedGroupSession?.id
                             val requestedGroupTitle = selectedGroupSession?.title.orEmpty()
                             val requestedClassName = selectedClassroom?.name.orEmpty()
+                            val requestedClassroomId = selectedClassroom?.id
+                            val requestedRubricId = selectedRubric?.id
+                            val requestedRunId = selectedRun?.id
                             if (!csvGenerating && hasReportSession) scope.launch {
                                 csvGenerating = true
                                 try {
@@ -336,11 +347,13 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                         val sessionId = requireNotNull(requestedGroupSessionId) {
                                             "Grup oturumu seçilmedi."
                                         }
-                                        withContext(Dispatchers.IO) {
-                                            viewModel.repository.generateGroupCsvExport(sessionId)
-                                        }
+                                        viewModel.generateGroupCsvForSession(sessionId)
                                     } else {
-                                        viewModel.generateCsv()
+                                        viewModel.generateCsvForRun(
+                                            requireNotNull(requestedClassroomId),
+                                            requireNotNull(requestedRubricId),
+                                            requireNotNull(requestedRunId)
+                                        )
                                     }
                                     require(csv.isNotBlank()) { "Dışa aktarılacak veri yok." }
                                     generatedCsvContent = csv
@@ -377,6 +390,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                 csvActionsOpen = false
                                 val requestedGroupMode = reportsGroupMode
                                 val requestedGroupSessionId = selectedGroupSession?.id
+                                val requestedClassroomId = selectedClassroom?.id
+                                val requestedRubricId = selectedRubric?.id
+                                val requestedRunId = selectedRun?.id
                                 if (!csvGenerating && hasReportSession) scope.launch {
                                     csvGenerating = true
                                     try {
@@ -384,10 +400,12 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             val sessionId = requireNotNull(requestedGroupSessionId) {
                                                 "Grup oturumu seçilmedi."
                                             }
-                                            withContext(Dispatchers.IO) {
-                                                viewModel.repository.generateGroupCsvExport(sessionId)
-                                            }
-                                        } else viewModel.generateCsv()
+                                            viewModel.generateGroupCsvForSession(sessionId)
+                                        } else viewModel.generateCsvForRun(
+                                            requireNotNull(requestedClassroomId),
+                                            requireNotNull(requestedRubricId),
+                                            requireNotNull(requestedRunId)
+                                        )
                                         require(csv.isNotBlank()) { "Dışa aktarılacak veri yok." }
                                         clipboard.setText(AnnotatedString(csv))
                                         viewModel.showToast("Seçili değerlendirme CSV verisi panoya kopyalandı.")
@@ -754,16 +772,31 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         ArcButton(
                             text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Kaydet",
                             onClick = {
+                                val requestedGroupMode = groupReportMode
+                                val requestedGroupSessionId = pdfRequestedGroupSessionId
+                                val requestedGroupTitle = pdfRequestedGroupSessionTitle
+                                val requestedClassroomId = pdfRequestedClassroomId
+                                val requestedRubricId = pdfRequestedRubricId
+                                val requestedRunId = pdfRequestedRunId
+                                val requestedRunTitle = pdfRequestedRunTitle
+                                val requestedAllClasses = pdfAllClasses
                                 if (!pdfGenerating) scope.launch {
                                     pdfGenerating = true
                                     try {
                                         val snapshots = withContext(Dispatchers.IO) {
-                                            if (groupReportMode) {
-                                                val sessionId = requireNotNull(pdfRequestedGroupSessionId) {
+                                            if (requestedGroupMode) {
+                                                val sessionId = requireNotNull(requestedGroupSessionId) {
                                                     "Grup oturumu seçilmedi."
                                                 }
-                                                listOf(viewModel.repository.generateGroupPdfReportSnapshot(sessionId))
-                                            } else viewModel.generatePdfSnapshots(pdfAllClasses)
+                                                listOf(viewModel.generateGroupPdfForSession(sessionId))
+                                            } else {
+                                                viewModel.generatePdfSnapshotsForRun(
+                                                    classroomId = requireNotNull(requestedClassroomId),
+                                                    rubricId = requireNotNull(requestedRubricId),
+                                                    runId = requireNotNull(requestedRunId),
+                                                    allClassrooms = requestedAllClasses
+                                                )
+                                            }
                                         }
                                         require(snapshots.isNotEmpty() && snapshots.all { it.criteria.isNotEmpty() }) {
                                             "Rubrikte ölçüt bulunamadı."
@@ -777,7 +810,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${if (groupReportMode) "grup" else if (pdfAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (groupReportMode) pdfRequestedGroupSessionTitle else selectedRun?.title)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        savePdf.launch("puanla-${if (requestedGroupMode) "grup" else if (requestedAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (requestedGroupMode) requestedGroupTitle else requestedRunTitle)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
