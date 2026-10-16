@@ -155,6 +155,18 @@ class PuanlaViewModelRestoreAndEvidenceTest {
                 assertEquals("newClass", vm.selectedClassroom.value?.id)
                 assertEquals("newRubric", vm.selectedRubric.value?.id)
                 assertEquals(newRun.id, vm.selectedRun.value?.id)
+                // Selection flows and score flows are observed independently.
+                // The correct session may be selected before its Room score
+                // collection emits the restored rows; wait for both emissions.
+                awaitState("Restored scoring rows", {
+                    "individual=${vm.currentScores.value["newCriterion"]?.points}, " +
+                        "group=${vm.currentGroupScores.value["newCriterion"]?.points}, " +
+                        "session=${vm.currentGroupAssessment.value?.sessionId}"
+                }) {
+                    vm.currentScores.value["newCriterion"]?.points == 91 &&
+                        vm.currentGroupAssessment.value?.sessionId == newSession.id &&
+                        vm.currentGroupScores.value["newCriterion"]?.points == 77
+                }
                 assertEquals(91, vm.currentScores.value["newCriterion"]?.points)
                 assertEquals(newSession.id, vm.currentGroupAssessment.value?.sessionId)
                 assertEquals(77, vm.currentGroupScores.value["newCriterion"]?.points)
