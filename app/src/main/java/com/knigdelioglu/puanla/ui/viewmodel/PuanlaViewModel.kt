@@ -92,6 +92,8 @@ data class EvidenceNoteSaveState(val key: String, val status: Status) {
     }
 }
 
+data class ScoreSaveState(val key: String, val status: EvidenceNoteSaveState.Status)
+
 class PuanlaViewModel internal constructor(
     application: Application,
     db: PuanlaDatabase,
@@ -247,6 +249,21 @@ class PuanlaViewModel internal constructor(
     val toastMessages = MutableStateFlow<List<Pair<String, (() -> Unit)?>>>(emptyList())
     val canUndoGroupAction = MutableStateFlow(false)
     val evidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
+    val groupEvidenceNoteSaveState = MutableStateFlow<EvidenceNoteSaveState?>(null)
+    val scoreSaveState = MutableStateFlow<ScoreSaveState?>(null)
+    private val scoreWriteRevisions = mutableMapOf<String, Long>()
+    private fun nextScoreRevision(key: String): Long =
+        (scoreWriteRevisions[key] ?: 0L).plus(1L).also {
+            scoreWriteRevisions[key] = it
+            scoreSaveState.value = ScoreSaveState(key, EvidenceNoteSaveState.Status.SAVING)
+        }
+    private fun finishScoreWrite(key: String, revision: Long, success: Boolean) {
+        if (scoreWriteRevisions[key] == revision) {
+            scoreSaveState.value = ScoreSaveState(key,
+                if (success) EvidenceNoteSaveState.Status.SAVED else EvidenceNoteSaveState.Status.ERROR)
+            scoreWriteRevisions.remove(key)
+        }
+    }
     private val undoStack = UndoHistory<UndoAction>()
     private val groupUndoStack = UndoHistory<UndoAction>()
     private data class PendingEvidenceNote(
@@ -264,6 +281,19 @@ class PuanlaViewModel internal constructor(
         var job: Job? = null
     )
     private val pendingNoteWrites = mutableMapOf<String, PendingEvidenceNote>()
+    private data class PendingGroupEvidenceNote(
+        val key: String,
+        val sessionId: String,
+        val groupId: String,
+        val criterionId: String,
+        var note: String,
+        var revision: Long = 0,
+        var flushRequested: Boolean = false,
+        val edits: Channel<Unit> = Channel(Channel.CONFLATED),
+        val flush: Channel<Unit> = Channel(Channel.CONFLATED),
+        var job: Job? = null
+    )
+    private val pendingGroupNoteWrites = mutableMapOf<String, PendingGroupEvidenceNote>()
     // A fixed set of locks avoids retaining a mutex for every pupil/criterion ever graded.
     // Hash collisions only serialize unrelated writes; same-key writes remain ordered.
     private val scoreLocks = Array(128) { Mutex() }
@@ -1348,6 +1378,104 @@ class PuanlaViewModel internal constructor(
             } catch (cancel: CancellationException) { throw cancel }
             catch (e: Exception) { showToast("Rastgele gruplar oluşturulamadı: " + e.message) }
         }
+    }
+
+    /**
+     * Group evidence is bound to the original session, group and criterion,
+     * even if the teacher switches modes while the debounce is pending.
+     */
+    fun setGroupEvidenceNote(criterionId: String, note: String) {
+        if (mutations.isPaused()) {
+            showToast("Yedekleme veya geri yükleme sırasında gözlem notu kaydedilemez.")
+            return
+        }
+        val group = selectedGroup.value ?: return
+        val session = selectedGroupSession.value ?: return
+        val rubric = selectedRubric.value ?: return
+        if (session.rubricId != rubric.id || group.classroomId != session.classroomId ||
+            selectedClassroom.value?.id != session.classroomId ||
+            groupCriteria.value.none { it.id == criterionId }) return
+        val key = "group/${session.id}/${group.id}/$criterionId"
+        val pending = pendingGroupNoteWrites[key] ?: PendingGroupEvidenceNote(
+            key, session.id, group.id, criterionId, note
+        ).also { pendingGroupNoteWrites[key] = it }
+        pending.note = note
+        pending.revision++
+        pending.flushRequested = false
+        pending.edits.trySend(Unit)
+        groupEvidenceNoteSaveState.value =
+            EvidenceNoteSaveState(key, EvidenceNoteSaveState.Status.SAVING)
+        startGroupEvidenceNoteWorker(pending)
+    }
+
+    private fun startGroupEvidenceNoteWorker(pending: PendingGroupEvidenceNote) {
+        if (pending.job?.isActive == true) return
+        val job = launchMutation(onBlocked = {
+            if (pendingGroupNoteWrites[pending.key] === pending) {
+                groupEvidenceNoteSaveState.value =
+                    EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+            }
+        }) {
+            while (pendingGroupNoteWrites[pending.key] === pending) {
+                if (!pending.flushRequested) {
+                    val interrupted = withTimeoutOrNull(500) {
+                        select<Unit> {
+                            pending.edits.onReceive { }
+                            pending.flush.onReceive { }
+                        }
+                        true
+                    } ?: false
+                    if (interrupted && !pending.flushRequested) continue
+                }
+                pending.flushRequested = false
+                val revision = pending.revision
+                val note = pending.note
+                try {
+                    scoreMutex(pending.groupId, pending.sessionId, pending.criterionId).withLock {
+                        if (pendingGroupNoteWrites[pending.key] === pending &&
+                            pending.revision == revision) {
+                            repository.saveGroupEvidenceNote(
+                                pending.sessionId, pending.groupId, pending.criterionId, note
+                            )
+                            if (pending.revision == revision && pendingGroupNoteWrites[pending.key] === pending) {
+                                if (selectedGroup.value?.id == pending.groupId &&
+                                    selectedGroupSession.value?.id == pending.sessionId) {
+                                    loadCurrentGroupAssessment()
+                                }
+                                groupEvidenceNoteSaveState.value =
+                                    EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.SAVED)
+                                pendingGroupNoteWrites.remove(pending.key)
+                                pending.edits.close()
+                                pending.flush.close()
+                                return@launchMutation
+                            }
+                        }
+                    }
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (e: Exception) {
+                    if (pendingGroupNoteWrites[pending.key] === pending) {
+                        groupEvidenceNoteSaveState.value =
+                            EvidenceNoteSaveState(pending.key, EvidenceNoteSaveState.Status.ERROR)
+                        showToast("Grup gözlem notu kaydedilemedi: ${e.message}")
+                    }
+                    return@launchMutation
+                }
+            }
+        }
+        if (job == null) return
+        pending.job = job
+        job.invokeOnCompletion { if (pending.job === job) pending.job = null }
+    }
+
+    suspend fun flushPendingGroupEvidenceNotes() {
+        val pending = pendingGroupNoteWrites.values.toList()
+        pending.forEach {
+            it.flushRequested = true
+            it.flush.trySend(Unit)
+            startGroupEvidenceNoteWorker(it)
+        }
+        pending.mapNotNull { it.job }.joinAll()
     }
 
     fun setGroupScore(criterionId: String, points: Int?) {
