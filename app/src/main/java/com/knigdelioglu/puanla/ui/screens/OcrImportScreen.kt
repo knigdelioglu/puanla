@@ -47,6 +47,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -69,7 +70,6 @@ import com.knigdelioglu.arc.compose.controls.ArcButton
 import com.knigdelioglu.arc.compose.controls.ArcButtonSize
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.controls.ArcCheckbox
-import com.knigdelioglu.arc.compose.controls.ArcConfirmMorph
 import com.knigdelioglu.arc.compose.controls.ArcInlineEdit
 import com.knigdelioglu.arc.compose.controls.ArcSlider
 import com.knigdelioglu.arc.compose.datavis.ArcAnimatedCounter
@@ -436,6 +436,8 @@ private fun OcrStepVerification(
     header: @Composable () -> Unit
 ) {
     var focusReview by remember { mutableStateOf(false) }
+    var showImportConfirmation by remember { mutableStateOf(false) }
+    val isImporting by viewModel.ocrIsImporting.collectAsState()
     val currentStudents by viewModel.students.collectAsState()
     val duplicateHints = remember(candidates, currentStudents) {
         OcrImportDuplicateDetector.findPotentialDuplicates(
@@ -458,9 +460,27 @@ private fun OcrStepVerification(
     val selectedNumberConflicts = duplicateValidation.schoolNumberConflicts.size
     val selectedSourceRowConflicts = duplicateValidation.sourceRowConflicts.size
     val selectedUnconfirmedMatches = duplicateValidation.unconfirmedPossibleMatches.size
+    val approvedCount = candidates.count { it.isApproved }
+    val invalidApprovedCount = candidates.count {
+        it.isApproved && (it.studentNumber.isBlank() ||
+            !it.studentNumber.all(Char::isDigit) ||
+            it.firstName.isBlank() || it.lastName.isBlank())
+    }
+    val blockingMessage = when {
+        approvedCount == 0 -> "Aktarılacak öğrencileri işaretleyin."
+        selectedSourceRowConflicts > 0 -> "Aynı fotoğraf satırından gelen tekrarları kaldırın."
+        selectedNumberConflicts > 0 -> "Çakışan okul numaralarını düzeltin."
+        selectedUnconfirmedMatches > 0 -> "Benzer öğrencilerin farklı kişi olduğunu doğrulayın."
+        invalidApprovedCount > 0 -> "Onaylı satırlarda numara, ad ve soyad eksik veya hatalı."
+        else -> null
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(24.dp).testTag("ocrVerificationScroll"),
+        modifier = Modifier.weight(1f).fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp)
+            .testTag("ocrVerificationScroll"),
         state = rememberLazyListState(),
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -506,35 +526,6 @@ private fun OcrStepVerification(
                 )
             }
 
-            if (candidates.none { it.isApproved }) {
-                ArcButton(
-                    text = "Önce Öğrencileri Onaylayın",
-                    onClick = {},
-                    enabled = false,
-                    variant = ArcButtonVariant.Secondary,
-                    size = ArcButtonSize.Md
-                )
-            } else if (selectedSourceRowConflicts > 0 || selectedNumberConflicts > 0 || selectedUnconfirmedMatches > 0) {
-                ArcButton(
-                    text = if (selectedSourceRowConflicts > 0) "Aynı Fotoğraf Satırı Tekrarı"
-                    else if (selectedNumberConflicts > 0) "Okul Numarası Çakışması"
-                    else "Benzer Öğrenciyi Doğrulayın",
-                    onClick = {},
-                    enabled = false,
-                    variant = ArcButtonVariant.Secondary,
-                    size = ArcButtonSize.Md
-                )
-            } else {
-                // An explicit second confirmation before writing an OCR batch to Room.
-                key(candidates.filter { it.isApproved }.map { it.id }) {
-                    ArcConfirmMorph(
-                        prompt = "${candidates.count { it.isApproved }} öğrenci aktarılsın mı?",
-                        initialLabel = "Onaylananları Aktar (${candidates.count { it.isApproved }})",
-                        confirmLabel = "Aktar",
-                        onConfirm = { viewModel.confirmOcrImport { } }
-                    )
-                }
-            }
         }
 
         Spacer(Modifier.height(14.dp))
@@ -844,6 +835,73 @@ private fun OcrStepVerification(
                     }
                 }
             }
+    }
+
+    // The completion action stays reachable even after scrolling through a long class list.
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = ArcTheme.colors.surfaceRaised,
+        border = BorderStroke(1.dp, ArcTheme.colors.borderSubtle),
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "$approvedCount / ${candidates.size} öğrenci seçildi",
+                    color = ArcTheme.colors.foreground,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = when {
+                        isImporting -> "Öğrenciler sınıfa kaydediliyor…"
+                        blockingMessage != null -> blockingMessage
+                        else -> "Seçilen öğrencileri sınıfa eklemek için aktarımı onaylayın."
+                    },
+                    color = ArcTheme.colors.textSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            ArcButton(
+                text = if (isImporting) "Aktarılıyor…" else "Onaylananları Aktar ($approvedCount)",
+                enabled = !isImporting && blockingMessage == null,
+                onClick = { showImportConfirmation = true },
+                variant = ArcButtonVariant.Primary,
+                size = ArcButtonSize.Md,
+                modifier = Modifier.testTag("ocrImportAction")
+            )
+        }
+    }
+    }
+
+    if (showImportConfirmation) {
+        AlertDialog(
+            onDismissRequest = { if (!isImporting) showImportConfirmation = false },
+            title = { Text("Öğrencileri sınıfa aktar?") },
+            text = { Text("$approvedCount onaylı öğrenci seçili sınıfa kaydedilecek. Bu işlemden önce numaraları, adları ve soyadları kontrol ettiğinizden emin olun.") },
+            confirmButton = {
+                ArcButton(
+                    text = "Aktarımı Onayla",
+                    onClick = {
+                        showImportConfirmation = false
+                        viewModel.confirmOcrImport { }
+                    },
+                    enabled = !isImporting && blockingMessage == null,
+                    variant = ArcButtonVariant.Primary,
+                    modifier = Modifier.testTag("ocrImportConfirm")
+                )
+            },
+            dismissButton = {
+                ArcButton(
+                    text = "Vazgeç",
+                    onClick = { showImportConfirmation = false },
+                    variant = ArcButtonVariant.Outline
+                )
+            }
+        )
     }
 }
 
