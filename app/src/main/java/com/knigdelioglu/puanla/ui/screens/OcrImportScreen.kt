@@ -94,36 +94,51 @@ import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
 
 @Composable
-fun OcrImportScreen(viewModel: PuanlaViewModel) {
+fun OcrImportScreen(
+    viewModel: PuanlaViewModel,
+    modifier: Modifier = Modifier,
+    embedded: Boolean = false,
+    embeddedTitle: String = "Fotoğraftan OCR ile Sınıf Listesi Aktarımı",
+    onClose: (() -> Unit)? = null
+) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val step by viewModel.ocrStep.collectAsState()
     val candidates by viewModel.ocrCandidates.collectAsState()
     val isScanning by viewModel.ocrIsScanning.collectAsState()
     val ocrError by viewModel.ocrError.collectAsState()
     val importedCount by viewModel.ocrImportedCount.collectAsState()
+    val reviewClassroom = selectedClassroom
 
     // Verification owns one vertical lazy list for the header, alerts and students.
     // Do not pin the header above a separate weighted roster viewport.
-    if (step == 2 && selectedClassroom != null) {
-        OcrStepVerification(candidates, viewModel) {
-            OcrImportChrome(
-                classroomName = selectedClassroom?.name,
-                step = step,
-                viewModel = viewModel
-            )
+    if (step == 2 && reviewClassroom != null) {
+        OcrStepVerification(candidates, viewModel, modifier) {
+            if (embedded) {
+                EmbeddedOcrHeader(
+                    title = embeddedTitle,
+                    classroomName = reviewClassroom.name,
+                    onClose = { onClose?.invoke() ?: run { viewModel.currentDestination.value = AppDestination.CLASSROOMS } }
+                )
+            } else {
+                OcrImportChrome(classroomName = reviewClassroom.name, step = step, viewModel = viewModel)
+            }
         }
         return
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().padding(if (embedded) 12.dp else 24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        OcrImportChrome(
-            classroomName = selectedClassroom?.name,
-            step = step,
-            viewModel = viewModel
-        )
+        if (embedded) {
+            EmbeddedOcrHeader(
+                title = embeddedTitle,
+                classroomName = selectedClassroom?.name,
+                onClose = { onClose?.invoke() ?: run { viewModel.currentDestination.value = AppDestination.CLASSROOMS } }
+            )
+        } else {
+            OcrImportChrome(classroomName = selectedClassroom?.name, step = step, viewModel = viewModel)
+        }
 
         if (selectedClassroom == null) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -138,8 +153,33 @@ fun OcrImportScreen(viewModel: PuanlaViewModel) {
         when (step) {
             0 -> OcrStepPhotoSelection(viewModel, modifier = Modifier.weight(1f))
             1 -> OcrStepScanning(isScanning, ocrError, viewModel)
-            3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", viewModel)
+            3 -> OcrStepCompleted(importedCount, selectedClassroom?.name ?: "", onReturn = {
+                viewModel.ocrStep.value = 0
+                if (embedded) onClose?.invoke()
+                else viewModel.currentDestination.value = AppDestination.CLASSROOMS
+            })
         }
+    }
+}
+
+@Composable
+private fun EmbeddedOcrHeader(
+    title: String,
+    classroomName: String?,
+    onClose: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
+            if (classroomName != null) {
+                Text("Hedef sınıf: $classroomName", fontSize = 13.sp, color = ArcTheme.colors.textSecondary)
+            }
+        }
+        ArcButton(text = "Paneli Kapat", onClick = onClose, variant = ArcButtonVariant.Ghost, size = ArcButtonSize.Sm)
     }
 }
 
@@ -433,12 +473,14 @@ private fun OcrStepScanning(isScanning: Boolean, error: String?, viewModel: Puan
 private fun OcrStepVerification(
     candidates: List<OcrStudentRow>,
     viewModel: PuanlaViewModel,
+    modifier: Modifier = Modifier,
     header: @Composable () -> Unit
 ) {
     var focusReview by remember { mutableStateOf(false) }
     var showImportConfirmation by remember { mutableStateOf(false) }
     val isImporting by viewModel.ocrIsImporting.collectAsState()
     val currentStudents by viewModel.students.collectAsState()
+    val ignoredLineCount by viewModel.ocrIgnoredLineCount.collectAsState()
     val duplicateHints = remember(candidates, currentStudents) {
         OcrImportDuplicateDetector.findPotentialDuplicates(
             candidates,
@@ -475,7 +517,7 @@ private fun OcrStepVerification(
         else -> null
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
 
     LazyColumn(
         modifier = Modifier.weight(1f).fillMaxWidth()
@@ -532,9 +574,16 @@ private fun OcrStepVerification(
 
         ArcAlert(
             title = "Kesin Kayıt Öncesi Onay",
-            message = "OCR çıktıları yaklaşık tahmindir. Belirsiz işaretli kayıtlar öğretmen onayı olmadan sınıfa eklenmez.",
+            message = "OCR ve metin ayrıştırma çıktıları kesin kayıt değildir. Hiçbir öğrenci öğretmen onayı olmadan sınıfa eklenmez.",
             type = ArcAlertType.Warning
         )
+        if (ignoredLineCount > 0) {
+            ArcAlert(
+                title = "$ignoredLineCount satır ayrıştırılamadı",
+                message = "Bu satırlar aday listesine alınmadı ve kaydedilmeyecek. Okul numarası ile ad soyadı açıkça yazıp yeniden deneyin.",
+                type = ArcAlertType.Warning
+            )
+        }
         if (duplicateHints.isNotEmpty()) {
             ArcAlert(
                 title = "Olası Mükerrer Satırlar (${duplicateHints.size})",
@@ -881,7 +930,7 @@ private fun OcrStepVerification(
         AlertDialog(
             onDismissRequest = { if (!isImporting) showImportConfirmation = false },
             title = { Text("Öğrencileri sınıfa aktar?") },
-            text = { Text("$approvedCount onaylı öğrenci seçili sınıfa kaydedilecek. Bu işlemden önce numaraları, adları ve soyadları kontrol ettiğinizden emin olun.") },
+            text = { Text("$approvedCount seçili öğrenci sınıfa kaydedilecek. Numara, ad ve soyadları son kez gözden geçirin.") },
             confirmButton = {
                 ArcButton(
                     text = "Aktarımı Onayla",
@@ -1041,7 +1090,7 @@ private fun OcrSourceComparison(uri: Uri?, candidates: List<OcrStudentRow>) {
 private fun OcrStepCompleted(
     count: Int,
     className: String,
-    viewModel: PuanlaViewModel
+    onReturn: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -1084,10 +1133,7 @@ private fun OcrStepCompleted(
 
                 ArcButton(
                     text = "Sınıf Listesine Dön",
-                    onClick = {
-                        viewModel.currentDestination.value = AppDestination.CLASSROOMS
-                        viewModel.ocrStep.value = 0
-                    },
+                    onClick = onReturn,
                     variant = ArcButtonVariant.Primary,
                     size = ArcButtonSize.Lg
                 )

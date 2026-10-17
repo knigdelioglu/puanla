@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlin.math.roundToInt
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
 import com.knigdelioglu.puanla.domain.group.GroupChecklistRules
 import com.knigdelioglu.puanla.domain.group.GroupPartitioner
@@ -83,6 +84,8 @@ class PuanlaRepository(
 
     // Classrooms
     fun getAllClassroomsFlow(): Flow<List<ClassroomEntity>> = classroomDao.getAllClassroomsFlow()
+    fun getClassroomRosterSummariesFlow(): Flow<List<ClassroomRosterSummary>> =
+        classroomDao.observeRosterSummaries()
 
     suspend fun getAllClassrooms(): List<ClassroomEntity> = classroomDao.getAllClassrooms()
 
@@ -366,6 +369,53 @@ class PuanlaRepository(
 
     fun getRunAssessmentsFlow(classroomId: String, runId: String): Flow<List<AssessmentEntity>> =
         assessmentDao.observeForRun(classroomId, runId)
+
+    fun getStudentAssessmentSummariesFlow(classroomId: String): Flow<List<StudentAssessmentSummary>> =
+        assessmentDao.observeStudentAssessmentSummaries(classroomId)
+
+    suspend fun getCompletedRunScoresForStudent(classroomId: String, studentId: String): List<StudentRunScore> =
+        assessmentDao.getCompletedRunScoresForStudent(classroomId, studentId)
+
+    suspend fun getStudentCriterionAverages(
+        classroomId: String,
+        studentId: String
+    ): List<StudentCriterionAverage> = db.withTransaction {
+        val observations = assessmentDao.getCompletedCriterionScoresForStudent(classroomId, studentId)
+        val runsById = mutableMapOf<String, AssessmentRunEntity?>()
+        val criteriaByRun = mutableMapOf<Pair<String, String>, Map<String, CriterionEntity>>()
+        val percentages = linkedMapOf<Pair<String, String>, MutableList<Float>>()
+        val titles = mutableMapOf<Pair<String, String>, String>()
+
+        observations.forEach { observation ->
+            val key = observation.rubricId to observation.criterionId
+            val run = if (observation.runId.isBlank()) null else {
+                if (runsById.containsKey(observation.runId)) runsById[observation.runId]
+                else runDao.get(observation.runId).also { runsById[observation.runId] = it }
+            }
+            val criteriaKey = observation.runId to observation.rubricId
+            val criteria = criteriaByRun.getOrPut(criteriaKey) {
+                (run?.let { getCriteriaForRun(it) }
+                    ?: rubricDao.getCriteriaForRubric(observation.rubricId))
+                    .associateBy { it.id }
+            }
+            val criterion = criteria[observation.criterionId] ?: return@forEach
+            val points = observation.points ?: return@forEach
+            if (criterion.maxPoints <= 0 || points !in 0..criterion.maxPoints) return@forEach
+
+            titles[key] = criterion.title
+            percentages.getOrPut(key) { mutableListOf() }
+                .add(points.toFloat() * 100f / criterion.maxPoints)
+        }
+
+        percentages.map { (key, values) ->
+            StudentCriterionAverage(
+                criterionId = key.second,
+                title = titles.getValue(key),
+                averagePercent = values.average().roundToInt().coerceIn(0, 100),
+                observations = values.size
+            )
+        }.sortedBy { it.title.lowercase(java.util.Locale.forLanguageTag("tr-TR")) }
+    }
 
     suspend fun getRunAssessmentForStudent(studentId: String, runId: String): AssessmentEntity? =
         assessmentDao.getStudentInRun(studentId, runId)
@@ -781,6 +831,32 @@ class PuanlaRepository(
 
     suspend fun getGroupMemberResults(assessmentId: String): List<GroupMemberResultEntity> =
         db.groupAssessmentDao().getMemberResults(assessmentId)
+
+    /** Reaffirms a completed group result in the separate group-member projection. */
+    suspend fun publishGroupResultToMembers(sessionId: String, groupId: String): Int = db.withTransaction {
+        val dao = db.groupAssessmentDao()
+        val assessment = requireNotNull(dao.getAssessment(sessionId, groupId)) { "Grup değerlendirmesi yok." }
+        val total = requireNotNull(assessment.definitiveTotal) {
+            "Üyelere aktarmak için tüm ölçütleri puanlayın."
+        }
+        require(assessment.isCompleted) { "Üyelere aktarmak için tüm ölçütleri puanlayın." }
+        val members = JSONArray(assessment.memberStudentIdsJson)
+        val memberIds = (0 until members.length()).map { members.getString(it) }
+        require(memberIds.isNotEmpty() && memberIds.distinct().size == memberIds.size) {
+            "Grup üye kaydı geçersiz."
+        }
+        val rows = memberIds.map { studentId ->
+            GroupMemberResultEntity(
+                id = "${assessment.id}_$studentId",
+                groupAssessmentId = assessment.id,
+                studentId = studentId,
+                definitiveTotal = total,
+                isCompleted = true
+            )
+        }
+        dao.upsertMemberResults(rows)
+        rows.size
+    }
 
     suspend fun createGroupSession(classroomId: String, rubricId: String, title: String): GroupAssessmentSessionEntity =
         db.withTransaction {

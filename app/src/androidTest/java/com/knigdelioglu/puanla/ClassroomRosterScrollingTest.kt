@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -82,14 +84,15 @@ class ClassroomRosterScrollingTest {
                 viewModel.students.value.size == 30 &&
                     viewModel.selectedClassroom.value?.id == classroom.id
             }
-            // No duplicate page heading or oversized single-class card.
-            composeRule.onNodeWithText("Sınıf ve Öğrenci Yönetimi").assertDoesNotExist()
-            composeRule.onNodeWithTag("singleClassroomControls").assertExists()
+            // The reference layout keeps a clear page heading and class tabs.
+            composeRule.onNodeWithText("Sınıf ve Öğrenci Yönetimi").assertIsDisplayed()
+            composeRule.onNodeWithTag("classroomSelector").assertExists()
             composeRule.onNodeWithTag("studentRosterControls").assertExists()
             // The whole page scrolls to the full-height roster viewport.
             composeRule.onNodeWithTag("studentRosterTable").performScrollTo().assertIsDisplayed()
             composeRule.onNodeWithContentDescription("Sonraki Sayfa").performScrollTo().performClick()
-            composeRule.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
+            composeRule.onNode(hasScrollToIndexAction() and hasAnyAncestor(hasTestTag("studentRosterTable")))
+                .performScrollToIndex(4)
             composeRule.onNodeWithText("Ad29", substring = true).assertIsDisplayed()
         } finally {
             store.clear()

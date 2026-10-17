@@ -16,10 +16,53 @@ data class RubricWithCriteria(
     val levels: List<CriterionLevelEntity>
 )
 
+data class RubricSummary(
+    val rubricId: String,
+    val title: String,
+    val subject: String,
+    val grade: Int,
+    val criterionCount: Int,
+    val totalPoints: Int,
+    val isBuiltIn: Boolean
+)
+
 data class AssessmentWithScores(
     val assessment: AssessmentEntity,
     val student: StudentEntity,
     val scores: List<CriterionScoreEntity>
+)
+
+data class StudentAssessmentSummary(
+    val studentId: String,
+    val assessmentCount: Int,
+    val averageCompletedTotal: Double?
+)
+
+data class StudentRunScore(
+    val runId: String,
+    val runTitle: String,
+    val assessedAt: Long,
+    val total: Int,
+    val observationNote: String?
+)
+
+data class StudentCriterionScoreObservation(
+    val runId: String,
+    val rubricId: String,
+    val criterionId: String,
+    val points: Int?
+)
+
+data class StudentCriterionAverage(
+    val criterionId: String,
+    val title: String,
+    val averagePercent: Int,
+    val observations: Int
+)
+
+data class ClassroomRosterSummary(
+    val classroomId: String,
+    val studentCount: Int
 )
 
 /** Read-only group-originated grades, separate from individual rubric scores. */
@@ -35,6 +78,13 @@ data class StudentGroupGrade(
 
 @Dao
 interface ClassroomDao {
+    @Query("""
+        SELECT c.id AS classroomId, COUNT(s.id) AS studentCount
+        FROM classrooms c LEFT JOIN students s ON s.classroomId = c.id
+        GROUP BY c.id
+    """)
+    fun observeRosterSummaries(): Flow<List<ClassroomRosterSummary>>
+
     @Query("SELECT * FROM classrooms ORDER BY grade ASC, section ASC")
     fun getAllClassroomsFlow(): Flow<List<ClassroomEntity>>
 
@@ -88,11 +138,23 @@ interface RubricDao {
     @Query("SELECT * FROM rubrics ORDER BY title ASC")
     fun getAllRubricsFlow(): Flow<List<RubricEntity>>
 
+    @Query("""
+        SELECT r.id AS rubricId, r.title AS title, r.targetTask AS subject, r.grade AS grade,
+            COUNT(c.id) AS criterionCount, COALESCE(SUM(c.maxPoints), 0) AS totalPoints,
+            r.isBuiltIn AS isBuiltIn
+        FROM rubrics r LEFT JOIN criteria c ON c.rubricId = r.id
+        GROUP BY r.id ORDER BY r.title ASC
+    """)
+    fun getRubricSummariesFlow(): Flow<List<RubricSummary>>
+
     @Query("SELECT * FROM rubrics ORDER BY title ASC")
     suspend fun getAllRubrics(): List<RubricEntity>
 
     @Query("SELECT * FROM rubrics WHERE id = :id LIMIT 1")
     suspend fun getRubricById(id: String): RubricEntity?
+
+    @Query("SELECT * FROM rubrics WHERE id = :id LIMIT 1")
+    fun observeRubric(id: String): Flow<RubricEntity?>
 
     @Query("SELECT * FROM criteria WHERE id = :criterionId LIMIT 1")
     suspend fun getCriterionById(criterionId: String): CriterionEntity?
@@ -105,6 +167,33 @@ interface RubricDao {
 
     @Query("SELECT * FROM criterion_levels WHERE criterionId IN (SELECT id FROM criteria WHERE rubricId = :rubricId) ORDER BY orderIndex ASC")
     suspend fun getLevelsForRubric(rubricId: String): List<CriterionLevelEntity>
+
+    @Query("SELECT * FROM criterion_levels WHERE criterionId IN (SELECT id FROM criteria WHERE rubricId = :rubricId) ORDER BY orderIndex ASC")
+    fun getLevelsForRubricFlow(rubricId: String): Flow<List<CriterionLevelEntity>>
+
+    @Query("""
+        SELECT
+            (SELECT COUNT(*) FROM assessment_runs WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM assessments WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM group_assessment_sessions WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM group_tasks WHERE rubricId = :rubricId)
+    """)
+    suspend fun countRubricUsage(rubricId: String): Int
+
+    @Query("""
+        SELECT
+            (SELECT COUNT(*) FROM assessment_runs WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM assessments WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM group_assessment_sessions WHERE rubricId = :rubricId) +
+            (SELECT COUNT(*) FROM group_tasks WHERE rubricId = :rubricId)
+    """)
+    fun observeRubricUsage(rubricId: String): Flow<Int>
+
+    @Query("DELETE FROM criteria WHERE rubricId = :rubricId")
+    suspend fun deleteCriteriaForRubric(rubricId: String)
+
+    @Query("DELETE FROM rubrics WHERE id = :rubricId")
+    suspend fun deleteRubricById(rubricId: String)
 
     // REPLACE deletes the old row and can cascade-delete all past marks.
     // UPDATE-on-conflict keeps FK relationships and assessment history.
@@ -196,6 +285,43 @@ interface AssessmentRunDao {
 
 @Dao
 interface AssessmentDao {
+    @Query("""
+        SELECT studentId AS studentId,
+            SUM(CASE WHEN scoredCount > 0 THEN 1 ELSE 0 END) AS assessmentCount,
+            AVG(CASE WHEN isCompleted = 1 THEN definitiveTotal ELSE NULL END) AS averageCompletedTotal
+        FROM assessments
+        WHERE classroomId = :classroomId
+        GROUP BY studentId
+    """)
+    fun observeStudentAssessmentSummaries(classroomId: String): Flow<List<StudentAssessmentSummary>>
+
+    @Query("""
+        SELECT COALESCE(r.id, '') AS runId,
+            COALESCE(r.title, 'Önceki değerlendirme') AS runTitle,
+            COALESCE(r.createdAt, a.lastModifiedAt) AS assessedAt,
+            a.definitiveTotal AS total, a.observationNote AS observationNote
+        FROM assessments a
+        LEFT JOIN assessment_runs r ON r.id = a.runId
+        WHERE a.classroomId = :classroomId AND a.studentId = :studentId
+            AND a.isCompleted = 1 AND a.definitiveTotal IS NOT NULL
+        ORDER BY COALESCE(r.createdAt, a.lastModifiedAt) ASC, a.runId ASC
+    """)
+    suspend fun getCompletedRunScoresForStudent(classroomId: String, studentId: String): List<StudentRunScore>
+
+    @Query("""
+        SELECT a.runId AS runId, a.rubricId AS rubricId,
+            cs.criterionId AS criterionId, cs.points AS points
+        FROM assessments a
+        JOIN criterion_scores cs ON cs.assessmentId = a.id
+        WHERE a.classroomId = :classroomId AND a.studentId = :studentId
+            AND a.isCompleted = 1 AND cs.points IS NOT NULL
+        ORDER BY a.runId ASC, cs.criterionId ASC
+    """)
+    suspend fun getCompletedCriterionScoresForStudent(
+        classroomId: String,
+        studentId: String
+    ): List<StudentCriterionScoreObservation>
+
     @Query("SELECT * FROM assessments WHERE classroomId = :classroomId AND runId = :runId")
     fun observeForRun(classroomId: String, runId: String): Flow<List<AssessmentEntity>>
 

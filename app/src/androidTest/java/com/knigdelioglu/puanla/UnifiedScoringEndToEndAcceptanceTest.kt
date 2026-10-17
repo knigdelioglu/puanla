@@ -152,4 +152,33 @@ class UnifiedScoringEndToEndAcceptanceTest {
             db.close()
         }
     }
+
+    @Test fun individualEvaluationRunsKeepIndependentScoresAndReportSnapshots() = runBlocking {
+        val db = database()
+        try {
+            seed(db)
+            val repo = repository(db)
+            val first = repo.createAssessmentRun("rubric", "İlk sunum", listOf("class"))
+            val second = repo.createAssessmentRun("rubric", "İkinci sunum", listOf("class"))
+
+            repo.saveCriterionScore("class", "s1", "rubric", "content", 20, runId = first.id)
+            repo.saveCriterionScore("class", "s1", "rubric", "delivery", 80, runId = first.id)
+            repo.saveCriterionScore("class", "s1", "rubric", "content", 0, runId = second.id)
+            repo.saveCriterionScore("class", "s1", "rubric", "delivery", 0, runId = second.id)
+
+            val firstReport = repo.generatePdfReportSnapshot("class", "rubric", first.id)
+            val secondReport = repo.generatePdfReportSnapshot("class", "rubric", second.id)
+            assertEquals(100, firstReport.students.single { it.number == "1" }.definitiveTotal)
+            assertEquals(0, secondReport.students.single { it.number == "1" }.definitiveTotal)
+            assertNotEquals(first.id, second.id)
+            val firstCsv = repo.generateCsvExport("class", "rubric", first.id)
+            val secondCsv = repo.generateCsvExport("class", "rubric", second.id)
+            assertTrue(firstCsv.contains(";20;80;100;Tamamlandı"))
+            assertTrue(secondCsv.contains(";0;0;0;Tamamlandı"))
+            assertFalse(firstCsv.contains(";0;0;0;Tamamlandı"))
+            assertFalse(secondCsv.contains(";20;80;100;Tamamlandı"))
+        } finally {
+            db.close()
+        }
+    }
 }

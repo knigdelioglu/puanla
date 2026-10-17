@@ -9,6 +9,16 @@ object StudentNameRules {
     fun firstName(raw: String): String = normalized(raw)
     fun lastName(raw: String): String = normalized(raw).uppercase(turkish)
 
+    /** Splits a single full-name entry at its final word, preserving multi-part given names. */
+    fun splitFullName(raw: String): Pair<String, String> {
+        val clean = normalized(raw)
+        val separator = clean.lastIndexOf(' ')
+        require(separator > 0 && separator < clean.lastIndex) {
+            "Ad ve soyadı birlikte girin; son sözcük soyadı olarak kaydedilir."
+        }
+        return firstName(clean.substring(0, separator)) to lastName(clean.substring(separator + 1))
+    }
+
     private fun normalized(raw: String): String {
         require(raw.none { Character.isISOControl(it) }) { "Ad veya soyad kontrol karakteri içeremez." }
         val clean = raw.trim().replace(repeatedSpaces, " ")

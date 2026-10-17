@@ -10,6 +10,7 @@ import com.knigdelioglu.puanla.data.local.AssessmentRunEntity
 import com.knigdelioglu.puanla.data.local.RunClassroomProgress
 import com.knigdelioglu.puanla.data.local.AuditLogEntity
 import com.knigdelioglu.puanla.data.local.ClassroomEntity
+import com.knigdelioglu.puanla.data.local.ClassroomRosterSummary
 import com.knigdelioglu.puanla.data.local.CriterionEntity
 import com.knigdelioglu.puanla.data.local.CriterionLevelEntity
 import com.knigdelioglu.puanla.data.local.CriterionScoreEntity
@@ -20,21 +21,28 @@ import com.knigdelioglu.puanla.data.local.GroupCriterionScoreEntity
 import com.knigdelioglu.puanla.data.local.GroupMemberResultEntity
 import com.knigdelioglu.puanla.data.local.PuanlaDatabase
 import com.knigdelioglu.puanla.data.local.RubricEntity
+import com.knigdelioglu.puanla.data.local.RubricSummary
 import com.knigdelioglu.puanla.data.local.StudentEntity
+import com.knigdelioglu.puanla.data.local.StudentAssessmentSummary
+import com.knigdelioglu.puanla.data.local.StudentRunScore
 import com.knigdelioglu.puanla.data.local.StudentGroupGrade
 import com.knigdelioglu.puanla.data.local.fullName
 import com.knigdelioglu.puanla.data.repository.PuanlaRepository
+import com.knigdelioglu.puanla.data.service.RubricDetails
+import com.knigdelioglu.puanla.data.service.RubricManagementService
 import com.knigdelioglu.arc.compose.foundation.ArcAccent
 import com.knigdelioglu.puanla.domain.CriterionScore
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterParser
 import com.knigdelioglu.puanla.domain.ocr.OcrStudentRow
 import com.knigdelioglu.puanla.domain.ocr.OcrImportDuplicateDetector
 import com.knigdelioglu.puanla.domain.ocr.OcrRosterIdentity
+import com.knigdelioglu.puanla.domain.ocr.PastedRosterParser
 import com.knigdelioglu.puanla.domain.summarizeScores
 import com.knigdelioglu.puanla.domain.undo.UndoHistory
 import com.knigdelioglu.puanla.domain.scoring.resolveSessionSelection
 import com.knigdelioglu.puanla.domain.report.assessmentActivityByDay
 import com.knigdelioglu.puanla.domain.student.StudentNameRules
+import com.knigdelioglu.puanla.domain.rubric.RubricDraft
 import com.knigdelioglu.puanla.domain.backup.MutationCoordinator
 import com.knigdelioglu.puanla.ui.preferences.AppearancePreferenceRules
 import com.knigdelioglu.puanla.ui.preferences.MotionPreference
@@ -73,6 +81,7 @@ import java.util.Locale
 enum class AppDestination(val label: String, val iconName: String) {
     WORKSPACE("Puanlama", "Grading"),
     CLASSROOMS("Sınıflar", "School"),
+    RUBRICS("Rubrikler", "Rubric"),
     OCR_IMPORT("Fotoğraftan Aktarım", "DocumentScanner"),
     GROUP_WORK("Grup Çalışmaları", "Group"),
     REPORTS("Raporlar", "BarChart"),
@@ -103,6 +112,7 @@ class PuanlaViewModel internal constructor(
     constructor(application: Application) : this(application, PuanlaDatabase.getInstance(application), null)
 
     private val db = db
+    private val rubricManagementService = RubricManagementService(db)
     val repository = repositoryOverride ?: PuanlaRepository(db) {
         getApplication<Application>().assets.open("rubrics.json")
             .bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -191,18 +201,27 @@ class PuanlaViewModel internal constructor(
     // Active Selection State
     val classrooms: StateFlow<List<ClassroomEntity>> = repository.getAllClassroomsFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val classroomRosterSummaries: StateFlow<List<ClassroomRosterSummary>> =
+        repository.getClassroomRosterSummariesFlow()
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val selectedClassroom = MutableStateFlow<ClassroomEntity?>(null)
 
     val rubrics: StateFlow<List<RubricEntity>> = repository.getAllRubricsFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    val rubricSummaries: StateFlow<List<RubricSummary>> = rubricManagementService.observeSummaries()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val selectedRubric = MutableStateFlow<RubricEntity?>(null)
+    val managedRubricDetails = MutableStateFlow<RubricDetails?>(null)
+    private var managedRubricId: String? = null
+    private var managedRubricJob: Job? = null
     val assessmentRuns = MutableStateFlow<List<AssessmentRunEntity>>(emptyList())
     val runClassProgress = MutableStateFlow<List<RunClassroomProgress>>(emptyList())
     val selectedRun = MutableStateFlow<AssessmentRunEntity?>(null)
 
     val students = MutableStateFlow<List<StudentEntity>>(emptyList())
+    val studentAssessmentSummaries = MutableStateFlow<List<StudentAssessmentSummary>>(emptyList())
     val selectedStudent = MutableStateFlow<StudentEntity?>(null)
 
     val criteria = MutableStateFlow<List<CriterionEntity>>(emptyList())
@@ -319,6 +338,7 @@ class PuanlaViewModel internal constructor(
 
     private var studentFlowJob: Job? = null
     private var assessmentFlowJob: Job? = null
+    private var studentSummaryFlowJob: Job? = null
     private var groupFlowJob: Job? = null
     private var groupSessionFlowJob: Job? = null
     private var groupAssessmentFlowJob: Job? = null
@@ -334,6 +354,7 @@ class PuanlaViewModel internal constructor(
     val ocrError = MutableStateFlow<String?>(null)
     val ocrSelectedImageUri = MutableStateFlow<Uri?>(null)
     val ocrImportedCount = MutableStateFlow(0)
+    val ocrIgnoredLineCount = MutableStateFlow(0)
 
     init {
         viewModelScope.launch {
@@ -374,12 +395,15 @@ class PuanlaViewModel internal constructor(
                         selectedRubric.value = targetRubric
                     }
                     loadStudentsForClassroom(classroom.id)
+                    loadStudentAssessmentSummaries(classroom.id)
                     loadGroupTasks()
                     loadGroupSessions()
                     loadClassAssessments()
                 } else {
                     students.value = emptyList()
+                    studentAssessmentSummaries.value = emptyList()
                     selectedStudent.value = null
+                    studentSummaryFlowJob?.cancel()
                 }
             }
         }
@@ -519,6 +543,40 @@ class PuanlaViewModel internal constructor(
         selectedRubric.value = rubric
     }
 
+    fun observeManagedRubric(rubricId: String?) {
+        if (managedRubricId == rubricId) return
+        managedRubricJob?.cancel()
+        managedRubricId = rubricId
+        managedRubricDetails.value = null
+        if (rubricId != null) {
+            managedRubricJob = viewModelScope.launch {
+                rubricManagementService.observeDetails(rubricId).collect { details ->
+                    if (managedRubricId == rubricId) managedRubricDetails.value = details
+                }
+            }
+        }
+    }
+
+    private suspend fun <T> withTrackedRubricMutation(action: suspend () -> T): T {
+        val job = currentCoroutineContext()[Job]
+            ?: error("Rubrik değişikliği coroutine içinde çalışmalıdır.")
+        check(mutations.track(job)) { "Yedekleme veya geri yükleme sırasında rubrik değiştirilemez." }
+        return try {
+            action()
+        } finally {
+            mutations.untrack(job)
+        }
+    }
+
+    suspend fun saveRubricDraft(draft: RubricDraft, existingRubricId: String? = null): RubricEntity =
+        withTrackedRubricMutation { rubricManagementService.save(draft, existingRubricId) }
+
+    suspend fun duplicateRubric(rubricId: String): RubricEntity =
+        withTrackedRubricMutation { rubricManagementService.duplicate(rubricId) }
+
+    suspend fun deleteRubric(rubricId: String) =
+        withTrackedRubricMutation { rubricManagementService.delete(rubricId) }
+
     fun selectRun(run: AssessmentRunEntity) {
         if (selectedRubric.value?.id != run.rubricId || run !in assessmentRuns.value) return
         selectedRun.value = run
@@ -608,6 +666,30 @@ class PuanlaViewModel internal constructor(
                     val restored = list.firstOrNull { it.id == preferredId } ?: list.firstOrNull()
                     selectStudent(restored)
                 }
+            }
+        }
+    }
+
+    private fun loadStudentAssessmentSummaries(classroomId: String) {
+        studentSummaryFlowJob?.cancel()
+        studentAssessmentSummaries.value = emptyList()
+        studentSummaryFlowJob = viewModelScope.launch {
+            repository.getStudentAssessmentSummariesFlow(classroomId).collect { summaries ->
+                if (selectedClassroom.value?.id == classroomId) {
+                    studentAssessmentSummaries.value = summaries
+                }
+            }
+        }
+    }
+
+    fun loadStudentProgress(studentId: String, onResult: (List<StudentRunScore>) -> Unit) {
+        val classroomId = selectedClassroom.value?.id ?: return
+        viewModelScope.launch {
+            val history = runCatching {
+                repository.getCompletedRunScoresForStudent(classroomId, studentId)
+            }.getOrDefault(emptyList())
+            if (selectedClassroom.value?.id == classroomId && students.value.any { it.id == studentId }) {
+                onResult(history)
             }
         }
     }
@@ -1072,6 +1154,7 @@ class PuanlaViewModel internal constructor(
         ocrError.value = null
         ocrCandidates.value = emptyList()
         ocrImportedCount.value = 0
+        ocrIgnoredLineCount.value = 0
         ocrStep.value = 1
         viewModelScope.launch {
             try {
@@ -1091,6 +1174,24 @@ class PuanlaViewModel internal constructor(
                 ocrIsScanning.value = false
             }
         }
+    }
+
+    fun prepareOcrFromText(text: String): Boolean {
+        if (selectedClassroom.value == null) {
+            ocrError.value = "Öğrenci listesini ayrıştırmadan önce sınıf seçin."
+            return false
+        }
+        val parsed = PastedRosterParser.parse(text)
+        ocrSelectedImageUri.value = null
+        ocrImportedCount.value = 0
+        ocrIgnoredLineCount.value = parsed.ignoredLineCount
+        ocrCandidates.value = parsed.rows
+        ocrError.value = when {
+            parsed.rows.isEmpty() -> "Öğrenci bulunamadı. Her satırda okul numarasını ve ad soyadı birlikte girin."
+            else -> null
+        }
+        ocrStep.value = if (parsed.rows.isEmpty()) 0 else 2
+        return parsed.rows.isNotEmpty()
     }
 
     fun reportOcrImageError(message: String) {
@@ -1545,6 +1646,23 @@ class PuanlaViewModel internal constructor(
         if (submitted == null) finishScoreWrite(scoreKey, scoreRevision, success = false)
     }
 
+    fun publishCurrentGroupResultToMembers() {
+        val group = selectedGroup.value ?: return
+        val session = selectedGroupSession.value ?: return
+        if (session.classroomId != selectedClassroom.value?.id ||
+            session.rubricId != selectedRubric.value?.id || group.classroomId != session.classroomId) return
+        launchMutation {
+            try {
+                val count = repository.publishGroupResultToMembers(session.id, group.id)
+                if (selectedGroupSession.value?.id == session.id && selectedGroup.value?.id == group.id) {
+                    loadCurrentGroupAssessment()
+                }
+                showToast("Grup puanı $count üyeye aktarıldı.")
+            } catch (cancel: CancellationException) { throw cancel }
+            catch (e: Exception) { showToast("Grup puanı aktarılamadı: ${e.message}") }
+        }
+    }
+
     fun toggleChecklistItem(task: GroupTaskEntity, itemIndex: Int) {
         launchMutation {
             try { repository.toggleGroupChecklistItem(task.id, itemIndex) }
@@ -1662,6 +1780,7 @@ class PuanlaViewModel internal constructor(
                     scoreWriteRevisions.clear()
                     lastStudentSelectionContext = null
                     studentFlowJob?.cancel(); studentFlowJob = null
+                    studentSummaryFlowJob?.cancel(); studentSummaryFlowJob = null
                     assessmentFlowJob?.cancel(); assessmentFlowJob = null
                     currentAssessmentJob?.cancel(); currentAssessmentJob = null
                     studentGroupGradesJob?.cancel(); studentGroupGradesJob = null
@@ -1682,6 +1801,7 @@ class PuanlaViewModel internal constructor(
                     selectedRun.value = null
                     assessmentRuns.value = emptyList()
                     students.value = emptyList()
+                    studentAssessmentSummaries.value = emptyList()
                     criteria.value = emptyList()
                     levels.value = emptyList()
                     currentScores.value = emptyMap()

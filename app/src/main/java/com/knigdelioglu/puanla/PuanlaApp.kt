@@ -1,6 +1,13 @@
 package com.knigdelioglu.puanla
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +35,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.KeyEventType
@@ -38,12 +46,18 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,7 +66,6 @@ import com.knigdelioglu.arc.compose.display.ArcToastStack
 import com.knigdelioglu.arc.compose.display.ArcNotificationItem
 import com.knigdelioglu.arc.compose.display.ArcNotificationCenter
 import com.knigdelioglu.arc.compose.controls.ArcButton
-import com.knigdelioglu.arc.compose.controls.ArcSegmentedControl
 import com.knigdelioglu.arc.compose.controls.ArcButtonVariant
 import com.knigdelioglu.arc.compose.foundation.ArcTheme
 import com.knigdelioglu.puanla.ui.components.AppCommandPaletteModal
@@ -62,9 +75,9 @@ import com.knigdelioglu.puanla.ui.screens.ClassroomsScreen
 import com.knigdelioglu.puanla.ui.screens.GroupWorkScreen
 import com.knigdelioglu.puanla.ui.screens.OcrImportScreen
 import com.knigdelioglu.puanla.ui.screens.ReportsScreen
+import com.knigdelioglu.puanla.ui.screens.RubricsScreen
 import com.knigdelioglu.puanla.ui.screens.ScoringWorkspaceScreen
 import com.knigdelioglu.puanla.ui.screens.SettingsScreen
-import com.knigdelioglu.puanla.ui.navigation.primaryNavigationDestinations
 import com.knigdelioglu.puanla.ui.navigation.primaryTab
 import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 import com.knigdelioglu.puanla.ui.viewmodel.PuanlaViewModel
@@ -104,9 +117,38 @@ fun PuanlaApp(
     val showHistory by viewModel.isNotificationCenterOpen.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
 
-    val destinations = remember { primaryNavigationDestinations }
     var lastMainTab by remember { mutableStateOf(AppDestination.WORKSPACE) }
+    var headerVisible by remember { mutableStateOf(true) }
+    var scrollDirectionDistance by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val scrollDirectionThreshold = with(density) { 18.dp.toPx() }
+    val headerScrollConnection = remember(scrollDirectionThreshold) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                val delta = consumed.y + available.y
+                if (abs(delta) < 0.5f) return Offset.Zero
+                scrollDirectionDistance += delta
+                when {
+                    scrollDirectionDistance <= -scrollDirectionThreshold -> {
+                        headerVisible = false
+                        scrollDirectionDistance = 0f
+                    }
+                    scrollDirectionDistance >= scrollDirectionThreshold -> {
+                        headerVisible = true
+                        scrollDirectionDistance = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
     LaunchedEffect(currentDestination) {
+        headerVisible = true
+        scrollDirectionDistance = 0f
         lastMainTab = currentDestination.primaryTab(lastMainTab)
         if (currentDestination == AppDestination.WORKSPACE ||
             currentDestination == AppDestination.GROUP_WORK) {
@@ -137,6 +179,7 @@ fun PuanlaApp(
                     .fillMaxSize()
                     // Keep interactive UI clear of status/navigation bars and display cutouts.
                     .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .nestedScroll(headerScrollConnection)
                     .onPreviewKeyEvent { event ->
                     val keyEvent = event.nativeKeyEvent
                     if (event.type == KeyEventType.KeyDown &&
@@ -159,30 +202,30 @@ fun PuanlaApp(
                     // and floating controls; Scaffold must not apply them a second time.
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
-                        Column {
+                        AnimatedVisibility(
+                            visible = headerVisible,
+                            enter = if (reduceMotion.reducedMotionOverride == true) {
+                                EnterTransition.None
+                            } else {
+                                slideInVertically(initialOffsetY = { -it }) + fadeIn()
+                            },
+                            exit = if (reduceMotion.reducedMotionOverride == true) {
+                                ExitTransition.None
+                            } else {
+                                slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+                            }
+                        ) {
                             AppTopBar(
                                 viewModel = viewModel,
+                                activePrimaryDestination = currentDestination.primaryTab(lastMainTab),
+                                onNavigate = { destination ->
+                                    lastMainTab = destination
+                                    viewModel.currentDestination.value = destination
+                                },
                                 onBackFromSettings = {
                                     viewModel.currentDestination.value = lastMainTab
                                 }
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                ArcSegmentedControl(
-                                    items = destinations.map { it.label },
-                                    selectedIndex = destinations.indexOf(currentDestination.primaryTab(lastMainTab)),
-                                    onSelectIndex = { index ->
-                                        destinations.getOrNull(index)?.let {
-                                            lastMainTab = it
-                                            viewModel.currentDestination.value = it
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
                         }
                     }
                 ) { innerPadding ->
@@ -194,6 +237,7 @@ fun PuanlaApp(
                         when (currentDestination) {
                             AppDestination.WORKSPACE -> ScoringWorkspaceScreen(viewModel = viewModel)
                             AppDestination.CLASSROOMS -> ClassroomsScreen(viewModel = viewModel)
+                            AppDestination.RUBRICS -> RubricsScreen(viewModel = viewModel)
                             AppDestination.OCR_IMPORT -> OcrImportScreen(viewModel = viewModel)
                             AppDestination.GROUP_WORK -> GroupWorkScreen(viewModel = viewModel)
                             AppDestination.REPORTS -> ReportsScreen(viewModel = viewModel)

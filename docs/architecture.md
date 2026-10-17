@@ -5,7 +5,7 @@
 ## Planlanan katmanlar
 - **UI:** Compose + adaptif tablet düzeni; ölçütlere doğrudan erişim, büyük etkileşim alanları, kalem/dokunma ergonomisi ve erişilebilirlik. `:design-system` yalnızca görünüm/etkileşim bileşenlerini sağlar; ürün kurallarına ve veri modellerine bağımlı değildir.
 - **Domain:** Sınıf, öğrenci, rubrik, ölçüt ve değerlendirme sözleşmeleri; null/0 ve toplam kuralları. Android bağımlılığından mümkün olduğunca bağımsız.
-- **Data:** Room ile cihaz içi ilişkisel kayıtlar; veri geçişleri, transaction ve benzersizlik; ilk onaylı rubrikleri JSON'dan yalnızca okuma. Hassas veriler güvenli saklama ve dışa aktarma kurallarına bağlı.
+- **Data:** Room ile cihaz içi ilişkisel kayıtlar; veri geçişleri, transaction ve benzersizlik; ilk onaylı rubrikleri JSON'dan yalnızca okuma. `data/service/RubricManagementService`, rubrik CRUD işlemlerini ve 100 puan/dört düzey doğrulamasını ayrı sahiplenir; kullanılan rubriklerin ölçütleri değiştirilemez, yeni sürüm çoğaltılır. Rubrik yazımları yedekleme/geri yükleme değişiklik koordinasyonuna katılır. Hassas veriler güvenli saklama ve dışa aktarma kurallarına bağlı.
 - **Import:** CameraX / sistem fotoğraf seçici, cihaz içi ML Kit OCR, sütun geometrisi ve kullanıcı doğrulama ekranı. OCR sonucu veri tabanına doğrudan yazılmaz.
 - **Export:** CSV için UTF-8 ve Excel uyumluluğu; kullanıcı onaylı SAF dosya seçimi; açık formatlı doğrulanabilir yedek.
 

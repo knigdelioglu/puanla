@@ -6,6 +6,7 @@ import com.knigdelioglu.puanla.ui.viewmodel.AppDestination
 val primaryNavigationDestinations = listOf(
     AppDestination.WORKSPACE,
     AppDestination.CLASSROOMS,
+    AppDestination.RUBRICS,
     AppDestination.REPORTS
 )
 
@@ -14,6 +15,7 @@ fun AppDestination.primaryTab(previousPrimaryTab: AppDestination = AppDestinatio
     when (this) {
         AppDestination.WORKSPACE, AppDestination.GROUP_WORK -> AppDestination.WORKSPACE
         AppDestination.CLASSROOMS, AppDestination.OCR_IMPORT -> AppDestination.CLASSROOMS
+        AppDestination.RUBRICS -> AppDestination.RUBRICS
         AppDestination.REPORTS -> AppDestination.REPORTS
         AppDestination.SETTINGS -> previousPrimaryTab
     }

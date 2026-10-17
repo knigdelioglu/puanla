@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,12 +45,13 @@ fun EvaluationRunSheet(
     viewModel: PuanlaViewModel,
     isOpen: Boolean,
     onDismiss: () -> Unit,
-    groupMode: Boolean = false
+    groupMode: Boolean = false,
+    startInCreateMode: Boolean = false
 ) {
     // Both modes use the same entry point and visible "Değerlendirmeler" workflow.
     // Their session entities, write paths and undo histories deliberately remain separate.
     if (groupMode) {
-        GroupEvaluationRunsContent(viewModel, isOpen, onDismiss)
+        GroupEvaluationRunsContent(viewModel, isOpen, onDismiss, startInCreateMode)
         return
     }
     val classroom by viewModel.selectedClassroom.collectAsState()
@@ -69,13 +71,21 @@ fun EvaluationRunSheet(
     val alreadyAssigned = progress.map { it.classroomId }.toSet()
     val availableToAdd = eligible.filter { it.id !in alreadyAssigned }
 
+    LaunchedEffect(isOpen, startInCreateMode) {
+        if (isOpen) newRunForm = startInCreateMode
+    }
+
     ArcBottomSheet(isOpen = isOpen, onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().heightIn(max = 650.dp)
                 .verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Değerlendirmelerim", color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
+            Text(
+                if (newRunForm) "Yeni Değerlendirme Oturumu" else "Değerlendirme Oturumları",
+                color = ArcTheme.colors.foreground,
+                fontWeight = FontWeight.Bold
+            )
             Text(
                 "${classroom?.name ?: "Sınıf seçilmedi"} · ${rubric?.title ?: "Rubrik seçilmedi"}",
                 color = ArcTheme.colors.textSecondary
@@ -103,7 +113,7 @@ fun EvaluationRunSheet(
                             Text("Yeni değerlendirme", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
                             ArcInput(
                                 value = newTitle, onValueChange = { newTitle = it },
-                                label = "Değerlendirme adı"
+                                label = "Değerlendirme Başlığı"
                             )
                             Text("Bu değerlendirmeyi kullanacak sınıflar", color = ArcTheme.colors.textSecondary)
                             eligible.forEach { item ->
@@ -121,7 +131,7 @@ fun EvaluationRunSheet(
                                     variant = ArcButtonVariant.Ghost
                                 )
                                 ArcButton(
-                                    text = "Oluştur",
+                                    text = "Oturumu Oluştur ve Başla",
                                     onClick = {
                                         viewModel.createRun(newTitle.trim(), newClassIds.toList())
                                         newRunForm = false
@@ -268,7 +278,8 @@ private fun runDescription(run: AssessmentRunEntity): String {
 private fun GroupEvaluationRunsContent(
     viewModel: PuanlaViewModel,
     isOpen: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    startInCreateMode: Boolean
 ) {
     val classroom by viewModel.selectedClassroom.collectAsState()
     val rubric by viewModel.selectedRubric.collectAsState()
@@ -279,13 +290,21 @@ private fun GroupEvaluationRunsContent(
     var newRunForm by remember { mutableStateOf(false) }
     var newTitle by remember(classroom?.id, rubric?.id) { mutableStateOf("") }
 
+    LaunchedEffect(isOpen, startInCreateMode) {
+        if (isOpen) newRunForm = startInCreateMode
+    }
+
     ArcBottomSheet(isOpen = isOpen, onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().heightIn(max = 650.dp)
                 .verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Değerlendirmelerim", color = ArcTheme.colors.foreground, fontWeight = FontWeight.Bold)
+            Text(
+                if (newRunForm) "Yeni Grup Değerlendirme Oturumu" else "Grup Değerlendirme Oturumları",
+                color = ArcTheme.colors.foreground,
+                fontWeight = FontWeight.Bold
+            )
             Text(
                 "${classroom?.name ?: "Sınıf seçilmedi"} · ${rubric?.title ?: "Rubrik seçilmedi"} · Grup",
                 color = ArcTheme.colors.textSecondary
@@ -312,7 +331,7 @@ private fun GroupEvaluationRunsContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Text("Yeni değerlendirme", fontWeight = FontWeight.Bold, color = ArcTheme.colors.foreground)
-                            ArcInput(value = newTitle, onValueChange = { newTitle = it }, label = "Değerlendirme adı")
+                            ArcInput(value = newTitle, onValueChange = { newTitle = it }, label = "Değerlendirme Başlığı")
                             Text(
                                 "Bu grup değerlendirmesi yalnızca seçili sınıf ve rubrik için oluşturulur.",
                                 color = ArcTheme.colors.textSecondary
@@ -323,7 +342,7 @@ private fun GroupEvaluationRunsContent(
                                     variant = ArcButtonVariant.Ghost
                                 )
                                 ArcButton(
-                                    text = "Oluştur",
+                                    text = "Oturumu Oluştur ve Başla",
                                     enabled = newTitle.isNotBlank(),
                                     onClick = {
                                         viewModel.createGroupSession(newTitle.trim())

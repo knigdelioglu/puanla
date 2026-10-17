@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,9 +56,14 @@ import androidx.compose.ui.text.AnnotatedString
 import com.knigdelioglu.puanla.domain.report.AssessmentDateFilter
 import com.knigdelioglu.puanla.domain.report.canExportSelectedReport
 import com.knigdelioglu.puanla.domain.export.PdfReportSnapshot
+import com.knigdelioglu.puanla.domain.export.CsvStudent
+import com.knigdelioglu.puanla.domain.export.PdfReportStatistics
+import com.knigdelioglu.puanla.domain.export.PdfScoreState
 import com.knigdelioglu.puanla.domain.export.PdfReportWriter
 import com.knigdelioglu.arc.compose.datavis.ArcBarChart
 import com.knigdelioglu.arc.compose.datavis.ArcBarData
+import com.knigdelioglu.arc.compose.datavis.ArcSortableDataTable
+import com.knigdelioglu.arc.compose.datavis.ArcTableColumn
 import com.knigdelioglu.arc.compose.datavis.ArcDonutChart
 import com.knigdelioglu.arc.compose.datavis.ArcDonutSegment
 import com.knigdelioglu.arc.compose.datavis.ArcGauge
@@ -80,6 +86,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -88,6 +96,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     val selectedClassroom by viewModel.selectedClassroom.collectAsState()
     val selectedRubric by viewModel.selectedRubric.collectAsState()
     val selectedRun by viewModel.selectedRun.collectAsState()
+    val assessmentRuns by viewModel.assessmentRuns.collectAsState()
     val groupSessions by viewModel.groupSessions.collectAsState()
     val selectedGroupSession by viewModel.selectedGroupSession.collectAsState()
     val groupAssessments by viewModel.groupAssessments.collectAsState()
@@ -104,6 +113,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfCourse by remember { mutableStateOf(pdfPreferences.getString("course", "") ?: "") }
     var pdfTeacher by remember { mutableStateOf(pdfPreferences.getString("teacher", "") ?: "") }
     var showPdfDialog by remember { mutableStateOf(false) }
+    var showPdfPreviewDialog by remember { mutableStateOf(false) }
     var groupReportMode by remember { mutableStateOf(false) }
     var pdfRequestedGroupSessionId by remember { mutableStateOf<String?>(null) }
     var pdfRequestedGroupSessionTitle by remember { mutableStateOf<String?>(null) }
@@ -113,6 +123,9 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     var pdfRequestedRunTitle by remember { mutableStateOf<String?>(null) }
     var pdfGenerating by remember { mutableStateOf(false) }
     var pendingPdfSnapshots by remember { mutableStateOf<List<PdfReportSnapshot>>(emptyList()) }
+    var sessionReportSnapshot by remember { mutableStateOf<PdfReportSnapshot?>(null) }
+    var sessionReportLoading by remember { mutableStateOf(false) }
+    var sessionReportError by remember { mutableStateOf(false) }
     var pdfAllClasses by remember { mutableStateOf(false) }
     var pdfSummaryOnly by remember { mutableStateOf(false) }
     var pendingSummaryOnly by remember { mutableStateOf(false) }
@@ -178,6 +191,31 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
     }
 
     val scrollState = rememberScrollState()
+
+    LaunchedEffect(selectedClassroom?.id, selectedRubric?.id, selectedRun?.id, reportsGroupMode) {
+        val classroomId = selectedClassroom?.id
+        val rubricId = selectedRubric?.id
+        val runId = selectedRun?.id
+        sessionReportSnapshot = null
+        sessionReportError = false
+        if (reportsGroupMode || classroomId == null || rubricId == null || runId == null) {
+            sessionReportLoading = false
+        } else {
+            sessionReportLoading = true
+            try {
+                sessionReportSnapshot = withContext(Dispatchers.IO) {
+                    viewModel.generatePdfSnapshotsForRun(classroomId, rubricId, runId, allClassrooms = false)
+                        .singleOrNull()
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                sessionReportError = true
+            } finally {
+                sessionReportLoading = false
+            }
+        }
+    }
 
     // Calculations
     val datedAssessments = remember(classAssessments, filterStart, filterEnd) {
@@ -268,10 +306,12 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        StudentGrowthReportSection(viewModel)
+
         // Reports follow the most recently used scoring mode. Session data is
         // still separate; switching modes never copies or combines grades.
         ArcSegmentedControl(
-            items = listOf("Bireysel", "Grup"),
+            items = listOf("Bireysel değerlendirme", "Grup değerlendirmesi"),
             selectedIndex = if (reportsGroupMode) 1 else 0,
             onSelectIndex = { viewModel.reportsGroupMode.value = it == 1 },
             modifier = Modifier.fillMaxWidth()
@@ -284,7 +324,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Değerlendirme Raporları",
+                    text = "Değerlendirme Sonuç Raporu",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.foreground
@@ -308,7 +348,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                     groupSessionId = selectedGroupSession?.id
                 )
                 ArcButton(
-                    text = "PDF Raporu",
+                    text = "PDF Raporu Önizle",
                     onClick = {
                         groupReportMode = reportsGroupMode
                         pdfRequestedGroupSessionId = if (reportsGroupMode) selectedGroupSession?.id else null
@@ -372,7 +412,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         enabled = hasReportSession && !csvGenerating,
                         variant = ArcButtonVariant.Primary,
                         size = ArcButtonSize.Md,
-                        primaryContent = { Text("CSV Dışa Aktar") }
+                        primaryContent = { Text("CSV İndir (Excel / e-Okul)") }
                     )
                     ArcDropdownMenu(
                         expanded = csvActionsOpen,
@@ -413,6 +453,20 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                         )
                     }
                 }
+            }
+        }
+
+        if (!reportsGroupMode && selectedClassroom != null && selectedRubric != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Raporlanacak Değerlendirme Oturumu", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary)
+                ArcSelect(
+                    selectedItem = selectedRun,
+                    items = assessmentRuns,
+                    onItemSelected = { viewModel.selectRun(it) },
+                    labelProvider = { run -> "${run.title} (${reportRunDate(run.createdAt)})" },
+                    placeholder = "Değerlendirme oturumu seçin",
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
@@ -632,6 +686,17 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
             else Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { charts() }
         }
 
+        Text("Sınıf Değerlendirme Sonuçları", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+        when {
+            sessionReportLoading -> Text("Seçili oturumun sonuçları yükleniyor…", color = colors.textSecondary)
+            sessionReportError -> ArcEmptyState(
+                title = "Oturum raporu yüklenemedi",
+                description = "Seçili değerlendirme verileri okunamadı. Başka bir oturum seçip yeniden deneyin."
+            )
+            sessionReportSnapshot == null -> Text("Sonuç tablosu için bir değerlendirme oturumu seçin.", color = colors.textSecondary)
+            else -> IndividualReportResultTable(requireNotNull(sessionReportSnapshot))
+        }
+
         // CSV BOM Info Banner
         ArcAlert(
             title = "Microsoft Excel ve Türkçe Karakter Uyumu",
@@ -764,7 +829,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                             enabled = !pdfGenerating
                         )
                         ArcButton(
-                            text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Kaydet",
+                            text = if (pdfGenerating) "Hazırlanıyor…" else "PDF Raporu Önizle",
                             onClick = {
                                 val requestedGroupMode = groupReportMode
                                 val requestedGroupSessionId = pdfRequestedGroupSessionId
@@ -804,7 +869,7 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                             .putString("teacher", pendingPdfTeacher)
                                             .apply()
                                         showPdfDialog = false
-                                        savePdf.launch("puanla-${if (requestedGroupMode) "grup" else if (requestedAllClasses) "tum-siniflar" else snapshots.first().classroomName}-${(if (requestedGroupMode) requestedGroupTitle else requestedRunTitle)?.replace(Regex("[^a-zA-Z0-9_-]"), "-")?.take(30) ?: "rapor"}-${LocalDate.now()}.pdf")
+                                        showPdfPreviewDialog = true
                                     } catch (cancel: CancellationException) {
                                         throw cancel
                                     } catch (e: Exception) {
@@ -816,6 +881,93 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
                                 }
                             },
                             enabled = !pdfGenerating && pdfCourse.isNotBlank() && pdfTeacher.isNotBlank(),
+                            variant = ArcButtonVariant.Primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPdfPreviewDialog && pendingPdfSnapshots.isNotEmpty()) {
+        Dialog(onDismissRequest = { showPdfPreviewDialog = false }) {
+            Surface(
+                shape = ArcTheme.shapes.panel,
+                color = colors.surfaceRaised,
+                border = BorderStroke(1.dp, colors.border),
+                modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.9f)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("PDF Raporu Önizleme", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = colors.foreground)
+                    Text(
+                        "Ders: $pendingPdfCourse  •  Öğretmen: $pendingPdfTeacher",
+                        fontSize = 13.sp,
+                        color = colors.textSecondary
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        pendingPdfSnapshots.forEach { snapshot ->
+                            val summary = PdfReportStatistics.summary(snapshot)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = colors.surface,
+                                shape = ArcTheme.shapes.control,
+                                border = BorderStroke(1.dp, colors.borderSubtle)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(
+                                        "${snapshot.classroomName} — ${if (groupReportMode) pdfRequestedGroupSessionTitle else pdfRequestedRunTitle}",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.foreground
+                                    )
+                                    Text("Ders: ${snapshot.rubricTitle}  •  Akademik yıl: ${snapshot.academicYear}", fontSize = 13.sp, color = colors.textSecondary)
+                                    Text(
+                                        "${summary.registered} öğrenci  •  ${summary.completed} tamamlandı  •  " +
+                                            "${summary.partial} kısmi  •  Ortalama: ${summary.average?.roundToInt() ?: "—"}/100",
+                                        fontSize = 13.sp,
+                                        color = colors.foreground
+                                    )
+                                    if (!pendingSummaryOnly) {
+                                        Text("Öğrenci sonuç örneği", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.foreground)
+                                        snapshot.students.take(6).forEach { student ->
+                                            val total = PdfReportStatistics.definitiveScore(student, snapshot.criteria)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("${student.number}  ${student.firstName} ${student.lastName}", fontSize = 13.sp, color = colors.textSecondary)
+                                                Text(total?.let { "$it/100" } ?: "Değerlendirilmedi", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.foreground)
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        if (pendingSummaryOnly) "PDF özeti ve grafiklerini içerir."
+                                        else "PDF sınıf özeti, puan dağılımı ve rubriğin ölçüt tablolarını içerir.",
+                                        fontSize = 12.sp,
+                                        color = colors.textMuted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        ArcButton(text = "Kapat", onClick = { showPdfPreviewDialog = false }, variant = ArcButtonVariant.Ghost)
+                        Spacer(Modifier.width(10.dp))
+                        ArcButton(
+                            text = "PDF Raporu Yazdır / Kaydet",
+                            onClick = {
+                                val requestedGroupMode = groupReportMode
+                                val requestedAllClasses = pdfAllClasses
+                                val title = if (requestedGroupMode) pdfRequestedGroupSessionTitle else pdfRequestedRunTitle
+                                val classLabel = if (requestedAllClasses) "tum-siniflar" else pendingPdfSnapshots.first().classroomName
+                                val filename = "puanla-${filenamePart(classLabel)}-${filenamePart(title ?: "rapor")}-${LocalDate.now()}.pdf"
+                                showPdfPreviewDialog = false
+                                savePdf.launch(filename)
+                            },
+                            enabled = !pdfGenerating,
                             variant = ArcButtonVariant.Primary
                         )
                     }
@@ -892,6 +1044,59 @@ fun ReportsScreen(viewModel: PuanlaViewModel) {
         }
     }
 }
+
+@Composable
+private fun IndividualReportResultTable(snapshot: PdfReportSnapshot) {
+    val colors = ArcTheme.colors
+    if (snapshot.students.isEmpty()) {
+        ArcEmptyState(
+            title = "Bu oturumda öğrenci sonucu yok",
+            description = "Seçili oturumda henüz öğrenci değerlendirmesi bulunmuyor."
+        )
+        return
+    }
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val minimumWidth = (320 + snapshot.criteria.size * 138).dp
+        val tableWidth = if (maxWidth > minimumWidth) maxWidth else minimumWidth
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            ArcSortableDataTable(
+                items = snapshot.students,
+                columns = buildList {
+                    add(ArcTableColumn<CsvStudent>("No", 0.55f) { row -> Text(row.number, color = colors.foreground) })
+                    add(ArcTableColumn<CsvStudent>("Öğrenci Adı Soyadı", 1.2f) { row -> Text("${row.firstName} ${row.lastName}", color = colors.foreground) })
+                    snapshot.criteria.forEach { criterion ->
+                        add(ArcTableColumn<CsvStudent>("${criterion.title} (%${criterion.maxPoints})", 1f) { row ->
+                            Text(row.scores[criterion.id]?.let { "$it/${criterion.maxPoints}" } ?: "—", color = colors.textSecondary)
+                        })
+                    }
+                    add(ArcTableColumn<CsvStudent>("Toplam (100)", 0.7f) { row ->
+                        Text(
+                            PdfReportStatistics.definitiveScore(row, snapshot.criteria)?.toString() ?: "—",
+                            fontWeight = FontWeight.Bold,
+                            color = colors.foreground
+                        )
+                    })
+                    add(ArcTableColumn<CsvStudent>("Düzey", 1f) { row ->
+                        val state = PdfReportStatistics.state(row, snapshot.criteria)
+                        val (label, color) = when (state) {
+                            PdfScoreState.COMPLETED -> "Tamamlandı" to colors.success
+                            PdfScoreState.PARTIAL -> "Kısmi" to colors.warning
+                            PdfScoreState.NOT_STARTED -> "Değerlendirilmedi" to colors.textMuted
+                        }
+                        Text(label, color = color)
+                    })
+                },
+                modifier = Modifier.width(tableWidth).height(510.dp),
+                pageSize = 25,
+                rowKey = { "${it.number}-${it.firstName}-${it.lastName}" }
+            )
+        }
+    }
+}
+
+private fun reportRunDate(epochMillis: Long): String = if (epochMillis <= 0L) "Tarih belirtilmedi" else
+    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.forLanguageTag("tr-TR")))
 
 private fun filenamePart(value: String): String = value.trim()
     .replace(Regex("[^\\p{L}\\p{N}_-]+"), "-")

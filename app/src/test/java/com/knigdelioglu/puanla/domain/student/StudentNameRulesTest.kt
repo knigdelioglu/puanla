@@ -16,4 +16,9 @@ class StudentNameRulesTest {
         assertEquals("IŞIK", StudentNameRules.lastName("ışık"))
         assertEquals("İNCİ", StudentNameRules.lastName("inci"))
     }
+
+    @Test fun splitsFullNameAtItsFinalWord() {
+        assertEquals("Ayşe Nur" to "IŞIK", StudentNameRules.splitFullName("Ayşe Nur ışık"))
+        assertThrows(IllegalArgumentException::class.java) { StudentNameRules.splitFullName("Ayşe") }
+    }
 }

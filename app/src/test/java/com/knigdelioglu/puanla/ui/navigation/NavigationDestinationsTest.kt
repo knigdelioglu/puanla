@@ -6,18 +6,19 @@ import org.junit.Test
 
 class NavigationDestinationsTest {
     @Test
-    fun onlyThreePrimaryDestinationsAreShown() {
+    fun primaryDestinationsIncludeRubricManagement() {
         assertEquals(
-            listOf(AppDestination.WORKSPACE, AppDestination.CLASSROOMS, AppDestination.REPORTS),
+            listOf(AppDestination.WORKSPACE, AppDestination.CLASSROOMS, AppDestination.RUBRICS, AppDestination.REPORTS),
             primaryNavigationDestinations
         )
-        assertEquals(listOf("Puanlama", "Sınıflar", "Raporlar"), primaryNavigationDestinations.map { it.label })
+        assertEquals(listOf("Puanlama", "Sınıflar", "Rubrikler", "Raporlar"), primaryNavigationDestinations.map { it.label })
     }
 
     @Test
     fun groupAndOcrKeepTheirParentTabsSelected() {
         assertEquals(AppDestination.WORKSPACE, AppDestination.GROUP_WORK.primaryTab())
         assertEquals(AppDestination.CLASSROOMS, AppDestination.OCR_IMPORT.primaryTab())
+        assertEquals(AppDestination.RUBRICS, AppDestination.RUBRICS.primaryTab())
     }
 
     @Test
